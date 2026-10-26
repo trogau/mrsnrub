@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Road spec viewer — road-spec.json ground truth</title>
+<style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; height: 100%; background: #0d1117; color: #d6e2ee;
+                 font: 12px/1.45 system-ui, sans-serif; overflow: hidden; }
+    #bar { position: fixed; left: 0; right: 0; top: 0; z-index: 5;
+           display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+           padding: 6px 10px; background: rgba(13,17,23,.88);
+           border-bottom: 1px solid #1f2a38; }
+    #bar b { color: #f4d03f; margin-right: 6px; }
+    button, .chk { background: #16202e; color: #cfe1f5; border: 1px solid #2a3a52;
+                   border-radius: 5px; padding: 3px 9px; font: inherit; cursor: pointer; }
+    button:hover { background: #1d2b3f; }
+    button.on { background: #2c4a72; border-color: #4a7bb0; color: #fff; }
+    .chk { cursor: default; }
+    .chk input { accent-color: #4a90d9; margin: 0 4px 0 0; vertical-align: -2px; }
+    #bar input[type=text] { background: #10161f; color: #d6e2ee;
+        border: 1px solid #2a3a52; border-radius: 5px; padding: 3px 6px; width: 76px; }
+    #orient { color: #7fd1e8; margin-left: auto; }
+    #stage { position: absolute; inset: 0; }
+    #cv { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+    #cv.panning { cursor: grabbing; }
+    #legend { position: fixed; left: 10px; top: 46px; z-index: 4; max-width: 250px;
+              background: rgba(13,17,23,.85); border: 1px solid #1f2a38;
+              border-radius: 7px; padding: 8px 10px; }
+    #legend h3 { margin: 0 0 5px; font-size: 11px; color: #9fb8d0;
+                 text-transform: uppercase; letter-spacing: .06em; }
+    #legend .row { display: flex; align-items: center; gap: 7px; margin: 3px 0; }
+    #legend .sw { width: 14px; height: 9px; border-radius: 2px; flex: none;
+                  border: 1px solid rgba(255,255,255,.25); }
+    #legend .dot { width: 8px; height: 8px; border-radius: 50%; flex: none;
+                   margin: 0 3px; }
+    #legend small { color: #8aa2ba; }
+    #statsbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
+                padding: 4px 10px; background: rgba(13,17,23,.88);
+                border-top: 1px solid #1f2a38; color: #9fb8d0;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #statsbar i { font-style: normal; color: #f4d03f; margin: 0 8px 0 14px; }
+</style>
+</head>
+<body>
+<div id="bar">
+    <b>Road spec viewer</b>
+    <button id="btn-fit" title="Fit the road layer bbox">Fit</button>
+    <button id="btn-rest" title="Zoom back to rest (1.0)">Rest</button>
+    <button id="btn-rot" title="Rotate the tile-space orientation 90°">Rot 90°</button>
+    <button id="btn-flip" title="Mirror the tile-space orientation">Flip</button>
+    <label class="chk"><input type="checkbox" id="cb-stubs" checked>connections</label>
+    <label class="chk"><input type="checkbox" id="cb-labels" checked>chars</label>
+    <label class="chk"><input type="checkbox" id="cb-grid">cell grid</label>
+    <label class="chk"><input type="checkbox" id="cb-tiles">4×4 tiles</label>
+    <input type="text" id="in-jump" placeholder="col,row" title="jump to a cell, e.g. 45,90">
+    <span id="orient"></span>
+</div>
+<div id="legend">
+    <h3>road-spec.json ground truth</h3>
+    <div class="row"><span class="sw" style="background:#5c5c62"></span>
+        nibble cell a–p <small>(asphalt core + carriageway per connected edge; E=1 W=2 N=4 S=8)</small></div>
+    <div class="row"><span class="sw" style="background:#9c9ca3"></span>
+        footpath flanking <small>(0.75-tile strips along non-connected sides — road-lab tuned)</small></div>
+    <div class="row"><span class="dot" style="background:#eb4646"></span>
+        dead end / isolated dot <small>(popcount ≤ 1)</small></div>
+    <div class="row"><span class="dot" style="background:#ff9628"></span>
+        T-junction / cross <small>(popcount ≥ 3)</small></div>
+    <div class="row"><span class="sw" style="background:#7e7e85"></span>
+        'P' solid cell <small>(pavement — uniform grey, no connectivity, no footpath)</small></div>
+    <small>one char = one cell = 4×4 town tiles; origin (0,−112), stride 37.
+    Same camera/orientation as City View (camera.js).</small>
+</div>
+<div id="stage"><canvas id="cv"></canvas></div>
+<div id="statsbar">loading…</div>
+<script src="../js/camera.js"></script>
+<script src="spec-view-data.js?v=2"></script>
+<script src="spec-view.js?v=4"></script>
+</body>
+</html>

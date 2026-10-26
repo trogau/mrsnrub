@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- Progress dashboard: how far along the RE / unpacking / extraction work
+     is. Scan data is computed by tools/progress_scan.py into
+     web/api/progress.sqlite; api/progress.php serves it (read-only) plus
+     the hand-maintained task board and journal. Needs the PHP server —
+     unlike the other explorer pages this one does not open from file://. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Springfield &mdash; Progress</title>
+<link rel="icon" type="image/png" href="assets/images/icon.png">
+<link rel="stylesheet" href="css/progress.css?v=3">
+</head>
+<body>
+<header>
+  <a class="brand" href="original.html">&#8592; Springfield</a>
+  <h1>Progress</h1>
+  <span class="sub">RE &amp; unpacking tracker &mdash; meters computed by tools/progress_scan.py</span>
+  <a class="brand" href="../tasks/index.html">Tasks &rarr;</a>
+  <span class="stats" id="statsbar">&hellip;</span>
+</header>
+<nav id="viewbar">
+  <span class="hint">hover a meter for how it is computed &middot;
+    scan data refreshes by running <code>python3 tools/progress_scan.py</code> on the server &middot;
+    the journal below is editable in the page &middot;
+    the task &amp; decision board lives in <code>tasks/</code> (<a href="../tasks/index.html">open</a>)</span>
+</nav>
+<main>
+  <div id="error" class="card hidden"></div>
+  <section id="meters" class="cols"></section>
+  <section class="card" id="coverage-card">
+    <h2>Bundle coverage <span class="dim" id="covstats"></span></h2>
+    <div id="covlegend" class="legend"></div>
+    <div id="coverage"></div>
+  </section>
+  <section class="card" id="log-card">
+    <h2>Journal</h2>
+    <form id="logform">
+      <input id="logmsg" type="text" maxlength="500"
+             placeholder="note what changed (for the next session) &hellip;" required>
+      <button type="submit">Log</button>
+    </form>
+    <ul id="loglist"></ul>
+  </section>
+</main>
+<script src="js/progress.js?v=3"></script>
+</body>
+</html>

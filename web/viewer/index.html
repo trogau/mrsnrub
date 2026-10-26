@@ -1,0 +1,96 @@
+<!doctype html>
+<!-- City View (PixiJS): THE city view — the current viewer for this project
+     (web/viewer/index.html). A reimplementation of the now-deprecated
+     web/city-view.html on PixiJS 8 (vendored in vendor/). Any future viewer
+     work happens here, not on the legacy page.
+     One Pixi canvas replaces the Canvas2D + hybrid-WebGL
+     stack: ground, road sheet art, avenues, building prisms/sprites, people,
+     overlays and text all go through a single renderer, which is the whole
+     point — the legacy page drops frames once the town fills in.
+     Data is inlined by ../js/map-explorer-data.js (generated) -- no server,
+     no network; opens from file://. The street-verdict panel talks to
+     api/streets.php only when served over HTTP. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Springfield &mdash; City View (PixiJS)</title>
+<link rel="icon" type="image/png" href="../assets/images/icon.png">
+<link rel="stylesheet" href="../css/city-view.css?v=12">
+<link rel="stylesheet" href="../css/asset-variants.css?v=12">
+</head>
+<body>
+<header>
+  <a class="brand" href="../index.html">&#8592; Home</a>
+  <h1>City View <span class="sub">PixiJS</span></h1>
+  <a class="brand" href="../original.html">Game port &rarr;</a>
+  <a class="brand" href="../progress.html">Progress &rarr;</a>
+  <span class="sub">oblique 2.5D &mdash; PixiJS renderer, textured terrain (M2) on the M0 camera</span>
+  <span class="stats" id="statsbar">&hellip;</span>
+  <input id="search" type="search" placeholder="find building / character by name or id&hellip;">
+</header>
+<nav id="viewbar">
+  <button class="vbtn" id="btn-rest">Rest</button>
+  <button class="vbtn on" id="btn-springfield" data-tip="boot preset: zoomed in on SpringfieldDowns (the save's capital landmark)">Springfield Downs</button>
+  <button class="vbtn" id="btn-downtown">Downtown</button>
+  <button class="vbtn" id="btn-full">Full town</button>
+  <button class="vbtn" id="btn-ocean">Ocean</button>
+  <button class="vbtn" id="btn-reset">Reset</button>
+  <span class="sep">&middot;</span>
+  <button class="vbtn" id="btn-rot">&#8635; Rotate 90&deg;</button>
+  <button class="vbtn" id="btn-flip">Mirror</button>
+  <span class="sep">&middot;</span>
+  <button class="vbtn" id="btn-sheetart" data-tip="cycle road rendering: flat fills, roadrivertiles sheet art (Terrain#useSheetArt), sheet art with RE'd kerb/sidewalk edge selection (Terrain#sheetSelect), + experimental procedural N-S avenues (Terrain#useAvenues), + spec-grid footpath/carriageway art from the road-lab tuning (0.75/2.5/0.75 — real roadrivertiles asphalt base + kerb/paving band pieces per grass side, uniform 'P' pavement)">Road art</button>
+  <button class="vbtn" id="btn-waterart" data-tip="river cells drawn with the RE'd RiverDrawer art (notes/09 §9): same roadrivertiles sheet, the engine's own 0x3fc320 UV table, four quadrant quads per 4×4 cell with the bank on the closed edge and the anti-diagonal mirror byte; solid 'P' cells get the open-water slab. Off = flat blue fills. Ocean base is separate terrain; the 3 s wave shimmer is unproven and not ported">Water art</button>
+  <button class="vbtn" id="btn-bridges" data-tip="road bridges: where a 4-tile road corridor crosses the river, draw the engine's own RoadDrawer deck art (bridgetop/bridgebottom cells, baked by gen_city_sprites.py bridges) instead of plain asphalt over water. Derived from the saved road/river/ocean cell layers — cell-aligned corridor with water UNDER the deck, band at least 4 tiles wide, road reaching both banks; sections step by the art's own lamppost pitch, one deck row each side of the carriageway, road art over the deck, and each section is the engine's own solid-bit choice: deep piers over water, the grass-abutment frame where a deck end stands on land. Rule fitted and scored against the full-res export (tools/bridge-sites.py, tools/score-bridge.py; notes/09 §10)">Road bridges</button>
+  <button class="vbtn" id="btn-frags" data-tip="debug overlay: magenta diamonds on the saved 1-wide N-S road fragments (driveway/frontage stubs, Terrain#debugFrags) — not streets">1-wide frags</button>
+  <button class="vbtn" id="btn-roadnet" data-tip="road network model (Terrain#roadNetwork): speckle singles anchored only through orthogonal contact with P ground, and P tiles painted as solid plaza interiors (sheet state 0) — pair with Road art edges to see the plaza kerb delta">Road network</button>
+  <button class="vbtn" id="btn-proposed" data-tip="candidate N-S streets awaiting eye-test (Terrain.PROPOSED): verdicts persist via api/streets.php (SQLite); shift+click the map while on to propose a street at that column">Prop streets</button>
+  <button class="vbtn" id="btn-art" data-tip="cycle building/character rendering: raised blocks + dots, or extracted sprite billboards (assets/city anchors at S&#8776;62 art-px/tile, assets/characters idle poses) where the PNG exists">Art</button>
+  <button class="vbtn" id="btn-anim" data-tip="play bsv3 loops in place on the map the way the engine does: only each building's controller anim loops (fountains spray, lighthouse beams, gears turn); tap-only anims play once when you click the building; assets with no controller loop composite their part loops over the static body (escalator steps + riders). Filmstrip cells from assets/city/city-anims.json blit at the building's own ground anchor while Art is on; off = static PNGs (saves the repaints)">Anim</button>
+  <button class="vbtn" id="btn-season" data-tip="season mode: cycle the town's building art through the seasonal re-ships the CDN shipped (snowy lawns, fall leaves, halloween costumes — assets/city/seasons/&lt;class&gt;/). base = the normal town art; winter also lays the icy road sheet. Filmstrip anims pause on buildings using season art (the cells belong to the base sheet); event-only art (holidaytree) always shows">Season</button>
+  <button class="vbtn" id="btn-grid" data-tip="debug overlay: tile lattice (majors every 10, numbered) + cyan diamond on the tile under the cursor — read sprite anchor offsets off against the tile the clickable entity occupies">Tile grid</button>
+  <button class="vbtn" id="btn-tune" data-tip="sprite pin tuning panel: toggle anchor-vs-origin pin, nudge the ground point (ax/ay), scale (S), and step through the big-anchor-offset buildings — persists across reloads">Tune</button>
+  <button class="vbtn" id="btn-wire" data-tip="debug overlay: full 12-edge wireframe on every building block — the ground edges (incl. the hidden west/north ones) draw cyan so sprites can be checked against the true footprint">Wire</button>
+  <span class="hint">drag to pan &middot; wheel to zoom &middot; double-click to step zoom
+    (double-click a yellow mark to centre it) &middot;
+    click a block, dot or ground tile to inspect it &middot;
+    &larr;/&rarr;/&uarr;/&darr; nudge, Esc deselects</span>
+  <span id="zoomread"></span>
+  <span id="assets" class="off" data-tip="remote asset loading: the two boot textures + two art manifests count down the assets bar, then the sprite PNGs the Art layer streams in as you pan (loaded/known, in-flight, dead = degrading to blocks/dots)"></span>
+  <span id="orientread" data-tip="current orientation knob — paste this back when the view matches the game"></span>
+  <span id="matchinfo"></span>
+</nav>
+<main>
+  <div id="left">
+    <div id="stage">
+      <canvas id="cv"></canvas>
+      <div id="legend" class="legend"></div>
+      <div id="objlegend" class="legend"></div>
+      <div id="proplegend" class="legend" style="display:none"></div>
+      <div id="arttune" class="legend" style="display:none"></div>
+    </div>
+  </div>
+  <div id="right">
+    <div id="details"><div class="placeholder">Click a building or character&hellip;</div></div>
+    <div id="results"></div>
+  </div>
+</main>
+<footer>
+  Phase 2 workbench &mdash; PixiJS port of the city view; static page; the
+  street-verdict panel talks to
+  <code>api/streets.php</code> only when served over HTTP.
+  Terrain occupancy-driven from the decoded save. &nbsp;&middot;&nbsp;
+  Academic port for study &mdash; The Simpsons: Tapped Out &copy; EA.
+</footer>
+<script src="vendor/pixi.min.js?v=1"></script>
+<script src="../js/map-explorer-data.js?v=13"></script>
+<script src="../js/camera.js?v=12"></script>
+<script src="../js/terrain.js?v=14"></script>
+<script src="../js/objects.js?v=13"></script>
+<script src="../js/walks.js?v=13"></script>
+<script src="../js/markers.js?v=12"></script>
+<script src="asset-variants-pixi.js?v=1"></script>
+<script src="city-view-pixi.js?v=35"></script>
+</body>
+</html>

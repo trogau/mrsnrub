@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>road-lab — footpath / carriageway tuning</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; height: 100%; background: #14161a; color: #d8dce2;
+        font: 13px/1.45 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+    header { padding: 8px 12px; border-bottom: 1px solid #2b2f36; }
+    header h1 { margin: 0 0 2px; font-size: 15px; }
+    header .sub { color: #8a919c; font-size: 11px; }
+    .bar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+        padding: 7px 12px; border-bottom: 1px solid #2b2f36; background: #171a1f; }
+    button { background: #232830; color: #d8dce2; border: 1px solid #3a414c;
+        border-radius: 4px; padding: 3px 9px; font: inherit; cursor: pointer; }
+    button:hover { background: #2c333d; }
+    button.on { background: #33475e; border-color: #5b84b1; }
+    select { background: #232830; color: #d8dce2; border: 1px solid #3a414c;
+        border-radius: 4px; padding: 3px 6px; font: inherit; cursor: pointer; }
+    .grp { display: flex; gap: 4px; align-items: center; }
+    .grp .lbl { color: #8a919c; margin-right: 2px; }
+    main { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+    .tabpane { display: contents; }               /* sections stay flex items of main */
+    .tabpane[hidden] { display: none; }
+    section { border: 1px solid #2b2f36; border-radius: 6px; background: #171a1f;
+        padding: 8px; }
+    section h2 { margin: 0 0 6px; font-size: 13px; color: #cfd6df; }
+    section h2 small { color: #8a919c; font-weight: normal; }
+    .ctl { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center;
+        margin-top: 6px; }
+    .st { display: flex; gap: 3px; align-items: center; }
+    .st .v { min-width: 34px; text-align: right; color: #ffe86e; }
+    canvas { display: block; background: rgb(74,128,66); border-radius: 4px; }
+    #refwrap { margin: 0 12px 16px; }
+    #refwrap .bar { border: 1px solid #2b2f36; border-bottom: none;
+        border-radius: 6px 6px 0 0; }
+    pre#refout { margin: 0; padding: 10px 12px; background: #101216;
+        border: 1px solid #2b2f36; border-radius: 0 0 6px 6px;
+        color: #a8d8a8; overflow: auto; font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+    <h1>road-lab — road &amp; river sprite lab</h1>
+    <div class="sub">tab 1: the RE’d road art sheet inspector (how the engine
+        composes a cell from the 11 slots — notes/08). tab 2: the river slots
+        from the same sheet, presented the same way — RiverDrawer reuses
+        RoadDrawer’s draw body, so the cell model is identical (notes/09).
+        tab 3: the footpath / carriageway tuning rig (one cell = 4×4 town
+        tiles; ground truth: 4-bit masks from road-spec.json, E=1 W=2 N=4 S=8,
+        'P' = pavement).</div>
+</header>
+<div class="bar" id="tabs">
+    <div class="grp"><span class="lbl">tab</span>
+        <button id="tab-btn-sheet" data-tab="tab-sheet">sprite sheet</button>
+        <button id="tab-btn-water" data-tab="tab-water">water / river</button>
+        <button id="tab-btn-bridge" data-tab="tab-bridge">bridges</button>
+        <button id="tab-btn-tune" data-tab="tab-tune">footpath / carriageway tuning</button>
+    </div>
+</div>
+<main>
+    <div id="tab-sheet" class="tabpane">
+        <section>
+            <h2>road art sheet <small>every tile the asset pack ships, laid out the way
+                the RE’d engine actually draws a cell: 4 quadrant quads, one full state
+                rect each — no base+clip, kerb/paving live inside the art (notes/08)</small></h2>
+            <canvas id="cv-art" width="760" height="1200"></canvas>
+            <div class="ctl">
+                <div class="st"><span class="lbl">pack</span>
+                    <select id="sel-pack"></select></div>
+                <div class="st"><span class="lbl">zoom</span>
+                    <button id="art-zoom-minus">−</button><span class="v" id="art-zoom-v"></span><button id="art-zoom-plus">+</button></div>
+                <div class="st"><span class="lbl">force state</span>
+                    <button id="art-force-minus">−</button><span class="v" id="art-force-v"></span><button id="art-force-plus">+</button><button id="art-force-auto">auto</button></div>
+                <div class="st"><span class="lbl">cell mask</span>
+                    <button id="btn-mask-e">E</button><button id="btn-mask-w">W</button><button id="btn-mask-n">N</button><button id="btn-mask-s">S</button></div>
+                <div class="st"><span class="lbl">neighbour solid</span>
+                    <button id="btn-probe-e">E</button><button id="btn-probe-w">W</button><button id="btn-probe-n">N</button><button id="btn-probe-s">S</button></div>
+                <div class="st"><button id="art-flip">flip</button>
+                    <button id="art-raw">raw boxes</button>
+                    <button id="art-grid" class="on">lattice</button></div>
+            </div>
+        </section>
+    </div>
+    <div id="tab-water" class="tabpane" hidden>
+        <section>
+            <h2>river art sheet <small>the 11 RiverDrawer slots (float table 0x3fc320) on the
+                same roadrivertiles lattice — drawn with the engine’s own model: 4 quadrant quads,
+                one UV parallelogram each; the bank sits on the closed edge exactly like the road kerb</small></h2>
+            <canvas id="cv-water" width="760" height="1200"></canvas>
+            <div class="ctl">
+                <div class="st"><span class="lbl">pack</span>
+                    <select id="sel-water-pack"></select></div>
+                <div class="st"><span class="lbl">zoom</span>
+                    <button id="w-zoom-minus">−</button><span class="v" id="w-zoom-v"></span><button id="w-zoom-plus">+</button></div>
+                <div class="st"><span class="lbl">force state</span>
+                    <button id="w-force-minus">−</button><span class="v" id="w-force-v"></span><button id="w-force-plus">+</button><button id="w-force-auto">auto</button></div>
+                <div class="st"><span class="lbl">cell mask</span>
+                    <button id="wbtn-mask-e">E</button><button id="wbtn-mask-w">W</button><button id="wbtn-mask-n">N</button><button id="wbtn-mask-s">S</button></div>
+                <div class="st"><span class="lbl">neighbour water</span>
+                    <button id="wbtn-probe-e">E</button><button id="wbtn-probe-w">W</button><button id="wbtn-probe-n">N</button><button id="wbtn-probe-s">S</button></div>
+                <div class="st"><button id="w-flip">flip</button>
+                    <button id="w-raw">raw boxes</button>
+                    <button id="w-grid" class="on">lattice</button></div>
+            </div>
+        </section>
+    </div>
+    <div id="tab-bridge" class="tabpane" hidden>
+        <section>
+            <h2>road &times; river bridges <small>the viewer's symmetric-deck model (notes/09 §10) on real
+                bridgetop/bridgebottom art — water &rarr; deck rows &rarr; road, the game's draw order. Every
+                span is independently selectable (steppers), movable and hideable; solve the west-row
+                occlusion here before porting fixes to city-view-pixi.js</small></h2>
+            <canvas id="cv-bridge" width="760" height="620"></canvas>
+            <div class="ctl">
+                <div class="st"><span class="lbl">crossing</span>
+                    <select id="bridge-site">
+                        <option value="0">A — road 157,16 (+y)</option>
+                        <option value="1">D — road 226,67 (+y)</option>
+                        <option value="2">B — road 168,48 (+x)</option>
+                    </select></div>
+                <div class="st"><span class="lbl">zoom</span>
+                    <button id="bridge-zoom-minus">−</button><span class="v" id="bridge-zoom-v"></span><button id="bridge-zoom-plus">+</button></div>
+                <div class="st"><span class="lbl">span</span>
+                    <button id="bridge-row-minus">◀</button>
+                    <span class="v" id="bridge-row-v"></span>
+                    <button id="bridge-row-plus">▶</button></div>
+                <div class="st"><span class="lbl">along</span>
+                    <button id="bridge-along-minus">◀</button>
+                    <span class="v"></span>
+                    <button id="bridge-along-plus">▶</button></div>
+                <div class="st"><span class="lbl">base Δ</span>
+                    <button id="bridge-base-minus">◀</button>
+                    <span class="v"></span>
+                    <button id="bridge-base-plus">▶</button></div>
+                <div class="st"><button id="bridge-rail">rail over road</button>
+                    <button id="bridge-bottom" class="on">bases</button>
+                    <button id="bridge-top" class="on">decks</button>
+                    <button id="bridge-grid" class="on">tile grid</button>
+                    <button id="bridge-anchor" class="on">anchors</button></div>
+                <div class="st"><button id="bridge-fit">apply export fit</button>
+                    <button id="bridge-reset">reset</button></div>
+            </div>
+            <div class="ctl" id="bridge-rows"></div>
+        </section>
+    </div>
+    <div id="tab-tune" class="tabpane" hidden>
+        <div class="bar" style="border: 1px solid #2b2f36; border-radius: 6px; margin-bottom: 12px;">
+            <div class="grp"><span class="lbl">view</span>
+                <button id="btn-iso">2:1 iso</button>
+                <button id="btn-lattice" class="on">4×4 lattice</button>
+                <button id="btn-kerb" class="on">kerb lines</button>
+                <button id="btn-dims" class="on">widths</button>
+            </div>
+            <div class="grp"><span class="lbl">presets</span>
+                <button data-preset="current">current (1/2/1)</button>
+                <button data-preset="hair">hairline (0.25/3.5/0.25)</button>
+                <button data-preset="narrow">thin (0.5/3/0.5)</button>
+                <button data-preset="mid">mid (0.75/2.5/0.75)</button>
+                <button data-preset="midwide">mid-wide (1.25/1.5/1.25)</button>
+                <button data-preset="wide">wide paths (1.5/1/1.5)</button>
+                <button data-preset="oneside">one-sided (0/3/1)</button>
+                <button data-preset="none">no footpath</button>
+            </div>
+            <div class="grp"><span class="lbl">footpath tone</span>
+                <div class="st"><button id="foot-minus">−</button><span class="v" id="foot-tone"></span><button id="foot-plus">+</button></div>
+            </div>
+            <div class="grp"><span class="lbl">pavement tone</span>
+                <div class="st"><button id="pave-minus">−</button><span class="v" id="pave-tone"></span><button id="pave-plus">+</button></div>
+            </div>
+        </div>
+        <section>
+            <h2>N/S road <small>mask m (N+S) — carriageway runs vertically</small></h2>
+            <canvas id="cv-ns" width="760" height="320"></canvas>
+            <div class="ctl">
+                <div class="st"><span class="lbl">west path</span>
+                    <button id="ns-a-minus">−</button><span class="v" id="ns-a-v"></span><button id="ns-a-plus">+</button></div>
+                <div class="st"><span class="lbl">east path</span>
+                    <button id="ns-b-minus">−</button><span class="v" id="ns-b-v"></span><button id="ns-b-plus">+</button></div>
+                <span class="lbl">carriageway <span id="ns-car">2</span>/4 tiles</span>
+            </div>
+        </section>
+        <section>
+            <h2>E/W road <small>mask d (E+W) — carriageway runs horizontally</small></h2>
+            <canvas id="cv-ew" width="760" height="320"></canvas>
+            <div class="ctl">
+                <div class="st"><span class="lbl">north path</span>
+                    <button id="ew-a-minus">−</button><span class="v" id="ew-a-v"></span><button id="ew-a-plus">+</button></div>
+                <div class="st"><span class="lbl">south path</span>
+                    <button id="ew-b-minus">−</button><span class="v" id="ew-b-v"></span><button id="ew-b-plus">+</button></div>
+                <span class="lbl">carriageway <span id="ew-car">2</span>/4 tiles</span>
+            </div>
+        </section>
+        <section>
+            <h2>pavement <small>char P — uniform grey, no footpath, no kerb</small></h2>
+            <canvas id="cv-pave" width="760" height="320"></canvas>
+            <div class="ctl"><span class="lbl">P cells flank nothing — if they ever
+                touch a road, the road keeps its own footpath.</span></div>
+        </section>
+    </div>
+</main>
+<div id="refwrap">
+    <div class="bar">
+        <button id="btn-copy">copy reference</button>
+        <span class="lbl" id="copied"></span>
+        <span class="lbl">live — updates with every control above</span>
+    </div>
+    <pre id="refout"></pre>
+</div>
+<script src="../js/camera.js"></script>
+<script src="road-lab.js?v=19"></script>
+</body>
+</html>

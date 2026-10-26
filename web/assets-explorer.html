@@ -1,0 +1,41 @@
+<!doctype html>
+<!-- Asset explorer: browse every asset extracted from the APK.
+     Classic scripts, no modules, no fetch() — works from any static host
+     or straight off the file system, like the game itself. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Springfield — Asset Explorer</title>
+<link rel="icon" type="image/png" href="assets/images/icon.png">
+<link rel="stylesheet" href="css/explorer.css">
+</head>
+<body>
+<header>
+  <a class="brand" href="original.html">&#8592; Springfield</a>
+  <h1>Asset Explorer</h1>
+  <a class="brand" href="progress.html">Progress &rarr;</a>
+  <span class="sub" id="counts"></span>
+  <input id="search" type="search" placeholder="search name, family, origin…">
+</header>
+<nav id="tabs"></nav>
+<main>
+  <div id="browser">
+    <nav id="crumb"></nav>
+    <section id="grid"></section>
+  </div>
+  <aside id="detail"><div class="placeholder">Select an asset on the left.</div></aside>
+</main>
+<footer>
+  Academic port for study &mdash; The Simpsons: Tapped Out &copy; EA. All rights remain with their owners.
+</footer>
+<script src="assets/manifest.js"></script>
+<script src="assets/data/webdata.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/assets.js"></script>
+<script src="js/splashlayout.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/scenes.js"></script>
+<script src="js/explorer.js"></script>
+</body>
+</html>

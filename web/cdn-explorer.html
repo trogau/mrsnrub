@@ -1,0 +1,71 @@
+<!doctype html>
+<!-- CDN Explorer: RE workbench for the local TSTO CDN pack bundles.
+     Served by tools/cdn_explorer.py (binds this machine's Tailscale
+     address by default, loopback fallback; no outbound network).
+     Classic script, no modules, no build. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Springfield — CDN Explorer</title>
+<link rel="icon" type="image/png" href="assets/images/icon.png">
+<link rel="stylesheet" href="css/cdn-explorer.css">
+</head>
+<body>
+<header>
+  <a class="brand" href="original.html">&#8592; Springfield</a>
+  <h1>CDN Explorer</h1>
+  <a class="brand" href="progress.html">Progress &rarr;</a>
+  <span class="sub">RE workbench &mdash; local bundles only, no network</span>
+  <span class="stats" id="statsbar">&hellip;</span>
+  <input id="search" type="search" placeholder="search path / base name / notes&hellip;">
+</header>
+<nav id="filters">
+  <label>source <select id="f-source"><option value="">all sources</option></select></label>
+  <label>status <select id="f-status">
+    <option value="">all</option>
+    <option>unknown</option>
+    <option>identified</option>
+    <option>decoded</option>
+    <option>skipped</option>
+    <option>error</option>
+  </select></label>
+  <label>format <select id="f-format"><option value="">all</option></select></label>
+  <label>tier <select id="f-tier"></select></label>
+  <label><input type="checkbox" id="f-sidecar"> sidecars only</label>
+</nav>
+<main>
+  <div id="left">
+    <div class="tabs">
+      <button class="tab on" id="tab-files">Files</button>
+      <button class="tab" id="tab-mystery" data-tip="unknown files grouped by name pattern">Mystery</button>
+    </div>
+    <div id="pane-files">
+      <div id="tablewrap"></div>
+      <div id="pager">
+        <button id="pg-prev">&larr;</button>
+        <span id="pg-info"></span>
+        <button id="pg-next">&rarr;</button>
+      </div>
+    </div>
+    <div id="pane-mystery" hidden></div>
+  </div>
+  <div id="right"><div class="placeholder">Pick a file on the left.</div></div>
+</main>
+<footer>
+  Tailnet dev tool &mdash; bound to this machine&rsquo;s Tailscale address
+  (127.0.0.1 fallback), makes no outbound network connections.
+  Member cache in /tmp (disposable). &nbsp;&middot;&nbsp;
+  Academic port for study &mdash; The Simpsons: Tapped Out &copy; EA.
+</footer>
+<dialog id="specdlg">
+  <h2>--dlc pipeline spec (run manually later &mdash; never from here)</h2>
+  <pre id="specpre"></pre>
+  <form method="dialog">
+    <button id="spec-copy" type="button">copy JSON</button>
+    <button value="close">close</button>
+  </form>
+</dialog>
+<script src="js/cdn-explorer.js"></script>
+</body>
+</html>
