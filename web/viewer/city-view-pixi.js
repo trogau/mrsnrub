@@ -212,7 +212,8 @@
 
     /* ---- road sheet art (real roadrivertiles base tiles, notes/06 §10) -----
        terrain.js stays DOM-free, so the page owns the Image. The 512x512
-       sheet is a tessellation of 135x74 2:1 cell diamonds; the engine draws
+       sheet (loaded from the 1024² -100 tier, the same tier as the building
+       art; tables stay in 512-space) is a tessellation of 135x74 2:1 cell diamonds; the engine draws
        each cell from its 127x66 INSET box (the RoadDrawer UV quads at
        .rodata 0x400520), which on the Canvas page was clipped to the
        diamond per tile. Pixi sprites cannot clip, so once the sheet decodes
@@ -254,12 +255,9 @@
        rects in these colours. Declared here for the flat fallback. */
     var SPEC = { FW: 0.75, foot: 0x9c9ca3, asphalt: 0x5c5c62, pave: 0x7e7e85 };
     var pieceCanvas = null;
-    /* opaque per-state slot bakes for the engine-true spec draw (see
-       buildSpecSlots); index = state, value = {cv, tex} */
-    var specSlots = null;
-    /* river counterpart: 11 states x 2 orientations baked through the
-       measured 0x3fc320 quads (see RIVER_QUADS / buildRivSlots) */
-    var rivSlots = null, rivReady = false;
+    /* river quads are ready once the full-res base sheet texture exists
+       (see buildSheetCanvas / rivSheetTex) */
+    var rivReady = false;
     /* ---- engine-true quadrant model (road-lab 2026-10-25, notes/08) --------
        Selector 0x1208058 family table + flip byte, kerb orientations
        pixel-verified against roadtilesheet.png: state 3 kerb W / 4 kerb N
@@ -351,98 +349,69 @@
         if (q === 'ws') return !!p.w && !p.s;
         return false;
     }
-    /* ---- the engine-true slot bake (spec mode) --------------------------------
+    /* ---- the engine-true quadrant draw: UV meshes ---------------------------
        The engine's quadrant quad IS the UV parallelogram: its four vertices
        carry the sheet diamond's UVs, so nothing outside that parallelogram is
        ever rasterised and nothing is ever blended (the quads are opaque).
-       A box frame + rotation cannot express that in Pixi: rotating the 127x66
-       slot frame by 45° draws the WHOLE box, i.e. a diamond whose area is
-       twice the quadrant, and the four corner triangles stick out over the
-       neighbouring cells (the grey "triangular artifacts" of the 2026-10-25
-       screenshot — visible whenever the frame corners are not transparent).
-       Bake the parallelogram into an axis-aligned IMAGE instead, by drawing
-       the sheet through the inverse of the parallelogram map; the sprite then
-       needs no rotation, no negative scale and no clip at all: the drawn quad
-       IS the quadrant, fully opaque. See bakeSlot for the parameterisation. */
-    var SPEC_SLOT_W = 127, SPEC_SLOT_H = 66, SPEC_SLOT_PAD = 2;
-    /* one bake: bake pixel (i,j) samples sheet
-           O + ((i-PAD)/127)*E + ((j-PAD)/66)*S
-       i.e. the destination square's east/south axes run along the sheet
-       vectors E/S from origin O. Unflipped the engine assigns
-       L->TL T->BL B->TR R->BR (O=L, E=B-L, S=T-L); the flip byte's UV swap
-       (f2,f3)<->(f4,f5) re-assigns TL->R BL->T TR->B BR->L, which in this
-       parameterisation is the ANTI-DIAGONAL reflection O=R, E=-(T-L),
-       S=-(B-L) — NOT a plain horizontal mirror. Both are baked (22 small
-       canvases) so the sprite is always a plain unrotated, unscaled-sign
-       rect: quad == quadrant, no corner overdraw, no alpha. The 2px margin
-       extrapolates real art and the flat fill below is composited UNDER the
-       sheet (never transparency), so edge filtering can never read a
-       transparent texel or another state's slot. */
-    function bakeSlot(im, O, E, S) {
-        var cv = document.createElement('canvas');
-        cv.width = SPEC_SLOT_W + 2 * SPEC_SLOT_PAD;
-        cv.height = SPEC_SLOT_H + 2 * SPEC_SLOT_PAD;
-        var g = cv.getContext('2d');
-        g.fillStyle = 'rgb(150,150,168)';          /* never visible: full cover */
-        g.fillRect(0, 0, cv.width, cv.height);
-        var a = E[0] / SPEC_SLOT_W, b = S[0] / SPEC_SLOT_H,
-            c = E[1] / SPEC_SLOT_W, d = S[1] / SPEC_SLOT_H;
-        var det = a * d - b * c;
-        var ia = d / det, ib = -b / det, ic = -c / det, id = a / det;
-        g.save();
-        g.setTransform(ia, ic, ib, id,
-            SPEC_SLOT_PAD - (ia * O[0] + ib * O[1]),
-            SPEC_SLOT_PAD - (ic * O[0] + id * O[1]));
-        g.drawImage(im, 0, 0);
-        g.restore();
-        return cv;
+       We do exactly that: each quadrant is a 4-vertex PIXI.Mesh over the
+       unit square (tile space, scaled to the half-cell), with the table's
+       four UV corners. One resample, straight from the FULL-RES sheet to the
+       screen. (Until 2026-10-27 each slot was first baked into a 127x66
+       axis-aligned canvas from the 512² tier and the sprite warped back by
+       the ground matrix: a 2x upscale plus two bilinear passes — the
+       "blurry roads" report. notes/09 §6.)
+       Corner assignment (square corner -> sheet point): unflipped
+       TL->L TR->B BR->R BL->T; the selector's flip byte swaps the UV pairs
+       to the ANTI-DIAGONAL reflection TL->R TR->B BR->L BL->T — not a
+       horizontal mirror (notes/09 §6 step 3). Tables are in 512-space sheet
+       px, so u,v = px / 512 for every tier. */
+    var ROAD_QUADS = [    // [T, R, L, B], RoadDrawer UV table .rodata 0x400520 x512
+        [[205.72, 367.73], [269.22, 400.71], [142.38, 400.72], [205.77, 433.83]],
+        [[205.50, 292.78], [268.59, 325.77], [142.22, 325.78], [205.57, 358.56]],
+        [[137.28, 329.73], [200.84, 362.76], [74.27, 362.78], [137.39, 395.94]],
+        [[69.79, 292.81], [133.03, 325.81], [6.81, 325.86], [69.91, 358.81]],
+        [[137.34, 255.60], [200.85, 288.64], [74.25, 288.68], [137.43, 321.62]],
+        [[205.76, 144.61], [269.14, 177.66], [142.24, 177.62], [205.79, 210.74]],
+        [[68.65, 144.68], [132.12, 177.71], [5.35, 177.70], [68.75, 210.82]],
+        [[203.73, 70.57], [267.20, 103.69], [140.49, 103.74], [203.70, 136.71]],
+        [[206.29, 218.26], [269.53, 251.08], [142.68, 251.17], [206.21, 283.68]],
+        [[69.45, 218.63], [133.13, 251.75], [6.56, 251.68], [69.75, 284.89]],
+        [[137.71, 181.61], [200.92, 214.74], [74.38, 214.77], [137.62, 247.63]],
+    ];
+    var quadGeoms = {};                      // 'r3f' -> shared MeshGeometry
+    function quadGeom(kind, st, flip) {
+        var key = kind + st + (flip ? 'f' : '');
+        if (quadGeoms[key]) return quadGeoms[key];
+        var q = (kind === 'r' ? ROAD_QUADS : RIVER_QUADS)[st];
+        if (!q) return null;
+        var T = q[0], R = q[1], L = q[2], Bo = q[3];
+        var c = flip ? [R, Bo, L, T] : [L, Bo, R, T];   // TL, TR, BR, BL
+        var uv = new Float32Array(8);
+        for (var i = 0; i < 4; i++) { uv[2 * i] = c[i][0] / 512; uv[2 * i + 1] = c[i][1] / 512; }
+        return (quadGeoms[key] = new PIXI.MeshGeometry({
+            positions: new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]),
+            uvs: uv, indices: new Uint32Array([0, 1, 2, 0, 2, 3]) }));
     }
-    function buildSpecSlots(im) {
-        var SS = CityTerrain.SHEET_STATES;
-        specSlots = [];
-        for (var st = 0; st < SS.length; st++) {
-            var s = SS[st];
-            var cx = 274 + 135 * s[0] + (((s[1] % 2) + 2) % 2) * 67.5;
-            var cy = 140 + 37 * s[1];
-            var L = [cx - 63.5, cy], T = [cx, cy - 33],
-                R = [cx + 63.5, cy], Bo = [cx, cy + 33];
-            var e1 = [Bo[0] - L[0], Bo[1] - L[1]];      // B-L = (63.5, 33)
-            var e2 = [T[0] - L[0], T[1] - L[1]];        // T-L = (63.5,-33)
-            specSlots[st] = [
-                bakeSlot(im, L, e1, e2),
-                bakeSlot(im, R, [-e2[0], -e2[1]], [-e1[0], -e1[1]])];
-        }
+    /* one quadrant quad in tile space: unit square at (x, y) scaled to hs */
+    function quadMesh(parent, kind, st, flip, tex, x, y, hs) {
+        var g = quadGeom(kind, st, flip);
+        if (!g || !tex) return null;
+        var me = new PIXI.Mesh({ geometry: g, texture: tex });
+        me.position.set(x, y);
+        me.scale.set(hs, hs);
+        parent.addChild(me);
+        return me;
     }
-    /* River counterpart: the 11 quadrants of the measured UV table at
-       .rodata 0x3fc320 (RIVER_QUADS), baked through the SAME bakeSlot — the
-       draw body is shared with roads (notes/09 §9), so the parameterisation
-       is identical: unflipped O=L, E=B-L, S=T-L; flipped (the byte's UV
-       swap) the anti-diagonal O=R, E=-(T-L), S=-(B-L). Unlike the road spec
-       slots these ALWAYS bake from the BASE sheet: the table and all bank
-       art were measured there, and the XMAS ice re-ship's river slots are
-       unresearched, so winter keeps base river art under icy roads (same
-       reasoning as the green grass). k = pack tier scale (50 = 1:1). */
-    function buildRivSlots(im) {
-        var k = im.naturalWidth / 512;
-        rivSlots = [];
-        for (var st = 0; st < RIVER_QUADS.length; st++) {
-            var q = RIVER_QUADS[st];
-            var T = [q[0][0] * k, q[0][1] * k], R = [q[1][0] * k, q[1][1] * k],
-                L = [q[2][0] * k, q[2][1] * k], Bo = [q[3][0] * k, q[3][1] * k];
-            var e1 = [Bo[0] - L[0], Bo[1] - L[1]];      // B-L = u axis
-            var e2 = [T[0] - L[0], T[1] - L[1]];        // T-L = v axis
-            rivSlots[st] = [
-                bakeSlot(im, L, e1, e2),
-                bakeSlot(im, R, [-e2[0], -e2[1]], [-e1[0], -e1[1]])];
-        }
-        rivReady = true;
-    }
+    var roadHiTex = null, iceHiTex = null;   // full-res sheets as Pixi textures
     function buildSheetCanvas() {            // cleaned copy of the ACTIVE sheet
         var im = (SEASON.mode === 'winter' && iceSheetImg) ? iceSheetImg : roadSheetImg;
         if (!im) return;
+        /* the legacy modes' lattice maths is in 512-space: their cleaned
+           copies are built at 512 from whatever tier loaded (k = tier scale) */
+        var k512 = im.naturalWidth / 512;
         try {
             sheetCanvas = document.createElement('canvas');
-            sheetCanvas.width = im.naturalWidth; sheetCanvas.height = im.naturalHeight;
+            sheetCanvas.width = 512; sheetCanvas.height = 512;
             var c2 = sheetCanvas.getContext('2d');
             for (var k in SHEET_UE) {
                 var slot = SHEET_UE[k];
@@ -454,7 +423,7 @@
                 c2.lineTo(cx + 63.5, cy); c2.lineTo(cx, cy + 33);
                 c2.closePath();
                 c2.clip();
-                c2.drawImage(im, 0, 0);
+                c2.drawImage(im, 0, 0, 512, 512);
                 c2.restore();
             }
             /* strip pieces for the LEGACY sheet-composite modes (1–3):
@@ -478,45 +447,28 @@
                     for (var pv = 1; pv < poly.length; pv++) g.lineTo(poly[pv].x, poly[pv].y);
                     g.closePath();
                     g.clip();
-                    g.drawImage(im, pcx - 63.5, pcy - 33, 127, 66, -63.5, -33, 127, 66);
+                    g.drawImage(im, (pcx - 63.5) * k512, (pcy - 33) * k512,
+                        127 * k512, 66 * k512, -63.5, -33, 127, 66);
                     g.restore();
                 }
             }
             pieceCanvas = document.createElement('canvas');
             bakePieces(pieceCanvas, CityTerrain.sheetClipPoly);
-            buildSpecSlots(im);
-            /* River slots bake from the BASE sheet only: the 0x3fc320 table
-               and all bank art were measured there, and winter keeps base
-               ground art (same reasoning as the green grass, L219–220).
-               The ice re-ship's river slots are unresearched. */
-            if (roadSheetImg) buildRivSlots(roadSheetImg);
+            /* full-res textures for the engine-true quadrant meshes. River
+               quads always sample the BASE sheet: the 0x3fc320 table and all
+               bank art were measured there, and winter keeps base ground art
+               (same reasoning as the green grass). The ice re-ship's river
+               slots are unresearched. */
+            if (roadSheetImg && !roadHiTex) roadHiTex = PIXI.Texture.from(roadSheetImg);
+            if (iceSheetImg && !iceHiTex) iceHiTex = PIXI.Texture.from(iceSheetImg);
+            rivReady = !!roadHiTex;
             sheetReady = true;
         } catch (e) { sheetReady = false; }
         if (texs['__sheet']) dropTex('__sheet');     // stale slot textures
         if (texs['__pieces']) dropTex('__pieces');
-        for (var si = 0; specSlots && si < specSlots.length; si++) {
-            if (texs['__specslot' + si]) dropTex('__specslot' + si);
-            if (texs['__specslot' + si + 'f']) dropTex('__specslot' + si + 'f');
-        }
-        for (var ri = 0; rivSlots && ri < rivSlots.length; ri++) {
-            if (texs['__rivslot' + ri]) dropTex('__rivslot' + ri);
-            if (texs['__rivslot' + ri + 'f']) dropTex('__rivslot' + ri + 'f');
-        }
         if (sheetReady) {                            // (re)register for subTex
             texs['__sheet'] = { st: 1, tex: PIXI.Texture.from(sheetCanvas), subs: {} };
             texs['__pieces'] = { st: 1, tex: PIXI.Texture.from(pieceCanvas), subs: {} };
-            for (var sj = 0; sj < specSlots.length; sj++) {
-                texs['__specslot' + sj] = { st: 1,
-                    tex: PIXI.Texture.from(specSlots[sj][0]), subs: {} };
-                texs['__specslot' + sj + 'f'] = { st: 1,
-                    tex: PIXI.Texture.from(specSlots[sj][1]), subs: {} };
-            }
-            for (var rj = 0; rivReady && rj < rivSlots.length; rj++) {
-                texs['__rivslot' + rj] = { st: 1,
-                    tex: PIXI.Texture.from(rivSlots[rj][0]), subs: {} };
-                texs['__rivslot' + rj + 'f'] = { st: 1,
-                    tex: PIXI.Texture.from(rivSlots[rj][1]), subs: {} };
-            }
         }
         if (started) buildGround();            // sheet sprites get their texture
         markDirty();
@@ -526,13 +478,13 @@
         var im = new Image();
         im.onload = function () { roadSheetImg = im; buildSheetCanvas(); aBootSettled(); };
         im.onerror = function () { aBootSettled(); /* keep flat roads */ };
-        im.src = B + 'assets/dlc/roadrivertiles-50/images/roadtilesheet.png';
+        im.src = B + 'assets/dlc/roadrivertiles-100/images/roadtilesheet.png';
     })();
     (function () {
         var im = new Image();
         im.onload = function () { iceSheetImg = im; applyRoadSheet(); };
         im.onerror = function () { /* winter keeps the normal sheet */ };
-        im.src = B + 'assets/dlc/XMAS2017_RiverRoadTiles_LTD-50-r492453/images/iceroadtilesheet.png';
+        im.src = B + 'assets/dlc/XMAS2017_RiverRoadTiles_LTD-100-r492453/images/iceroadtilesheet.png';
     })();
     applySeasonMode();
     if ($('btn-season')) $('btn-season').addEventListener('click', function () {
@@ -561,23 +513,13 @@
         var cy = 140 + 37 * slot[1];
         return subTex('__sheet', cx - 63.5, cy - 33, 127, 66);
     }
-    /* spec quadrant texture: the sheared opaque bake of this state (see
-       buildSpecSlots). The frame is the slot parallelogram itself, so the
-       sprite is drawn with NO rotation — see buildSpecCell. flip picks the
-       engine's flip-byte orientation (the anti-diagonal bake). */
-    function specSlotTex(state, flip) {
-        if (!sheetReady || !specSlots || !specSlots[state]) return null;
-        return subTex('__specslot' + state + (flip ? 'f' : ''),
-            SPEC_SLOT_PAD, SPEC_SLOT_PAD, SPEC_SLOT_W, SPEC_SLOT_H);
+    /* full-res sheet texture the quadrant meshes sample (see quadMesh):
+       roads follow the season (icy sheet in winter), rivers always the base */
+    function specSheetTex() {
+        if (!sheetReady) return null;
+        return (SEASON.mode === 'winter' && iceHiTex) ? iceHiTex : roadHiTex;
     }
-    /* river quadrant texture: the sheared opaque bake of one of the 11
-       0x3fc320 states (see RIVER_QUADS / buildRivSlots), same contract as
-       specSlotTex: unrotated sprite, flip = the anti-diagonal bake. */
-    function rivSlotTex(state, flip) {
-        if (!rivReady || !rivSlots || !rivSlots[state]) return null;
-        return subTex('__rivslot' + state + (flip ? 'f' : ''),
-            SPEC_SLOT_PAD, SPEC_SLOT_PAD, SPEC_SLOT_W, SPEC_SLOT_H);
-    }
+    function rivSheetTex() { return rivReady ? roadHiTex : null; }
     /* baked strip piece for a composite pass (see PIECE_DEFS): a
        flipped sprite mirrors its baked clip too, so the px pass reads
        the pre-mirror nx bake (py is symmetric, unchanged). */
@@ -1501,11 +1443,13 @@
     /* ============================ Pixi scene ================================= */
     var app = new PIXI.Application();
     var started = false;
-    var UNIT, DISC, groundC, featC, avenC, terrFlatS, buildFlatS, grassTil,
+    var UNIT, DISC, groundC, fillC, featC, avenC, terrFlatS, buildFlatS, grassTil,
         grassFillS, seaFillS, sceneG, fragG, propG, walkG, gridG, markG, outG,
-        txtGrid, txtMark, bridgeG, raisedG;
+        txtGrid, txtMark, bridgeG, raisedG, bridgeNearG;
     var pool = [], pn = 0;
-    var bridgePool = [], bpn = 0;           // bridge decals, parented to bridgeG
+    /* bridge decals, one pool per layer: [0] far row in bridgeG (under the
+       raised road art), [1] near row in bridgeNearG (over it) */
+    var bridgePools = [[], []], bpns = [0, 0];
     var Mtx = new PIXI.Matrix();
 
     function mkSprite(tex, parent, x, y, w, h, hex, alpha) {
@@ -1554,6 +1498,12 @@
         groundC.addChild(grassTil);
         groundC.addChild(grassFillS);
         groundC.addChild(seaFillS);
+        /* flat type fills sit in their OWN layer under every art quad: their
+           BLEED overhang (anti-seam between flat fills) must never paint over
+           a neighbouring cell's finished art — interleaved per cell, it drew
+           a 1-2 px river-blue / road-grey line along every cell edge */
+        fillC = new PIXI.Container();
+        groundC.addChild(fillC);
         groundC.addChild(featC);
         groundC.addChild(avenC);
         groundC.addChild(terrFlatS);
@@ -1573,6 +1523,7 @@
            the projected ground container */
         bridgeG = new PIXI.Container();
         raisedG = new PIXI.Container();
+        bridgeNearG = new PIXI.Container();
 
         sceneG = new PIXI.Container();      // pooled prisms/billboards/dots
 
@@ -1593,6 +1544,7 @@
         app.stage.addChild(propG);
         app.stage.addChild(bridgeG);
         app.stage.addChild(raisedG);
+        app.stage.addChild(bridgeNearG);
         app.stage.addChild(sceneG);
         app.stage.addChild(walkG);
         app.stage.addChild(gridG);
@@ -1651,22 +1603,27 @@
         s.width = w; s.height = h;
         if (mir) s.scale.x = -Math.abs(s.scale.x);
     }
-    function bridgeTake() {
-        /* pool twin of take() for the bridge container (featC child) */
-        var s = bridgePool[bpn];
+    function bridgeTake(ly) {
+        /* pool twin of take() for the bridge layers (ly 0 far, 1 near) */
+        var s = bridgePools[ly][bpns[ly]];
         if (!s) {
             s = new PIXI.Sprite(UNIT);
             s.anchor.set(0);
-            bridgeG.addChild(s);
-            bridgePool.push(s);
+            (ly ? bridgeNearG : bridgeG).addChild(s);
+            bridgePools[ly].push(s);
         }
-        bpn++;
+        bpns[ly]++;
         s.visible = true;
         s.rotation = 0; s.skew.set(0, 0); s.alpha = 1; s.tint = 0xffffff;
         return s;
     }
-    function emitBridgeSpr(tex, x, y, w, h, mir) {
-        var s = bridgeTake();
+    function bridgeHideRest() {
+        for (var ly = 0; ly < 2; ly++)
+            for (var h = bpns[ly]; h < bridgePools[ly].length; h++)
+                bridgePools[ly][h].visible = false;
+    }
+    function emitBridgeSpr(tex, x, y, w, h, mir, ly) {
+        var s = bridgeTake(ly);
         s.texture = tex;
         s.setFromMatrix(Mtx.set(1, 0, 0, 1, mir ? x + w : x, y));
         s.width = w; s.height = h;
@@ -1696,13 +1653,11 @@
            (record exists && solid 'P') exactly like the engine's
            Pass_d = bit OR (contains AND solid). Solid 'P' cells are the
            state-0 full slab (the engine's flag-byte fast path). Geometry:
-           each quad is drawn UNROTATED at scale (hs/127, hs/66) over its
-           half-cell, because the parallelogram->square mapping already lives
-           in the texture (specSlotTex/buildSpecSlots): exactly the engine's
-           four-vertex UV diamond, with no corner overdraw and no alpha. The
-           selector flip byte (engFlip) is baked in as well: it re-assigns the
-           corners TL->R BL->T TR->B BR->L, so buildSpecSlots keeps a second
-           bake per state taken through that anti-diagonal map. */
+           each quad is a quadMesh over its half-cell square carrying the
+           ROAD_QUADS UV corners — exactly the engine's four-vertex UV
+           diamond, with no corner overdraw and no alpha. The selector flip
+           byte (engFlip) picks the anti-diagonal corner assignment
+           TL->R TR->B BR->L BL->T (quadGeom). */
         if (sheetReady) {
             var pass = { e: m >= 0 && !!(m & 1), w: m >= 0 && !!(m & 2),
                 n: m >= 0 && !!(m & 4), s: m >= 0 && !!(m & 8) };
@@ -1723,21 +1678,13 @@
                     [es.ws, engFlip(pass, 'ws'), 0, big / 2, big / 2],
                     [es.es, engFlip(pass, 'es'), big / 2, big / 2, big / 2]];
             }
-            var ok = true, ptex = [];
-            for (var pi = 0; pi < picks.length; pi++) {
-                ptex[pi] = specSlotTex(picks[pi][0], picks[pi][1]);  // sheared
-                if (!ptex[pi]) ok = false;              // bake: geometry matches
-            }
-            if (ok) {
-                for (pi = 0; pi < picks.length; pi++) {
-                    var st = picks[pi], hs = st[4];
-                    var sh = new PIXI.Sprite(UNIT);
-                    sh.anchor.set(0.5);
-                    sh.position.set(tx + st[2] + hs / 2, ty + st[3] + hs / 2);
-                    sh.scale.set(hs / SPEC_SLOT_W, hs / SPEC_SLOT_H);
-                    sh.texture = ptex[pi];
-                    parent.addChild(sh);
-                    S.push(sh);
+            var stex = specSheetTex();
+            if (stex) {
+                for (var pi = 0; pi < picks.length; pi++) {
+                    var st = picks[pi];
+                    var sh = quadMesh(parent, 'r', st[0], st[1], stex,
+                        tx + st[2], ty + st[3], st[4]);
+                    if (sh) S.push(sh);
                 }
                 for (var i = 0; i < S.length; i++) { S[i].visible = false; arr.push(S[i]); }
                 return S;
@@ -1795,21 +1742,13 @@
                 [es.ws, rivFlip(pass, 'ws'), 0, big / 2, big / 2],
                 [es.es, rivFlip(pass, 'es'), big / 2, big / 2, big / 2]];
         }
-        var ok = true, ptex = [];
+        var rtex = rivSheetTex();
+        if (!rtex) return null;
         for (var pi = 0; pi < picks.length; pi++) {
-            ptex[pi] = rivSlotTex(picks[pi][0], picks[pi][1]);
-            if (!ptex[pi]) ok = false;
-        }
-        if (!ok) return null;
-        for (pi = 0; pi < picks.length; pi++) {
-            var st = picks[pi], hs = st[4];
-            var sh = new PIXI.Sprite(UNIT);
-            sh.anchor.set(0.5);
-            sh.position.set(tx + st[2] + hs / 2, ty + st[3] + hs / 2);
-            sh.scale.set(hs / SPEC_SLOT_W, hs / SPEC_SLOT_H);   // quad == quadrant
-            sh.texture = ptex[pi];
-            parent.addChild(sh);
-            S.push(sh);
+            var st = picks[pi];
+            var sh = quadMesh(parent, 'v', st[0], st[1], rtex,
+                tx + st[2], ty + st[3], st[4]);       // quad == quadrant
+            if (sh) S.push(sh);
         }
         for (var ri = 0; ri < S.length; ri++) { S[ri].visible = false; arr.push(S[ri]); }
         return S;
@@ -1839,6 +1778,7 @@
            boot sequence re-runs us once the containers are live */
         if (!featC) return;
         for (var i = featC.children.length - 1; i >= 0; i--) featC.children[i].destroy();
+        for (i = fillC.children.length - 1; i >= 0; i--) fillC.children[i].destroy();
         /* crossing cells reparented into raisedG are no longer featC
            children: drop them here too or a rebuild would leak the old art */
         for (i = raisedG.children.length - 1; i >= 0; i--) raisedG.children[i].destroy();
@@ -1863,14 +1803,14 @@
                 m = e[3], big = e[5] || 1;
             var arr = byType[ti] || (byType[ti] = []);
             var hex = rgbHex(TYPE_STYLE[CityTerrain.TYPE_ORDER[ti]]);
-            var fill = mkSprite(UNIT, featC, tx, ty, big + BLEED, big + BLEED, hex);
+            var fill = mkSprite(UNIT, fillC, tx, ty, big + BLEED, big + BLEED, hex);
             arr.push(fill);
             if (ti === TI_RIVER && big === 4 && m >= -1 && m <= 15) {
                 /* Water art: the engine-true RiverDrawer quadrant draw
                    (notes/09 §9) over the flat fill; applyWaterMode decides
                    visibility so the toggle never needs a rebuild */
                 var wr = buildRivCell(featC, tx, ty, big, m, arr, rivRecs);
-                if (wr) waterRecs.push(wr);
+                if (wr) { waterRecs.push(wr); fill.width = fill.height = big; }
                 continue;
             }
             if (ti !== TI_ROAD && ti !== TI_DIRTROAD && ti !== TI_KLSROAD) continue;
@@ -1883,6 +1823,9 @@
                    replaces the sheet passes entirely (flat fill below,
                    no manhole); recs gives the neighbour-solid probe */
                 spec = buildSpecCell(featC, tx, ty, big, m, arr, recs);
+                /* art covers the cell exactly: no fill overhang to show
+                   past its edge over the base grass */
+                if (specSheetTex()) fill.width = fill.height = big;
             } else if (ti === TI_ROAD && cell) {
                 /* same multi-pass pick as the canvas page (terrain.js
                    f[3] >= -1 branch): nibble straights (masks 3/12) and
@@ -2101,7 +2044,7 @@
     /* ============================ render ===================================== */
     var DIAG = {
         mode: 'Pixi', ms: 0, fps: 0, maxMs: 0, anims: 0, charAnims: 0,
-        pool: 0, ver: '2026-10-26.11'
+        pool: 0, ver: '2026-10-27.3'
     };
     window.__CV_DIAG = DIAG;
     window.__CV_VER = DIAG.ver;                    // console sanity check
@@ -2154,6 +2097,7 @@
             seaFillS.height = terrain.seaFillY1 - terrain.seaFillY0;
         }
         featC.visible = !lod;
+        fillC.visible = !lod;
         raisedG.visible = !lod;             // reparented crossing road cells
         avenC.visible = !lod && terrain.useAvenues && terrain.useSheetArt &&
                         sheetReady;
@@ -2187,8 +2131,8 @@
         renderScene(A, s, T, lod);
         poolEnd();
         if (lod) {                          // bridges live outside the main
-            bpn = 0;                        // pool: clear them under LOD too
-            for (var bh = 0; bh < bridgePool.length; bh++) bridgePool[bh].visible = false;
+            bpns[0] = bpns[1] = 0;          // pool: clear them under LOD too
+            bridgeHideRest();
         }
 
         /* --- overlays above the scene -------------------------------------- */
@@ -2278,18 +2222,12 @@
        gate / PNG not decoded yet). Ported from drawSprite, filmstrip cells
        included. */
     /* ---- road bridges ------------------------------------------------------
-       Where a road crosses the river the engine keeps the road cells AND
-       stacks its own deck art under them: one bridgetop cell plus one
-       bridgebottom cell per ~4-tile segment, then the road's own art is
-       drawn on top. Neither slug is a building instance (no binfo/instance
-       rows), so `gen_city_sprites.py bridges` bakes the four cells the rule
-       uses as bridgetop_f0/f5 and bridgebottom_f0/f1, and this pass derives
-       the placements from the saved ground layers at runtime. Rule and
-       constants are the ones measured against the full-res export —
-       tools/bridge-sites.py derives, tools/fit-bridge.py fits each piece,
-       tools/score-bridge.py scores a whole crossing's opaque art pixels
-       against the game's own pixels (0.39 / 0.13 / 0.29 at the town's three
-       crossings; notes/09 §10):
+       Where a road crosses the river the game keeps the road cells and adds
+       its bridgetop deck sections along both sides of the carriageway.
+       Neither slug is a building instance (no binfo/instance rows), so
+       `gen_city_sprites.py bridges` bakes the frames and this pass derives
+       the placements from the saved ground layers at runtime
+       (tools/bridge-sites.py is the reference implementation; notes/09 §10):
 
          * a road is ONE cell of the save's 4x4 lattice wide: a +y (N-S) road
            occupies columns [cx, cx+3] with cx % 4 == 0, a +x (E-W) road rows
@@ -2300,105 +2238,27 @@
            corridor. That single test is what drops the shoreline quays —
            water runs beside those, never under them;
          * the water must actually be CROSSED, not just touched: the fully-road
-           run has to extend past the water band at BOTH ends. A band that is
-           the whole run is a road END sitting on the water, and 7 of the 11
-           raw candidates are exactly that — one real crossing read on the
-           other axis, where the "corridor" is only the crossing patch itself;
-         * a band as narrow as the road itself (span < BRIDGE_FULL_SPAN = 5,
-           i.e. exactly 4 wide) gets ONE piece per row instead of the full run
-           — placed EXACTLY on the water, its deck centre on the middle of the
-           band rather than on the nearest lamppost-lattice step.
-           That is the inlet by the circus at cols 252..255 x rows 48..51: the
-           export paints no bridge stone there (user check with the building
-           layer off, 2026-10-26), so it is the one crossing this pass
-           decorates rather than reproduces. Raise BRIDGE_MIN_SPAN back to 5
-           with __CV_BRIDGES({minSpan: 5}) to drop it again;
-         * segments step along the deck by BRIDGE_PITCH (one lamppost per piece
-           — the art is periodic with that period, see the composition note
-           below), start past the far water edge by BRIDGE_APRON, and each
-           piece is one bridgetop + one bridgebottom pair on a shared origin:
-           the deep top piece where the deck stands in water, the short-piered
-           one where it is over dry ground; +x roads draw the mirrored
-           instance;
-         * and the SECTION each piece uses is picked by the ground under the two
-           ENDS of its deck, which is the engine's own test (notes/09 §10: the
-           `bridge…[g]` formatters at 0x1198238 are gated by the tile's SOLID
-           bit and swap in the `g` name — the frame carrying the shipped grass
-           abutment cells). So the outermost wet section on each side carries
-           the grass that meets its bank: bridgetop_f2 (C_Grass_04 past its
-           tail end) and bridgetop_f6 (C_Grass_03 at its head end), and the one
-           section of a narrow inlet, whose ends BOTH reach land, is
-           bridgetop_f3 with both. Interior sections keep the plain deck, and so
-           do the sections standing on the bank, whose deck the carriageway art
-           covers anyway.
-         * the engine draws a deck row on BOTH sides of the carriageway: every
-           piece is emitted twice, once per row, the rows BRIDGE_ROW_SEP tiles
-           apart (4.5, measured at three crossings) with the near row's origin
-           BRIDGE_ROW tiles off the corridor edge;
-         * and the ROAD draws OVER the bridge: the corridor's road cells keep
-           their full 4-tile-wide art across the crossing (asphalt plus the
-           outer paving columns), painted on top of the deck art. Each piece
-           paints its body on one side of its lamppost line, so the inner half
-           of both rows lands under the carriageway art and only the outer half
-           of each shows — which is exactly what the export shows (A: the west
-           row's arches at 154.1–157.0 and the east row's balustrade at
-           160–161.5 around the 156–160 carriageway).
-           This pass reproduces that by emitting the pieces into
-           `bridgeG`, a screen-space stage container drawn right after the
-           ground (so above the water art, below the buildings), and
-           REPARENTING the crossing cells' road art from featC into
-           `raisedG`, a tile-space twin of groundC drawn right after the
-           bridges — road over bridge. The earlier symmetric rows only
-           looked wrong because they painted over the road instead (user
-           report at (157,16): "the road should have occluded the bottom of
-           the bridge, instead of the other way around").
+           run has to extend past the water band at BOTH ends (7 of the 11 raw
+           candidates are one real crossing read on the other axis);
+         * ONE section per road cell the band covers, per row. Each section is
+           a 3-lamppost bridgetop frame (C_BridgeTop_08: arches, deck line,
+           balustrade, piers into the water); consecutive sections butt-join
+           4 tiles apart, so the game shows DOUBLED lampposts at every join
+           (110 px globe pitch inside a section, 2 x 110 + 36 = 256 px = 4
+           tiles per section). Measured 2026-10-27 by globe detection on the
+           game screenshot registered against the viewer: site A 12 globes and
+           site B 12 globes all within 0.1 tile of this rule. (The previous
+           model stepped overlapping pieces by one globe pitch — evenly spaced
+           lampposts, which the game never shows.);
+         * the two rows sit on the same along position; the row nearer the
+           viewer is drawn OVER the road art (its lampposts and rail cover the
+           kerb), the far row UNDER it (the kerb covers its base and its arches
+           hang under the carriageway): far row into `bridgeG`, the crossing
+           cells' road art reparented into `raisedG` (a tile-space twin of
+           groundC), near row into `bridgeNearG` above that.
 
        Anchors are terrain-anchored decals like the water art: no ART.ax/ay
-       nudge (those correct the building art's own ground point).
-
-       HOW THE ART IS COMPOSED (2026-10-26 re-derivation). The first cut of
-       this pass butt-joined one top+bottom pair per 4 tiles at
-       cx-0.45/cx+4.45; re-measured with a scorer that no longer counts the
-       road's own paving as a mismatch, that model gets 0.27. The art itself
-       settles the composition:
-         * every bridge cell is periodic with its own period (110, 57) art px —
-           shift C_BridgeTop_08/09/05/06 or C_BridgeBottom_02/03 by that vector
-           and 53-61 % of the pixels opaque in both copies agree within 14/255
-           (mean abs diff 14-19); the lampposts sit on that lattice, 110 px
-           apart. So pieces are STEPPED BY ONE GLOBE PITCH and overlap; they
-           are not joined at the piece width. Pitch = 110 / ART.S = 1.71875
-           tiles (the tile size cancels against ART.S = 64, which the binary's
-           own bridge descriptor confirms: 258/64 = 4.0319).
-         * a piece is a 3-lamppost section: piers with arch openings between
-           them, the deck line, a balustrade. bridgetop f4/f0 (C_BridgeTop_08/
-           05) hang 75 px BELOW the deck line — the piece that stands in water;
-           f5/f7 (C_BridgeTop_09/06) hang 20 px — the abutment length used where
-           the deck is over dry ground. bridgebottom f0/f1 (C_BridgeBottom_02/
-           03) is the balustrade: nothing below its origin, wall and lampposts
-           all above it, drawn at the SAME origin as the top piece — which is
-           why only the balustrade shows above the road art and only the arches
-           below it.
-         * a crossing is TWO rows of pieces, one per side of the carriageway,
-           on one lattice and IN PHASE (the fitted first anchors differ by
-           0.0-0.2 tiles at every site). The lamppost line of an unmirrored
-           piece is 1.84 tiles on the +side of its origin, of a mirrored piece
-           1.84 on the -side; the body runs out on the -b side (north for a +y
-           road, east for a mirrored +x one).
-         * the rows are 4.5 tiles apart — measured at three independent
-           crossings (A 4.48, D 4.52, B 4.53), the art's own 2 x 2.25 — and the
-           pair sits asymmetrically on the road: near row origin 0.85 tiles
-           west of a +y corridor's west edge, far row origin 3.65 east of it
-           (fitted -0.70..-0.94 and +3.30..+3.70), and for a mirrored +x
-           corridor 0.10 south of the north edge and 4.60 (fitted 0.09/4.62 at
-           B). Each row's body is 3 tiles wide and lies to one side of its
-           lamppost line, so the road art drawn over the bridge hides the inner
-           half of both rows; what is left is the west row's arches and the
-           east row's balustrade, exactly as the export reads.
-         * the lamppost lattice overshoots the water band by about a tile at
-           each end (site A detections 14.78..24.83 against a 16..24 band), so
-           the deck is built by covering
-           [wa - BRIDGE_APRON, wb + 1 + BRIDGE_APRON] with pieces stepped by
-           BRIDGE_PITCH. */
+       nudge (those correct the building art's own ground point). */
     var BRIDGE_KEY = 'mrsnrub.cityview.bridges';
     var bridgesOn = true;                   // ships ON: the game bridges every wide crossing
     try { if (localStorage.getItem(BRIDGE_KEY) === '0') bridgesOn = false; } catch (e) { /* private mode */ }
@@ -2407,38 +2267,27 @@
                                             // the 7 rejects are all the same
                                             // crossing read on the other axis
                                             // (dropped by the bank test below)
-    var BRIDGE_FULL_SPAN = 5;               // a narrower band is an inlet, not a
-                                            // river: one piece per row instead of
-                                            // the full crossover run
-    var BRIDGE_PITCH = 110 / ART.S;         // one lamppost per piece: the art's
-                                            // own period vector (110, 57) px
-    var BRIDGE_APRON = 1.0;                 // lamppost lattice past the water band
-    var BRIDGE_GLOBE = 1.84;                // lamppost line, tiles from the piece origin
-    var BRIDGE_G0 = 1.855;                  // the three lampposts, tiles out along
-    var BRIDGE_GM = 3.575;                  // the deck from the piece origin (measured off
-    var BRIDGE_G2 = 5.295;                  // the art: globe centres / ART.S)
-    var BRIDGE_MID = 2.385;                 // deck centre behind the origin: the body
-                                            // spans 0.97 ahead, 5.74 behind it
-    var BRIDGE_ROW = -0.85;                 // near row origin, tiles from the corridor's
-    var BRIDGE_ROW_SEP = 4.5;               // west/north edge; the far row is 4.5 further
-    var BRIDGE_MROW = 0.10;                 // same for a mirrored (+x) corridor, measured
-                                            // at B: rows 48.09 and 52.62 around cy 48
-    var BRIDGE_TAIL = 5.74;                 // deck body BEHIND the origin: the end
-                                            // the C_Grass_04 bank sits past
-    var BRIDGE_HEAD = 0.97;                 // deck body AHEAD of the origin: the end
-                                            // the C_Grass_03 fillet sits at
+    /* per-cell placement: the section's pivot sits on the cell's far edge
+       along the road (y = cy + 4 for a +y road — the bridgetop footprint is
+       2 x 4 with its pivot on the max-y corner like every building). Rows
+       sit BRIDGE_ROW / +BRIDGE_ROW_SEP off the corridor's west edge; a +x
+       corridor is the mirror image about the cell, (a, b) -> (4 - b, 4 - a):
+       pivot on the cell's min-x edge, rows at cy + 4 - BRIDGE_ROW -
+       r * BRIDGE_ROW_SEP (= cy + 4.6 / cy + 0.1, the old B fit exactly). */
+    var BRIDGE_ROW = -0.6;                  // near row pivot off the west edge
+    var BRIDGE_ROW_SEP = 4.5;               // far row 4.5 further (A, B, D fits)
+    var BRIDGE_ALONG = 0;                   // pivot nudge along the deck
     var BRIDGE_TOP_DEEP = 'bridgetop_f4';   // C_BridgeTop_08: piers into the water
-    var BRIDGE_TOP_DRY = 'bridgetop_f5';    // C_BridgeTop_09: abutment-length piers
     var BRIDGE_TOP_BANK = 'bridgetop_f2';   // + C_Grass_04 at the tail: deck on the bank
     var BRIDGE_TOP_FILLET = 'bridgetop_f6'; // + C_Grass_03 at the head (dry deck)
     var BRIDGE_TOP_BOTH = 'bridgetop_f3';   // both grasses: the whole bridge is one piece
-    var BRIDGE_GRASS_ENDS = true;           // false = plain deck at the bank ends
-                                            // (what the export's own bank crops
-                                            // show; __CV_BRIDGES({grassEnds:false}))
-    var BRIDGE_BOT = 'bridgebottom_f0';     // C_BridgeBottom_02: balustrade
+    var BRIDGE_GRASS_ENDS = false;          // grass-abutment frames on the end
+                                            // sections: off — the export's bank
+                                            // ends show the plain deep deck
     var bridgeSegs = null;                  // derived once, on first draw
     var bridgeCells = null;                 // 'tx,ty' -> 1 for the road cells
-                                            // over water: their art is raised
+                                            // over water (+ one past each
+                                            // end): their art is raised
                                             // above the bridge container
     var bridgeLive = 0;                     // DIAG: pieces emitted last frame
 
@@ -2479,92 +2328,30 @@
     }
 
     function bridgeRun(out, axis, c, wa, wb) {
-        /* one crossing: two rows of pieces stepped along the deck by the art's
-           own period, in phase with each other, deep-piered where the deck
-           stands over water. `c` is the corridor's west edge (+y) or north edge
-           (+x); wa..wb the water rows (+y) or columns (+x) under the deck.
-
-           A piece's lampposts stand at 1.855, 3.575 and 5.295 tiles out on its
-           -b side (its body runs from 0.97 ahead of the origin to 5.74 behind
-           it), and its lamppost LINE is 1.84 tiles off the origin on the
-           +side for an unmirrored piece, on the -side for a mirrored one. */
-        var lo = wa - BRIDGE_APRON, hi = wb + 1 + BRIDGE_APRON;
-        var n = Math.max(1, Math.ceil((hi - lo - (BRIDGE_G2 - BRIDGE_G0)) / BRIDGE_PITCH) + 1);
-        function alongAt(i) {
-            return (axis === 'y') ? hi + BRIDGE_G0 - i * BRIDGE_PITCH
-                                  : lo - BRIDGE_G0 + i * BRIDGE_PITCH;
-        }
-        /* a band narrower than BRIDGE_FULL_SPAN is an inlet mouth, not a river
-           the game bridged: put ONE piece on it, and put it EXACTLY on the
-           water — the deck centre on the middle of the band rather than the
-           nearest lamppost-lattice step, which leaves it visibly off-centre on
-           a reach only four tiles wide (both rows keep the same i, so the pair
-           stays in phase) */
-        var only = -1, centre = null;
-        if (wb - wa + 1 < BRIDGE_FULL_SPAN) {
-            var midw = (wa + wb + 1) / 2, best = Infinity;
-            for (var q = 0; q < n; q++) {
-                var m = (axis === 'y') ? alongAt(q) - BRIDGE_MID : alongAt(q) + BRIDGE_MID;
-                var d = Math.abs(m - midw);
-                if (d < best) { best = d; only = q; }
+        /* one crossing: `c` is the corridor's west edge (+y) or north edge
+           (+x), wa..wb the water rows (+y) or columns (+x) under the deck.
+           One section per 4x4 road cell the band covers, per row; the end
+           sections may carry the grass-abutment frames */
+        var c0 = wa & ~3, c1 = wb & ~3;
+        for (var cc = c0; cc <= c1; cc += 4) {
+            var top = BRIDGE_TOP_DEEP;
+            if (BRIDGE_GRASS_ENDS) {
+                /* +y: the tail (C_Grass_04) is the low-y end; +x mirrors it
+                   to the high-x end */
+                var tail = axis === 'y' ? cc === c0 : cc === c1;
+                var head = axis === 'y' ? cc === c1 : cc === c0;
+                top = tail && head ? BRIDGE_TOP_BOTH : tail ? BRIDGE_TOP_BANK
+                    : head ? BRIDGE_TOP_FILLET : BRIDGE_TOP_DEEP;
             }
-            centre = (axis === 'y') ? midw + BRIDGE_MID : midw - BRIDGE_MID;
-        }
-        function alongOf(i) {
-            return (i === only && centre !== null) ? centre : alongAt(i);
-        }
-        /* which section each piece uses. The engine chooses it by the SOLID bit
-           of the ground under the two ENDS of the deck: notes/09 §10 — the
-           `bridge…[g]` formatters at 0x1198238 are gated by the solid bit and
-           swap in the `g` name, which is the frame with the shipped grass
-           abutment cells (C_Grass_04 beyond the tail end, C_Grass_03 at the
-           head end; bridgetop.bsv3 f2 / f6 / f3). Only the two OUTERMOST
-           sections over the water can reach a bank, so those are the only ones
-           that change: the interior sections keep the plain deep deck and the
-           sections standing on the bank keep the plain dry one, whose deck the
-           road's own art covers. A section that is the WHOLE bridge — an inlet
-           whose both ends reach land — carries both grasses (f3). */
-        var topOf = {}, tailI = -1, headI = -1, i2;
-        for (i2 = 0; i2 < n; i2++) {
-            if (only >= 0 && i2 !== only) continue;
-            var al = alongOf(i2);
-            var mid2 = (axis === 'y') ? al - BRIDGE_MID : al + BRIDGE_MID;
-            if (mid2 < wa || mid2 > wb + 1) continue;       // a bank section
-            var alT = alongOf(tailI);
-            if (tailI < 0 || (axis === 'y' ? al < alT : al > alT)) tailI = i2;
-            var alH = alongOf(headI);
-            if (headI < 0 || (axis === 'y' ? al > alH : al < alH)) headI = i2;
-        }
-        function abut(i, end) {          // the grass frame for one deck end, or 0
-            if (i < 0 || !BRIDGE_GRASS_ENDS) return 0;
-            var al3 = alongOf(i);
-            var v = (end === 'tail')
-                ? (axis === 'y' ? al3 - BRIDGE_TAIL : al3 + BRIDGE_TAIL)
-                : (axis === 'y' ? al3 + BRIDGE_HEAD : al3 - BRIDGE_HEAD);
-            return (v < wa || v > wb + 1)
-                ? (end === 'tail' ? BRIDGE_TOP_BANK : BRIDGE_TOP_FILLET) : 0;
-        }
-        if (tailI >= 0) {
-            var ft = abut(tailI, 'tail'), fh = abut(headI, 'head');
-            if (tailI === headI) topOf[tailI] = (ft && fh) ? BRIDGE_TOP_BOTH : (ft || fh);
-            else { topOf[tailI] = ft; topOf[headI] = fh; }
-        }
-        for (var r = 0; r < 2; r++) {
-            var off = (axis === 'y' ? BRIDGE_ROW : BRIDGE_MROW) + r * BRIDGE_ROW_SEP;
-            for (var i = 0; i < n; i++) {
-                if (only >= 0 && i !== only) continue;
-                var along = alongOf(i);
-                /* the deck's own centre, 2.385 tiles behind the origin (the
-                   body runs 0.97 ahead of it and 5.74 behind): deep piers where
-                   that stands in water, the abutment-length piece on the bank */
-                var mid = (axis === 'y') ? along - BRIDGE_MID : along + BRIDGE_MID;
-                var wet = (mid >= wa && mid <= wb + 1);
-                out.push({ x: (axis === 'y' ? c + off : along),
-                    y: (axis === 'y' ? along : c + off),
-                    mir: (axis === 'y' ? 0 : 1),
-                    top: wet ? (topOf[i] || BRIDGE_TOP_DEEP) : BRIDGE_TOP_DRY,
-                    bot: BRIDGE_BOT, row: r, i: i });
+            var pair = [];
+            for (var r = 0; r < 2; r++) {
+                var off = BRIDGE_ROW + r * BRIDGE_ROW_SEP;
+                pair.push(axis === 'y'
+                    ? { x: c + off, y: cc + 4 + BRIDGE_ALONG, mir: 0, top: top, row: r, i: cc }
+                    : { x: cc - BRIDGE_ALONG, y: c + 4 - off, mir: 1, top: top, row: r, i: cc });
             }
+            pair[0].mate = pair[1]; pair[1].mate = pair[0];
+            out.push(pair[0], pair[1]);
         }
     }
 
@@ -2617,8 +2404,12 @@
                        crossing patch itself) */
                     if (a0 >= wa || a1 <= wb) continue;
                     bridgeRun(out, 'y', cx, wa, wb);
-                    for (var wy = wa; wy <= wb; wy++)
-                        bridgeCells[(cx & ~3) + ',' + (wy & ~3)] = 1;
+                    /* + the road cell past each end: the far row's end
+                       section (the grass abutments most of all) reaches a
+                       few px over that boundary and must tuck under the
+                       road art there too, not paint over it */
+                    for (var wy = (wa & ~3) - 4; wy <= (wb & ~3) + 4; wy += 4)
+                        bridgeCells[(cx & ~3) + ',' + wy] = 1;
                 }
             }
         }
@@ -2638,8 +2429,8 @@
                     if (span2 < BRIDGE_MIN_SPAN) continue;
                     if (b0 >= xa || b1 <= xb) continue;   // both banks, as above
                     bridgeRun(out, 'x', cy, xa, xb);
-                    for (var wx = xa; wx <= xb; wx++)
-                        bridgeCells[(wx & ~3) + ',' + (cy & ~3)] = 1;
+                    for (var wx = (xa & ~3) - 4; wx <= (xb & ~3) + 4; wx += 4)
+                        bridgeCells[wx + ',' + (cy & ~3)] = 1;   // + end cells
                 }
             }
         }
@@ -2650,7 +2441,7 @@
         return out;
     }
 
-    function bridgePiece(key, px, py, k, mir) {
+    function bridgePiece(key, px, py, k, mir, ly) {
         var sp = spriteEntry(key);
         if (!sp || (sp.w * k < 12 && sp.h * k < 12)) return;
         var t = texFor(cityUrl(sp.png));
@@ -2659,7 +2450,7 @@
            twin in sceneG): bl lands the (mirrored) anchor on the placement
            point, emitBridgeSpr mirrors the texture within [bl, bl+w] */
         var bl = px - (mir ? sp.w - sp.anchor[0] : sp.anchor[0]) * k;
-        emitBridgeSpr(t, bl, py - sp.anchor[1] * k, sp.w * k, sp.h * k, mir);
+        emitBridgeSpr(t, bl, py - sp.anchor[1] * k, sp.w * k, sp.h * k, mir, ly);
         bridgeLive++;
     }
 
@@ -2680,10 +2471,10 @@
 
     function renderBridges(A, s, T) {
         bridgeLive = 0;
-        bpn = 0;
+        bpns[0] = bpns[1] = 0;
         if (!bridgesOn || !artMode || !citySprites || terrain.hidden['road'] ||
             !bridgeG) {
-            for (var h = bpn; h < bridgePool.length; h++) bridgePool[h].visible = false;
+            bridgeHideRest();
             return;
         }
         var segs = bridgeList(), k = s / ART.S;
@@ -2692,25 +2483,38 @@
             if (g.x < T.x0 - 6 || g.x > T.x1 + 6 || g.y < T.y0 - 6 || g.y > T.y1 + 6)
                 continue;
             var px = A.a * g.x + A.b * g.y + A.c, py = A.d * g.x + A.e * g.y + A.f;
-            bridgePiece(g.bot, px, py, k, g.mir);     // struts under, deck over
-            bridgePiece(g.top, px, py, k, g.mir);
+            /* the row nearer the viewer (lower on screen than its mate, so
+               any Rotate/Mirror orientation) stands OVER the raised road art,
+               its mate under it — the game's layering at site A: the near
+               row's lampposts and rail cover the kerb, the far row's base
+               is covered by it */
+            var mpy = A.d * g.mate.x + A.e * g.mate.y + A.f;
+            var near = py > mpy;
+            bridgePiece(g.top, px, py, k, g.mir, near ? 1 : 0);
         }
-        for (var h2 = bpn; h2 < bridgePool.length; h2++) bridgePool[h2].visible = false;
+        bridgeHideRest();
     }
     function applyBridgeMode() {
         var b = $('btn-bridges');
         if (b) b.classList.toggle('on', bridgesOn);
     }
     window.__CV_BRIDGES = function (patch) {          // smoke-test / console probe
-        if (patch) {                                  // {on, minSpan, fullSpan, grassEnds, recalc}
+        if (patch) {                                  // {on, minSpan, grassEnds, row, rowSep, along, recalc}
             if ('on' in patch) bridgesOn = !!patch.on;
             if ('minSpan' in patch) { BRIDGE_MIN_SPAN = patch.minSpan; bridgeSegs = null; }
-            if ('fullSpan' in patch) { BRIDGE_FULL_SPAN = patch.fullSpan; bridgeSegs = null; }
-            if ('grassEnds' in patch) { BRIDGE_GRASS_ENDS = !!patch.grassEnds; bridgeSegs = null; }
+            if ('row' in patch) { BRIDGE_ROW = patch.row; bridgeSegs = null; }
+            if ('rowSep' in patch) { BRIDGE_ROW_SEP = patch.rowSep; bridgeSegs = null; }
+            if ('along' in patch) { BRIDGE_ALONG = patch.along; bridgeSegs = null; }
+            if ('grassEnds' in patch) {
+                BRIDGE_GRASS_ENDS = !!patch.grassEnds; bridgeSegs = null;
+                var gb = $('btn-bridgegrass');
+                if (gb) gb.classList.toggle('on', BRIDGE_GRASS_ENDS);
+            }
             if (patch.recalc) bridgeSegs = null;
         }
         return { segs: bridgeList().length, live: bridgeLive, on: bridgesOn,
-                 minSpan: BRIDGE_MIN_SPAN, fullSpan: BRIDGE_FULL_SPAN,
+                 minSpan: BRIDGE_MIN_SPAN, row: BRIDGE_ROW, rowSep: BRIDGE_ROW_SEP,
+                 along: BRIDGE_ALONG,
                  grassEnds: BRIDGE_GRASS_ENDS };
     };
 
@@ -3546,6 +3350,26 @@
         markDirty();
     });
     applyBridgeMode();
+
+    /* ---- bridge grass-ends toggle: the end section of each row swaps the
+       plain deck (bridgetop_f4, what the game screenshot shows at the bank)
+       for the grass-abutment frames the art ships (f2 = C_Grass_04 bank at
+       the tail end, f6 = C_Grass_03 fillet at the head end, f3 = both on a
+       one-cell crossing). Off by default; notes/09 §10. */
+    var BRIDGE_GRASS_KEY = 'mrsnrub.cityview.bridgegrass';
+    function applyBridgeGrassMode() {
+        var b = $('btn-bridgegrass');
+        if (b) b.classList.toggle('on', BRIDGE_GRASS_ENDS);
+    }
+    try { BRIDGE_GRASS_ENDS = localStorage.getItem(BRIDGE_GRASS_KEY) === '1'; } catch (e) { /* private mode */ }
+    if ($('btn-bridgegrass')) $('btn-bridgegrass').addEventListener('click', function () {
+        BRIDGE_GRASS_ENDS = !BRIDGE_GRASS_ENDS;
+        try { localStorage.setItem(BRIDGE_GRASS_KEY, BRIDGE_GRASS_ENDS ? '1' : '0'); } catch (e) { /* private mode */ }
+        bridgeSegs = null;                  // re-derive with the new end frames
+        applyBridgeGrassMode();
+        markDirty();
+    });
+    applyBridgeGrassMode();
 
     /* ---- 1-wide N-S fragment debug overlay ----------------------------------- */
     var FRAGS_KEY = 'mrsnrub.cityview.frags';

@@ -35,11 +35,25 @@ Their canvas-draw code is re-implemented on Pixi inside
 
 * **Ground** — one Container whose per-frame matrix is `CAM.tileAffine`, so
   everything static in *tile space* is placed once and never re-projected:
-  the grass `TilingSprite`, the sea quad, flat feature quads, the road sheet
-  cells (each used slot of `roadtilesheet.png` clipped to its inscribed
-  diamond once, offscreen; the sprites then just rotate 45° + scale), the
-  manholes, avenue cells, and the two zoomed-out flat atlas blits
-  (`terrain.flatInfo()`).
+  the grass `TilingSprite`, the sea quad, the flat type fills (their own
+  `fillC` layer under all art, so their anti-seam overhang never paints over
+  a neighbour's art), the road and river cells, the manholes, avenue cells,
+  and the two zoomed-out flat atlas blits (`terrain.flatInfo()`). Road
+  (`Road art·spec`) and river (`Water art`) cells are drawn the engine's
+  way: four quadrant quads per 4×4 cell, each a 4-vertex `PIXI.Mesh` whose
+  UVs are the engine's own quad table (`ROAD_QUADS` / `RIVER_QUADS`) on the
+  1024² `roadrivertiles-100` sheet — one resample, ≈1:1 at rest zoom
+  (notes/09 §6). Legacy road-art modes 1–3 use a 512² cleaned copy (each
+  used slot clipped to its inscribed diamond, sprites rotate 45° + scale).
+* **Bridges** — where a road corridor crosses the river: one 3-lamppost
+  `bridgetop` section per road cell over water on each side of the road
+  (doubled lampposts at the joins, as in the game). Screen-space layers
+  `bridgeG` (far row) → `raisedG` (the crossing cells' road art,
+  reparented) → `bridgeNearG` (near row). Toolbar: **Road bridges** on/off,
+  **Bridge grass** swaps the end sections to the grass-abutment frames
+  (off by default). Rule and measurements: notes/09 §10;
+  `tools/bridge-sites.py` is the reference, `tools/check-bridges.cjs` the
+  harness.
 * **Scene** — a screen-space sprite **pool** refilled from index 0 each frame
   in depth order (child order = painter order). Prism faces are unit-quad
   sprites driven by a parallelogram matrix (`setFromMatrix`); art sprites,

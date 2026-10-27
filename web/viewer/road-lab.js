@@ -1395,59 +1395,35 @@
        manifest anchors) → road cells (raisedG twin, drawn OVER the deck —
        hiding each row's inner rail is the model's defining behaviour). ---- */
     const BRIDGE_S = 64;                    // art px per tile (city-sprites.json)
-    /* Reference block — the 32 pieces the viewer's deriveBridges() produces for
+    /* Reference block — the 14 pieces the viewer's deriveBridges() produces for
        the four crossings it paints (tools/bridge-sites.py, notes/09 §10).
        DO NOT hand-edit: `node tools/check-bridges.cjs` prints the viewer's
        derive, and the smoke harness fails if this table ever disagrees with it
        (same drift guard as the engine table). Two rows per crossing (constant
-       x for +y roads, constant y for +x roads) 4.5 tiles apart and IN PHASE,
-       five sections per row stepped by the art's own lamppost pitch
-       (110/64 tiles); the section whose deck centre stands over the water band
-       is the deep-piered bridgetop_f4, the one on the bank the short-piered
-       f5, each paired with the bridgebottom_f0 balustrade on the same origin,
-       and the outermost wet section on each side carries the engine's grass
-       abutment instead — f2 (C_Grass_04) where its tail end reaches land, f6
-       (C_Grass_03) where its head end does (the solid-bit rule, notes/09 §10).
-       Site C is the 4-wide inlet the game itself leaves bare: a band under
-       FULL_SPAN (5 tiles) gets one section per row, placed exactly on the
-       water, and as its ends BOTH reach land it is f3 with both grasses. */
+       x for +y roads, constant y for +x roads) 4.5 tiles apart, ONE 3-lamppost
+       bridgetop_f4 section per road cell over water, both rows on the same
+       along position: sections butt-join 4 tiles apart, so the lampposts
+       double at every join exactly as the game screenshot shows (globe
+       detection 2026-10-27). No bridgebottom pieces: the base pass is empty. */
     const BRIDGE_REF = [
       { site: 'A (road 157,16)', axis: 'y', cells: [[156,16],[156,20]], wband: [16,23], segs: [
-        { x: 155.15, y: 19.98, mir: 0, top: 'bridgetop_f2', bot: 'bridgebottom_f0' },
-        { x: 155.15, y: 21.70, mir: 0, top: 'bridgetop_f4', bot: 'bridgebottom_f0' },
-        { x: 155.15, y: 23.42, mir: 0, top: 'bridgetop_f4', bot: 'bridgebottom_f0' },
-        { x: 155.15, y: 25.14, mir: 0, top: 'bridgetop_f6', bot: 'bridgebottom_f0' },
-        { x: 155.15, y: 26.86, mir: 0, top: 'bridgetop_f5', bot: 'bridgebottom_f0' },
-        { x: 159.65, y: 19.98, mir: 0, top: 'bridgetop_f2', bot: 'bridgebottom_f0' },
-        { x: 159.65, y: 21.70, mir: 0, top: 'bridgetop_f4', bot: 'bridgebottom_f0' },
-        { x: 159.65, y: 23.42, mir: 0, top: 'bridgetop_f4', bot: 'bridgebottom_f0' },
-        { x: 159.65, y: 25.14, mir: 0, top: 'bridgetop_f6', bot: 'bridgebottom_f0' },
-        { x: 159.65, y: 26.86, mir: 0, top: 'bridgetop_f5', bot: 'bridgebottom_f0' } ] },
+        { x: 155.40, y: 20, mir: 0, top: 'bridgetop_f4' },
+        { x: 155.40, y: 24, mir: 0, top: 'bridgetop_f4' },
+        { x: 159.90, y: 20, mir: 0, top: 'bridgetop_f4' },
+        { x: 159.90, y: 24, mir: 0, top: 'bridgetop_f4' } ] },
       { site: 'D (road 226,67)', axis: 'y', cells: [[224,64],[224,68]], wband: [64,71], segs: [
-        { x: 223.15, y: 67.98, mir: 0, top: 'bridgetop_f2', bot: 'bridgebottom_f0' },
-        { x: 223.15, y: 69.70, mir: 0, top: 'bridgetop_f4', bot: 'bridgebottom_f0' },
-        { x: 223.15, y: 71.42, mir: 0, top: 'bridgetop_f4', bot: 'bridgebottom_f0' },
-        { x: 223.15, y: 73.14, mir: 0, top: 'bridgetop_f6', bot: 'bridgebottom_f0' },
-        { x: 223.15, y: 74.86, mir: 0, top: 'bridgetop_f5', bot: 'bridgebottom_f0' },
-        { x: 227.65, y: 67.98, mir: 0, top: 'bridgetop_f2', bot: 'bridgebottom_f0' },
-        { x: 227.65, y: 69.70, mir: 0, top: 'bridgetop_f4', bot: 'bridgebottom_f0' },
-        { x: 227.65, y: 71.42, mir: 0, top: 'bridgetop_f4', bot: 'bridgebottom_f0' },
-        { x: 227.65, y: 73.14, mir: 0, top: 'bridgetop_f6', bot: 'bridgebottom_f0' },
-        { x: 227.65, y: 74.86, mir: 0, top: 'bridgetop_f5', bot: 'bridgebottom_f0' } ] },
+        { x: 223.40, y: 68, mir: 0, top: 'bridgetop_f4' },
+        { x: 223.40, y: 72, mir: 0, top: 'bridgetop_f4' },
+        { x: 227.90, y: 68, mir: 0, top: 'bridgetop_f4' },
+        { x: 227.90, y: 72, mir: 0, top: 'bridgetop_f4' } ] },
       { site: 'B (road 168,48)', axis: 'x', cells: [[168,48],[172,48]], wband: [168,175], segs: [
-        { x: 165.15, y: 48.10, mir: 1, top: 'bridgetop_f5', bot: 'bridgebottom_f0' },
-        { x: 166.86, y: 48.10, mir: 1, top: 'bridgetop_f6', bot: 'bridgebottom_f0' },
-        { x: 168.58, y: 48.10, mir: 1, top: 'bridgetop_f4', bot: 'bridgebottom_f0' },
-        { x: 170.30, y: 48.10, mir: 1, top: 'bridgetop_f4', bot: 'bridgebottom_f0' },
-        { x: 172.02, y: 48.10, mir: 1, top: 'bridgetop_f2', bot: 'bridgebottom_f0' },
-        { x: 165.15, y: 52.60, mir: 1, top: 'bridgetop_f5', bot: 'bridgebottom_f0' },
-        { x: 166.86, y: 52.60, mir: 1, top: 'bridgetop_f6', bot: 'bridgebottom_f0' },
-        { x: 168.58, y: 52.60, mir: 1, top: 'bridgetop_f4', bot: 'bridgebottom_f0' },
-        { x: 170.30, y: 52.60, mir: 1, top: 'bridgetop_f4', bot: 'bridgebottom_f0' },
-        { x: 172.02, y: 52.60, mir: 1, top: 'bridgetop_f2', bot: 'bridgebottom_f0' } ] },
+        { x: 168, y: 48.10, mir: 1, top: 'bridgetop_f4' },
+        { x: 172, y: 48.10, mir: 1, top: 'bridgetop_f4' },
+        { x: 168, y: 52.60, mir: 1, top: 'bridgetop_f4' },
+        { x: 172, y: 52.60, mir: 1, top: 'bridgetop_f4' } ] },
       { site: 'C (inlet 252,49)', axis: 'x', cells: [[252,48]], wband: [252,255], segs: [
-        { x: 251.62, y: 48.10, mir: 1, top: 'bridgetop_f3', bot: 'bridgebottom_f0' },
-        { x: 251.62, y: 52.60, mir: 1, top: 'bridgetop_f3', bot: 'bridgebottom_f0' } ] },
+        { x: 252, y: 48.10, mir: 1, top: 'bridgetop_f4' },
+        { x: 252, y: 52.60, mir: 1, top: 'bridgetop_f4' } ] },
     ];
     /* anchors from web/assets/city/city-sprites.json (art px, 64/tile) — the
        five frames the rule uses; the manifest also carries f0/f1/f7 (the
@@ -1552,6 +1528,17 @@
         }
         return true;
     }
+    /* the row nearer the viewer (lower on screen): drawn over the road art,
+       its mate under it — the viewer's bridgeNearG / bridgeG split. Default
+       orientation: a +y road's west row, a +x road's south row. */
+    function bridgeNearRow() {
+        var site = BRIDGE_REF[BRIDGE.site], best = -1, bv = -Infinity;
+        for (var i = 0; i < site.segs.length; i++) {
+            var v = site.axis === 'y' ? -site.segs[i].x : site.segs[i].y;
+            if (v > bv) { bv = v; best = bridgeRowOf(i); }
+        }
+        return best;
+    }
     function bridgeRowOf(i) {
         var site = BRIDGE_REF[BRIDGE.site];
         return BRIDGE.rowKeys.indexOf(site.axis + ':' + (site.axis === 'y'
@@ -1597,6 +1584,9 @@
             if (pass === 'bot' && !BRIDGE.bottom) continue;
             if (pass === 'top' && !BRIDGE.top) continue;
             var name = pass === 'bot' ? s.bot : s.top;
+            if (!name) continue;              // no base piece in the per-cell model
+            if ((pass === 'near' || pass === 'far') &&
+                (r === bridgeNearRow()) !== (pass === 'near')) continue;
             var art = BRIDGE_ART[name];
             var ox = s.x + BRIDGE.segOff[i].x + (pass === 'bot' ? BRIDGE.segBase[i].x : 0);
             var oy = s.y + BRIDGE.segOff[i].y + (pass === 'bot' ? BRIDGE.segBase[i].y : 0);
@@ -1679,11 +1669,13 @@
             ctx.lineWidth = 1;
         }
 
-        /* 2. deck rows, then the road cells over the deck — the viewer's
-           order: bridgeG after the ground, raisedG's crossing cells last */
+        /* 2. far deck row, the road cells, then the near deck row — the
+           viewer's order: bridgeG, raisedG's crossing cells, bridgeNearG */
         var site = BRIDGE_REF[BRIDGE.site];
-        var order = BRIDGE.railOverRoad ? ['road'].concat(BRIDGE_ORDER.map(function (o) { return o.key; }))
-            : BRIDGE_ORDER.map(function (o) { return o.key; }).concat(['road']);
+        /* far row, road cells, near row (the viewer's bridgeG / raisedG /
+           bridgeNearG); the rail toggle draws the road under everything */
+        var order = BRIDGE.railOverRoad ? ['road', 'bot', 'top']
+            : ['bot', 'far', 'road', 'near'];
         for (var oi = 0; oi < order.length; oi++) {
             var pass = order[oi];
             if (pass === 'road') {
