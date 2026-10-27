@@ -39,11 +39,17 @@ Their canvas-draw code is re-implemented on Pixi inside
   `fillC` layer under all art, so their anti-seam overhang never paints over
   a neighbour's art), the road and river cells, the manholes, avenue cells,
   and the two zoomed-out flat atlas blits (`terrain.flatInfo()`). Road
-  (`Road art·spec`) and river (`Water art`) cells are drawn the engine's
+  (`Road art·spec`), river (`Water art`) and dirt (`Dirt art`) cells are
+  drawn the engine's
   way: four quadrant quads per 4×4 cell, each a 4-vertex `PIXI.Mesh` whose
   UVs are the engine's own quad table (`ROAD_QUADS` / `RIVER_QUADS`) on the
   1024² `roadrivertiles-100` sheet — one resample, ≈1:1 at rest zoom
-  (notes/09 §6). Legacy road-art modes 1–3 use a 512² cleaned copy (each
+  (notes/09 §6). The dirt layers reuse those same tables on the same-
+  lattice dirt sheet (`dirtroadtilesheet`), art following the game's pack
+  layering — the permanent WildWest `.rgb` (decoded at runtime) normally,
+  the snowy XMAS `.png` in winter: `dirtroad` via the
+  road model, `dirt` via the river model, each probing its own saved grid
+  (notes/09 §11). Legacy road-art modes 1–3 use a 512² cleaned copy (each
   used slot clipped to its inscribed diamond, sprites rotate 45° + scale).
 * **Bridges** — where a road corridor crosses the river: one 3-lamppost
   `bridgetop` section per road cell over water on each side of the road

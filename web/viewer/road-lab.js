@@ -629,10 +629,12 @@
         wv.onerror = function () { WATER.waveFailed = true; renderWater(); };
         wv.src = WAVE_ASSET;
     }
-    /* source bbox of one state quad, in sheet px (512 space) */
-    function quadBox(st) {
-        var xs = [0, 1, 2, 3].map(function (i) { return RIVER_QUADS[st][i][0]; });
-        var ys = [0, 1, 2, 3].map(function (i) { return RIVER_QUADS[st][i][1]; });
+    /* source bbox of one state quad, in sheet px (512 space); tbl defaults
+       to the river table (water tab), the dirt tab passes ROAD_QUADS */
+    function quadBox(st, tbl) {
+        tbl = tbl || RIVER_QUADS;
+        var xs = [0, 1, 2, 3].map(function (i) { return tbl[st][i][0]; });
+        var ys = [0, 1, 2, 3].map(function (i) { return tbl[st][i][1]; });
         var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
         var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
         return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
@@ -650,8 +652,8 @@
        while a u-mirror leaves the S band open. In canvas terms the flip
        swaps the two rows of the CTM and negates them (the road tab reaches
        the same map by negating x inside a rotate(45) frame). */
-    function uvCTM(st, x0, y0, size, flip) {
-        var q = RIVER_QUADS[st];
+    function uvCTM(st, x0, y0, size, flip, tbl) {
+        var q = (tbl || RIVER_QUADS)[st];
         var L = q[2], T = q[0], B = q[3];
         var Ex = B[0] - L[0], Ey = B[1] - L[1];       // u axis
         var Sx = T[0] - L[0], Sy = T[1] - L[1];       // v axis
@@ -682,9 +684,9 @@
             LAB_BASE_MTX[2], LAB_BASE_MTX[3], LAB_BASE_MTX[4], LAB_BASE_MTX[5]);
         else ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
-    function blitQuad(ctx, im, st, x0, y0, size, flip, raw) {
-        var k = im.naturalWidth / 512;
-        var bx = quadBox(st);
+    function blitQuad(ctx, im, st, x0, y0, size, flip, raw, tbl) {
+        var k = (im.naturalWidth || im.width) / 512;   // Image, or a decoded .rgb canvas
+        var bx = quadBox(st, tbl);
         ctx.save();
         ctx.beginPath();
         ctx.rect(x0, y0, size, size);
@@ -692,7 +694,7 @@
         if (raw) {
             ctx.drawImage(im, bx.x * k, bx.y * k, bx.w * k, bx.h * k, x0, y0, size, size);
         } else {
-            var m = uvCTM(st, x0, y0, size, flip);
+            var m = uvCTM(st, x0, y0, size, flip, tbl);
             ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
             ctx.drawImage(im, bx.x * k, bx.y * k, bx.w * k, bx.h * k,
                 bx.x, bx.y, bx.w, bx.h);
@@ -707,6 +709,160 @@
             blitQuad(ctx, im, rivPick(pass, qn),
                 x0 + (qn === 'ne' || qn === 'es' ? size / 2 : 0),
                 y0 + (qn === 'ws' || qn === 'es' ? size / 2 : 0), size / 2, f, WATER.raw);
+        });
+    }
+
+    /* ---------------- dirt sheet (DirtRoadDrawing / DirtRiverDrawing) ----
+       The engine's dirt tile sheet: landinfo.xml names ONE static texture,
+       <RoadMap texture="DirtRoadTileSheet.rgb" type="dirt" drawer="road"
+       origin="0,-7" size="37,64"> (plus the type="dirtriver" drawer="river"
+       twin), unchanged from gamescripts r308122 through the current
+       r497432 — the art is resolved from whichever pack ships the file, so
+       PACKS layer it: WildWest_RiverRoadTiles (sandy .rgb) is the permanent
+       normal-season art in the live game, and the XMAS2016/2017 LTD packs
+       re-ship the same name as a brown, snow-speckled .png that overrides
+       it during Christmas. Base manifests ship neither.
+       landinfo.xml (gamescripts): RoadEntry type="dirt" SaveInfo map="dirt"
+       savedType="road" drawer DirtRoadDrawing, and type="dirtriver" drawer
+       DirtRiverDrawing — the viewer's dirtroad (park footpaths) and dirt
+       (dirt-river scatter) layers respectively. DirtRoadDrawing is Road-
+       Drawer's own subclass (same selector body, own UV table 0x400520 —
+       the ROAD_QUADS below, byte-identical to the road table the viewer
+       ports) and DirtRiverDrawing likewise the RiverDrawer body with the
+       0x3fc320 table: the dirt sheet sits on the SAME 13-cell lattice as
+       roadrivertiles — landinfo declares the same origin/size as road/
+       river, per-slot dark-boundary ray measurements matched the road
+       sheet within ±1–2 px at all 11 states (2026-10-27, evidence
+       mapdump/registration/m4-dirt-sheet-slots.png and
+       m4-dirt-ww-vs-xmas-slots.png) — and a full .rodata
+       parallelogram-quad scan of libscorpio.so found only the two known
+       tables. So both dirt layers are the proven quadrant models with a
+       different texture; nothing new to prove. ------------------------- */
+    var DIRT_PACKS = [   // engine pack-priority: normal art + winter override
+        ['WildWest (base / normal)', '../assets/dlc/WildWest_RiverRoadTiles-100-r308122/data/dirtroadtilesheet.rgb'],
+        ['XMAS2017 LTD (winter override)', '../assets/dlc/XMAS2017_RiverRoadTiles_LTD-100-r492453/images/dirtroadtilesheet.png'],
+    ];
+    var ROAD_QUADS = [    // [T, R, L, B], RoadDrawer UV table .rodata 0x400520 x512
+        [[205.72, 367.73], [269.22, 400.71], [142.38, 400.72], [205.77, 433.83]],
+        [[205.50, 292.78], [268.59, 325.77], [142.22, 325.78], [205.57, 358.56]],
+        [[137.28, 329.73], [200.84, 362.76], [74.27, 362.78], [137.39, 395.94]],
+        [[69.79, 292.81], [133.03, 325.81], [6.81, 325.86], [69.91, 358.81]],
+        [[137.34, 255.60], [200.85, 288.64], [74.25, 288.68], [137.43, 321.62]],
+        [[205.76, 144.61], [269.14, 177.66], [142.24, 177.62], [205.79, 210.74]],
+        [[68.65, 144.68], [132.12, 177.71], [5.35, 177.70], [68.75, 210.82]],
+        [[203.73, 70.57], [267.20, 103.69], [140.49, 103.74], [203.70, 136.71]],
+        [[206.29, 218.26], [269.53, 251.08], [142.68, 251.17], [206.21, 283.68]],
+        [[69.45, 218.63], [133.13, 251.75], [6.56, 251.68], [69.75, 284.89]],
+        [[137.71, 181.61], [200.92, 214.74], [74.38, 214.77], [137.62, 247.63]],
+    ];
+    /* Two INDEPENDENT views: the viewer's `dirtroad` (landinfo type="dirt",
+       DirtRoadDrawing = RoadDrawer body) and `dirt` (type="dirtriver",
+       DirtRiverDrawing = RiverDrawer body) are different layers with
+       different selector bodies, so each gets its own tab, state and sheet
+       choice. (The engine shares one texture name between them, but the
+       per-view sheet button lets you test e.g. "dirtroad winter-only art?"
+       against "dirt has normal-season art".) */
+    function newDirtView(model, cvId, pre) {
+        return {
+            model: model, cv: cvId, pre: pre,
+            img: null, failed: false, pack: 0, sheet: DIRT_PACKS[0][1],
+            zoom: 2, grid: true, raw: false,
+            mask: { e: true, w: true, n: false, s: false },
+            probe: { e: false, w: false, n: false, s: false },
+            force: -1, forceAuto: true,
+            flip: false,
+        };
+    }
+    var DIRT = newDirtView('road', 'cv-dirt', 'd');       // viewer dirtroad
+    var DIRTR = newDirtView('river', 'cv-dirt2', 'dr');    // viewer dirt
+    function dEffPass(S) {
+        var o = {};
+        for (var d of ['e', 'w', 'n', 's']) o[d] = !!(S.mask[d] || S.probe[d]);
+        return o;
+    }
+    function dPick(S, pass, q) {
+        if (S.forceAuto)
+            return (S.model === 'road' ? engStates(pass) : rivStates(pass))[q];
+        return S.force;
+    }
+    function dFlip(S, pass, q) {
+        return (S.model === 'road' ? engFlip(pass, q) : rivFlip(pass, q)) !== S.flip;
+    }
+    function dTable(S) { return S.model === 'road' ? ROAD_QUADS : RIVER_QUADS; }
+    /* .rgb = the game's raw texture blob, per tools/extract_assets.py
+       rgb_to_rgba (the oracle — it produced every PNG under web/assets):
+       header u32 flags LE, u16 w, u16 h; payload w*h*4 = straight 8-bit
+       RGBA, payload w*h*2 = RGBA4444 pairs byte0=(B<<4)|A, byte1=(R<<4)|G
+       with nibbles expanded x17. Header flag 0x2000 claims premultiplied
+       and 0x4000 straight — the claim lies on some files (the dirt sheet
+       sets 0x2000 yet stores c4 > a4, impossible under premultiplication),
+       so scan for that violation and trust the data. An RGB565 read of
+       4444 data is what made the dirt tiles pink/purple.
+       Pure: returns {w, h, data} (RGBA Uint8ClampedArray). The viewer
+       loader carries the identical core; smoke drift-guards the two. */
+    function decodeRgb(buf) {
+        var dv = new DataView(buf);
+        var flags = dv.getUint32(0, true), w = dv.getUint16(4, true), h = dv.getUint16(6, true);
+        var n = w * h, len = buf.byteLength - 8;
+        if (len !== n * 2 && len !== n * 4) throw new Error('bad .rgb payload ' + len + ' for ' + w + 'x' + h);
+        var data = new Uint8ClampedArray(n * 4), o = 8, i, p;
+        if (len === n * 4) {
+            for (i = 0; i < n * 4; i++) data[i] = dv.getUint8(8 + i);
+            return { w: w, h: h, data: data };
+        }
+        var premul = !!(flags & 0x2000) && !(flags & 0x4000);
+        if (premul) {
+            for (i = 0; i < n; i++) {
+                var b0 = dv.getUint8(8 + i * 2), b1 = dv.getUint8(8 + i * 2 + 1), a4 = b0 & 15;
+                if (a4 && a4 < 15 && ((b0 >> 4) > a4 || (b1 >> 4) > a4 || (b1 & 15) > a4)) { premul = false; break; }
+            }
+        }
+        for (i = 0, p = 0; i < n; i++, o += 2, p += 4) {
+            var c0 = dv.getUint8(o), c1 = dv.getUint8(o + 1), a = c0 & 15;
+            var r = (c1 >> 4) * 17, g = (c1 & 15) * 17, b = (c0 >> 4) * 17;
+            if (premul && a && a < 15) {          // un-premultiply the semi-transparent subset
+                r = Math.min(255, Math.round((c1 >> 4) * 255 / a));
+                g = Math.min(255, Math.round((c1 & 15) * 255 / a));
+                b = Math.min(255, Math.round((c0 >> 4) * 255 / a));
+            }
+            data[p] = r; data[p + 1] = g; data[p + 2] = b; data[p + 3] = a * 17;
+        }
+        return { w: w, h: h, data: data };
+    }
+    var DIRT_IMGS = {};                      // decoded-sheet cache by path (views share it)
+    function loadDirtPack(S) {
+        S.failed = false; S.img = null;
+        S.sheet = DIRT_PACKS[S.pack][1];
+        var cached = DIRT_IMGS[S.sheet];
+        if (cached) { S.img = cached; renderDirt(S); return; }
+        if (typeof Image === 'undefined') { renderDirt(S); return; }   // harness
+        if (/\.rgb$/.test(S.sheet) && typeof fetch === 'function') {
+            fetch(S.sheet)
+                .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+                .then(function (buf) {
+                    var d = decodeRgb(buf), cv = document.createElement('canvas');
+                    cv.width = d.w; cv.height = d.h;
+                    var cx = cv.getContext('2d');
+                    cx.putImageData(new ImageData(d.data, d.w, d.h), 0, 0);
+                    cv._src = S.sheet;               // smoke: source tag
+                    DIRT_IMGS[S.sheet] = cv; S.img = cv; renderDirt(S);
+                })
+                .catch(function () { S.failed = true; renderDirt(S); });
+            return;
+        }
+        var im = new Image();
+        im.onload = function () { DIRT_IMGS[S.sheet] = im; S.img = im; renderDirt(S); };
+        im.onerror = function () { S.failed = true; renderDirt(S); };
+        im.src = S.sheet;
+    }
+    /* dirt cell in the engine model: 4 quadrant quads on the dirt sheet */
+    function blitDirtCell(ctx, im, S, pass, x0, y0, size) {
+        var tbl = dTable(S);
+        ['nw', 'ne', 'ws', 'es'].forEach(function (qn) {
+            blitQuad(ctx, im, dPick(S, pass, qn),
+                x0 + (qn === 'ne' || qn === 'es' ? size / 2 : 0),
+                y0 + (qn === 'ws' || qn === 'es' ? size / 2 : 0), size / 2,
+                dFlip(S, pass, qn), S.raw, tbl);
         });
     }
 
@@ -1049,6 +1205,186 @@
         syncWaterReadouts();
     }
 
+    /* ---------------- dirt tabs render (one view per dirt layer) -------- */
+
+    function renderDirt(S) {
+        S = S || DIRT;
+        var cv = $(S.cv), ctx = cv.getContext('2d');
+        var W1 = cv.width;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = '#101216';
+        ctx.fillRect(0, 0, W1, cv.height);
+        ctx.font = '11px ui-monospace, Menlo, Consolas, monospace';
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
+        if (!S.img) {
+            ctx.fillStyle = '#cfd6df';
+            ctx.fillText(S.failed ? 'sheet failed to load: ' + S.sheet
+                : 'loading sheet…', 12, 12);
+            return;
+        }
+        var road = S.model === 'road';
+        var tbl = dTable(S), slots = road ? STATES : RIVER_SLOTS;
+        var whats = road ? STATE_WHAT : RIVER_WHAT;
+        var im = S.img, iw = im.naturalWidth || im.width, ih = im.naturalHeight || im.height;
+        var k = iw / 512;                              // Image or decoded .rgb canvas
+        var y = 6;
+        function label(t, x, yy) { ctx.fillStyle = '#cfd6df'; ctx.fillText(t, x, yy); }
+        function latticeRect(cx, cy, col) {
+            ctx.strokeStyle = col;
+            ctx.strokeRect(cx - 63.5 * k, cy - 33 * k, 127 * k, 66 * k);
+        }
+
+        /* --- 1. the dirt sheet with the active table's quads on the shared
+           lattice (same origin/formula as the water tab's roadrivertiles) --- */
+        label('dirtroadtilesheet ' + iw + '×' + ih +
+            ' — ' + (road ? 'road' : 'river') + ' slots (cyan) on the SAME lattice as ' +
+            'roadrivertiles (±1–2 px at all 11 states, rays 2026-10-27)', 8, y);
+        y += 14;
+        var sx = 8, sy = y;
+        ctx.drawImage(im, sx, sy);
+        if (S.grid) {
+            for (var r = -5; r <= 9; r++) {
+                for (var c = -4; c <= 4; c++) {
+                    latticeRect(sx + (274 + 135 * c + ((((r % 2) + 2) % 2)) * 67.5) * k,
+                        sy + (140 + 37 * r) * k, 'rgba(120,200,255,0.18)');
+                }
+            }
+            for (var st = 0; st < tbl.length; st++) {
+                var bx = quadBox(st, tbl);
+                ctx.strokeStyle = '#7ee0ff';
+                ctx.strokeRect(sx + bx.x * k, sy + bx.y * k, bx.w * k, bx.h * k);
+                var ux = sx + (274 + 135 * slots[st][0] + ((((slots[st][1] % 2) + 2) % 2)) * 67.5) * k;
+                var uy = sy + (140 + 37 * slots[st][1]) * k;
+                ctx.beginPath();                       // the inscribed diamond = the UV quad
+                ctx.moveTo(ux - 63.5 * k, uy); ctx.lineTo(ux, uy - 33 * k);
+                ctx.lineTo(ux + 63.5 * k, uy); ctx.lineTo(ux, uy + 33 * k);
+                ctx.closePath(); ctx.stroke();
+                ctx.fillStyle = '#7ee0ff';
+                ctx.fillText(String(st), ux - 63.5 * k + 2, uy - 33 * k + 2);
+            }
+        }
+        y += ih + 10;
+
+        /* --- 2. the 11 slots enlarged: raw box | as the GPU samples it --- */
+        var zw = 127 * S.zoom, zh = 66 * S.zoom;
+        label('the 11 ' + (road ? 'RoadDrawer (0x400520)' : 'RiverDrawer (0x3fc320)') +
+            ' slots on the dirt sheet — left: raw sheet box; right: the parallelogram the GPU samples', 8, y);
+        y += 14;
+        for (st = 0; st < tbl.length; st++) {
+            var tags = '';
+            if (S.forceAuto) {
+                var es0 = road ? engStates(dEffPass(S)) : rivStates(dEffPass(S));
+                if (es0.nw === st || es0.ne === st || es0.ws === st || es0.es === st) tags += '  [in use]';
+            } else if (st === S.force) tags += '  [FORCED]';
+            label('state ' + st + ' — ' + whats[st] + ' (c,r=' + slots[st] + ')' + tags, 8, y);
+            y += 14;
+            ctx.fillStyle = P.colors.grass;
+            ctx.fillRect(8, y, zw, zh);
+            var dx = 24 + zw;
+            ctx.fillRect(dx, y, zh, zh);
+            var b2 = quadBox(st, tbl);
+            ctx.drawImage(im, b2.x * k, b2.y * k, b2.w * k, b2.h * k, 8, y, zw, zh);
+            blitQuad(ctx, im, st, dx, y, zh, false, false, tbl);
+            ctx.strokeStyle = '#3a414c';
+            ctx.strokeRect(8.5, y + 0.5, zw - 1, zh - 1);
+            ctx.strokeRect(dx + 0.5, y + 0.5, zh - 1, zh - 1);
+            label('as sampled', dx, y + zh + 2);
+            y += zh + 18;
+        }
+
+        /* --- 3. engine model: one cell = 4 quadrant quads, one state each --- */
+        var pass = dEffPass(S);
+        label('engine model — ' + (road
+            ? 'dirtroad footpaths: DirtRoadDrawing runs RoadDrawer’s body (nibble OR neighbour-solid, kerb inside the art)'
+            : 'dirt-river scatter: DirtRiverDrawing runs RiverDrawer’s body (bank on the closed edge, diagonal guards)') +
+            '. mask E/W/N/S = ' +
+            (pass.e ? 'E' : '-') + (pass.w ? 'W' : '-') + (pass.n ? 'N' : '-') + (pass.s ? 'S' : '-') +
+            (S.forceAuto ? ' — engine table' : ' — FORCED state ' + S.force), 8, y);
+        y += 16;
+        var size = 132, gap = 16;
+        var live = [{ e: pass.e, w: pass.w, n: pass.n, s: pass.s, lbl: 'live' }];
+        var demo = [{ e: 1, w: 1, n: 0, s: 0, lbl: 'E+W run' },
+            { e: 0, w: 0, n: 1, s: 1, lbl: 'N+S run' },
+            { e: 1, w: 0, n: 0, s: 1, lbl: 'E+S bend' },
+            { e: 0, w: 0, n: 0, s: 0, lbl: 'isolated' }];
+        for (var di = 0; di < live.length + demo.length; di++) {
+            var dcase = di < live.length ? live[di] : demo[di - live.length];
+            var x0 = 8 + di * (size + gap), yy = y + 15;
+            label(dcase.lbl, x0, y);
+            ctx.fillStyle = P.colors.grass;
+            ctx.fillRect(x0, yy, size, size);
+            blitDirtCell(ctx, im, S, { e: !!dcase.e, w: !!dcase.w, n: !!dcase.n, s: !!dcase.s }, x0, yy, size);
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.strokeRect(x0 + 0.5, yy + 0.5, size - 1, size - 1);
+            ctx.beginPath();
+            ctx.moveTo(x0 + size / 2, yy); ctx.lineTo(x0 + size / 2, yy + size);
+            ctx.moveTo(x0, yy + size / 2); ctx.lineTo(x0 + size, yy + size / 2);
+            ctx.stroke();
+            var dsp = { e: !!dcase.e, w: !!dcase.w, n: !!dcase.n, s: !!dcase.s };
+            var stt = S.forceAuto
+                ? (road ? engStates(dsp) : rivStates(dsp))
+                : { nw: S.force, ne: S.force, ws: S.force, es: S.force };
+            var mk = function (qn) {
+                return qn + stt[qn] + ((road ? engFlip(dsp, qn) : rivFlip(dsp, qn)) ? '*' : '');
+            };
+            label([mk('nw'), mk('ne'), mk('ws'), mk('es')].join(' '), x0, yy + size + 2);
+        }
+        y += 15 + size + 20;
+
+        var need = Math.max(400, y);
+        if (need !== cv.height) {
+            cv.height = need;
+            if (S._redo) return;
+            S._redo = true;
+            try { renderDirt(S); } finally { S._redo = false; }
+            return;
+        }
+        syncDirtReadouts(S);
+    }
+
+    function formatDirtRef(S, tag) {
+        S = S || DIRT;
+        var dp = dEffPass(S);
+        var road = S.model === 'road';
+        var tbl = dTable(S), slots = road ? STATES : RIVER_SLOTS;
+        return '\n' + (tag || 'DIRT_ART') + ' = {' + (road ? '                   // RE’d dirt model — DirtRoadDrawing, notes/09 §11' : '                // RE’d dirt model — DirtRiverDrawing, notes/09 §11') + '\n' +
+            '  sheet: "dirtroadtilesheet",          // landinfo texture="DirtRoadTileSheet.rgb", static name; packs layer it: WildWest_RiverRoadTiles .rgb = permanent normal-season art (RGBA4444), XMAS2016/17 LTD .png = winter override; base ships none\n' +
+            '  lattice: "identical to roadrivertiles (dark-boundary rays ±1–2 px at all 11 states, 2026-10-27; .rodata quad scan found only the two known tables)",\n' +
+            '  layers: {\n' +
+            '    dirtroad: { landinfo: "dirt / DirtRoadDrawing (RoadDrawer subclass)", uvTable: "0x400520", model: "road" },\n' +
+            '    dirt:     { landinfo: "dirtriver / DirtRiverDrawing (RiverDrawer subclass)", uvTable: "0x3fc320", model: "river" },\n' +
+            '  },\n' +
+            '  view: "' + (road ? 'dirtroad' : 'dirt') + '",                       // lab view; model button removed — one tab per layer\n' +
+            '  model: "' + S.model + '",                       // dirtroad = road quadrants, dirt = river quadrants\n' +
+            '  slots: {   // [T,R,L,B] in sheet px, sampled from the engine table\n' +
+            tbl.map(function (q, i) {
+                return '    ' + i + ': [' + q.map(function (p) { return '[' + p[0] + ', ' + p[1] + ']'; }).join(', ') +
+                    '],   // (c,r=' + slots[i] + ')';
+            }).join('\n') + '\n' +
+            '  },\n' +
+            '  cellMask: [' + ((dp.e ? 1 : 0) | (dp.w ? 2 : 0) | (dp.n ? 4 : 0) | (dp.s ? 8 : 0)) + '],                    // live dirt mask\n' +
+            '  force: ' + (S.forceAuto ? '-1' : S.force) + ',                          // -1 = engine table\n' +
+            '  flip: ' + (S.flip ? 'true' : 'false') + ',                       // user mirror; engine flip = anti-diagonal (u,v)->(1-v,1-u)\n' +
+            '}\n';
+    }
+
+    function syncDirtReadouts(S) {
+        var p = S.pre;
+        $(p + '-zoom-v').textContent = String(S.zoom);
+        $(p + '-force-v').textContent = S.forceAuto ? 'auto' : String(S.force);
+        $(p + '-force-auto').className = S.forceAuto ? 'on' : '';
+        $(p + '-flip').className = S.flip ? 'on' : '';
+        $(p + '-raw').className = S.raw ? 'on' : '';
+        $(p + '-grid').className = S.grid ? 'on' : '';
+        var dirs = ['e', 'w', 'n', 's'];
+        for (var i = 0; i < dirs.length; i++) {
+            $(p + 'btn-mask-' + dirs[i]).className = S.mask[dirs[i]] ? 'on' : '';
+            $(p + 'btn-probe-' + dirs[i]).className = S.probe[dirs[i]] ? 'on' : '';
+        }
+        if ($(p + '-pack')) $(p + '-pack').textContent = 'sheet: ' + DIRT_PACKS[S.pack][0];
+    }
+
     /* ---------------- reference block ---------------- */
 
     function formatRef() {
@@ -1098,7 +1434,9 @@
             '  force: ' + (ART.forceAuto ? '-1' : ART.force) + ',                          // -1 = engine table\n' +
             '  flip: ' + (ART.flip ? 'true' : 'false') + ',                        // mirror the sampled rect (w5 swap)\n' +
             '}\n' +
-            formatWaterRef();
+            formatWaterRef() +
+            formatDirtRef(DIRT, 'DIRT_ART') +
+            formatDirtRef(DIRTR, 'DIRT_ART_RIVER');
     }
     function formatWaterRef() {
         var wp = wEffPass();
@@ -1153,6 +1491,8 @@
         renderPave();
         renderArt();
         renderWater();
+        renderDirt(DIRT);
+        renderDirt(DIRTR);
         $('refout').textContent = formatRef();
         syncReadouts();
     }
@@ -1341,6 +1681,37 @@
         })(DIRS[wi]);
     }
 
+    /* ---- dirt inspector wiring: one control cluster per view (dirtroad
+       tab = DIRT, dirt tab = DIRTR), bound through a shared factory ---- */
+    function bindDirtView(S) {
+        var p = S.pre;
+        bindStepper(p + '-zoom-minus', function () { S.zoom = Math.max(1, S.zoom - 1); renderDirt(S); });
+        bindStepper(p + '-zoom-plus', function () { S.zoom = Math.min(3, S.zoom + 1); renderDirt(S); });
+        bindStepper(p + '-force-minus', function () {
+            S.force = S.forceAuto ? 0 : Math.max(0, S.force - 1);
+            S.forceAuto = false;
+            renderDirt(S);
+        });
+        bindStepper(p + '-force-plus', function () {
+            S.force = S.forceAuto ? 0 : Math.min(10, S.force + 1);
+            S.forceAuto = false;
+            renderDirt(S);
+        });
+        bindStepper(p + '-force-auto', function () { S.forceAuto = !S.forceAuto; renderDirt(S); });
+        bindStepper(p + '-flip', function () { S.flip = !S.flip; renderDirt(S); });
+        bindStepper(p + '-raw', function () { S.raw = !S.raw; renderDirt(S); });
+        bindStepper(p + '-grid', function () { S.grid = !S.grid; renderDirt(S); });
+        bindStepper(p + '-pack', function () { S.pack = (S.pack + 1) % DIRT_PACKS.length; loadDirtPack(S); });
+        for (var di2 = 0; di2 < DIRS.length; di2++) {
+            (function (d) {
+                bindStepper(p + 'btn-mask-' + d, function () { S.mask[d] = !S.mask[d]; renderDirt(S); });
+                bindStepper(p + 'btn-probe-' + d, function () { S.probe[d] = !S.probe[d]; renderDirt(S); });
+            })(DIRS[di2]);
+        }
+    }
+    bindDirtView(DIRT);
+    bindDirtView(DIRTR);
+
     $('btn-copy').addEventListener('click', function () {
         var txt = formatRef();
         var done = function () {
@@ -1368,8 +1739,8 @@
        tab 3 = the original footpath/carriageway tuning rig. Panes use
        display:contents so their sections remain flex items of <main>;
        [hidden] collapses the pane. */
-    var TABS = ['tab-sheet', 'tab-water', 'tab-bridge', 'tab-tune'];
-    var TABBTN = { 'tab-sheet': 'tab-btn-sheet', 'tab-water': 'tab-btn-water', 'tab-bridge': 'tab-btn-bridge', 'tab-tune': 'tab-btn-tune' };
+    var TABS = ['tab-sheet', 'tab-water', 'tab-dirt', 'tab-dirt2', 'tab-bridge', 'tab-tune'];
+    var TABBTN = { 'tab-sheet': 'tab-btn-sheet', 'tab-water': 'tab-btn-water', 'tab-dirt': 'tab-btn-dirt', 'tab-dirt2': 'tab-btn-dirt2', 'tab-bridge': 'tab-btn-bridge', 'tab-tune': 'tab-btn-tune' };
     var activeTab = 'tab-sheet';
     function setTab(id) {
         if (TABS.indexOf(id) < 0) return;
@@ -1820,6 +2191,8 @@
     renderAll();
     loadPack();                              // inspector sheet (async; no-op in harness)
     loadWaterPack();                         // water tab sheet + wave atlas
+    loadDirtPack(DIRT);                      // dirtroad tab sheet (async; no-op in harness)
+    loadDirtPack(DIRTR);                     // dirt tab sheet
     loadBridgeImgs();                        // bridge tab art (async; no-op in harness)
     setTab('tab-sheet');                     // default tab
 
@@ -1833,6 +2206,10 @@
         RIVER_COVER: RIVER_COVER, RIVER_SLOTS: RIVER_SLOTS, WAVE_CELLS: WAVE_CELLS,
         uvCTM: uvCTM,
         wEffPass: wEffPass, rivPick: rivPick, quadBox: quadBox,
+        DIRT: DIRT, DIRTR: DIRTR, DIRT_PACKS: DIRT_PACKS, ROAD_QUADS: ROAD_QUADS,
+        decodeRgb: decodeRgb,
+        renderDirt: renderDirt, formatDirtRef: formatDirtRef, blitDirtCell: blitDirtCell,
+        dEffPass: dEffPass, dPick: dPick, dFlip: dFlip, dTable: dTable,
         BRIDGE: BRIDGE, BRIDGE_REF: BRIDGE_REF, BRIDGE_ART: BRIDGE_ART,
         BRIDGE_FIT: BRIDGE_FIT, bridgeApplyFit: bridgeApplyFit,
         renderBridge: renderBridge, bridgePieceRects: bridgePieceRects,

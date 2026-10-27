@@ -48,7 +48,11 @@
         composes a cell from the 11 slots — notes/08). tab 2: the river slots
         from the same sheet, presented the same way — RiverDrawer reuses
         RoadDrawer’s draw body, so the cell model is identical (notes/09).
-        tab 3: the footpath / carriageway tuning rig (one cell = 4×4 town
+        tab 3: the dirt road layer (dirtroad) and tab 4: the dirt layer — the two
+        dirt layers draw the same quadrant models on the same lattice from
+        dirtroadtilesheet (notes/09 §11).
+        tab 5: the road × river bridge rig. tab 6: the footpath /
+        carriageway tuning rig (one cell = 4×4 town
         tiles; ground truth: 4-bit masks from road-spec.json, E=1 W=2 N=4 S=8,
         'P' = pavement).</div>
 </header>
@@ -56,6 +60,8 @@
     <div class="grp"><span class="lbl">tab</span>
         <button id="tab-btn-sheet" data-tab="tab-sheet">sprite sheet</button>
         <button id="tab-btn-water" data-tab="tab-water">water / river</button>
+        <button id="tab-btn-dirt" data-tab="tab-dirt">dirt road</button>
+        <button id="tab-btn-dirt2" data-tab="tab-dirt2">dirt (river)</button>
         <button id="tab-btn-bridge" data-tab="tab-bridge">bridges</button>
         <button id="tab-btn-tune" data-tab="tab-tune">footpath / carriageway tuning</button>
     </div>
@@ -104,6 +110,57 @@
                 <div class="st"><button id="w-flip">flip</button>
                     <button id="w-raw">raw boxes</button>
                     <button id="w-grid" class="on">lattice</button></div>
+            </div>
+        </section>
+    </div>
+    <div id="tab-dirt" class="tabpane" hidden>
+        <section>
+            <h2>dirt road (viewer <code>dirtroad</code>) <small>landinfo RoadMap
+                texture="DirtRoadTileSheet.rgb" type="dirt" drawer="road" — DirtRoadDrawing runs
+                RoadDrawer's body: road quadrants 0x400520 on the SAME lattice as roadrivertiles
+                (dark-boundary rays ±1–2 px at all 11 states). The sheet: packs layer one static
+                name — WildWest_RiverRoadTiles .rgb (RGBA4444) is the permanent normal-season
+                art, XMAS2016/17_RiverRoadTiles_LTD .png the Christmas override (base ships
+                none)</small></h2>
+            <canvas id="cv-dirt" width="760" height="1200"></canvas>
+            <div class="ctl">
+                <div class="st"><button id="d-pack">sheet: WildWest (base / normal)</button></div>
+                <div class="st"><span class="lbl">zoom</span>
+                    <button id="d-zoom-minus">−</button><span class="v" id="d-zoom-v"></span><button id="d-zoom-plus">+</button></div>
+                <div class="st"><span class="lbl">force state</span>
+                    <button id="d-force-minus">−</button><span class="v" id="d-force-v"></span><button id="d-force-plus">+</button><button id="d-force-auto">auto</button></div>
+                <div class="st"><span class="lbl">cell mask</span>
+                    <button id="dbtn-mask-e">E</button><button id="dbtn-mask-w">W</button><button id="dbtn-mask-n">N</button><button id="dbtn-mask-s">S</button></div>
+                <div class="st"><span class="lbl">neighbour solid</span>
+                    <button id="dbtn-probe-e">E</button><button id="dbtn-probe-w">W</button><button id="dbtn-probe-n">N</button><button id="dbtn-probe-s">S</button></div>
+                <div class="st"><button id="d-flip">flip</button>
+                    <button id="d-raw">raw boxes</button>
+                    <button id="d-grid" class="on">lattice</button></div>
+            </div>
+        </section>
+    </div>
+    <div id="tab-dirt2" class="tabpane" hidden>
+        <section>
+            <h2>dirt (viewer <code>dirt</code>) <small>landinfo RoadMap
+                texture="DirtRoadTileSheet.rgb" type="dirtriver" drawer="river" — DirtRiverDrawing
+                runs RiverDrawer's body: river quadrants 0x3fc320 on the SAME lattice as
+                roadrivertiles (dark-boundary rays ±1–2 px at all 11 states). Same sheet file as
+                the dirt road tab (the engine shares one texture name), own view state and own
+                sheet choice</small></h2>
+            <canvas id="cv-dirt2" width="760" height="1200"></canvas>
+            <div class="ctl">
+                <div class="st"><button id="dr-pack">sheet: WildWest (base / normal)</button></div>
+                <div class="st"><span class="lbl">zoom</span>
+                    <button id="dr-zoom-minus">−</button><span class="v" id="dr-zoom-v"></span><button id="dr-zoom-plus">+</button></div>
+                <div class="st"><span class="lbl">force state</span>
+                    <button id="dr-force-minus">−</button><span class="v" id="dr-force-v"></span><button id="dr-force-plus">+</button><button id="dr-force-auto">auto</button></div>
+                <div class="st"><span class="lbl">cell mask</span>
+                    <button id="drbtn-mask-e">E</button><button id="drbtn-mask-w">W</button><button id="drbtn-mask-n">N</button><button id="drbtn-mask-s">S</button></div>
+                <div class="st"><span class="lbl">neighbour solid</span>
+                    <button id="drbtn-probe-e">E</button><button id="drbtn-probe-w">W</button><button id="drbtn-probe-n">N</button><button id="drbtn-probe-s">S</button></div>
+                <div class="st"><button id="dr-flip">flip</button>
+                    <button id="dr-raw">raw boxes</button>
+                    <button id="dr-grid" class="on">lattice</button></div>
             </div>
         </section>
     </div>
@@ -210,6 +267,6 @@
     <pre id="refout"></pre>
 </div>
 <script src="../js/camera.js"></script>
-<script src="road-lab.js?v=19"></script>
+<script src="road-lab.js?v=23"></script>
 </body>
 </html>

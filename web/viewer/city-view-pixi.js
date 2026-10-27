@@ -486,6 +486,102 @@
         im.onerror = function () { /* winter keeps the normal sheet */ };
         im.src = B + 'assets/dlc/XMAS2017_RiverRoadTiles_LTD-100-r492453/images/iceroadtilesheet.png';
     })();
+    /* ---- dirt sheet art (DirtRoadDrawing / DirtRiverDrawing, 2026-10-27) ----
+       dirtroadtilesheet.png/.rgb re-uses the roadrivertiles lattice EXACTLY:
+       per-slot dark-boundary ray measurements on the two sheets agree within
+       ±1–2 px at all 11 road states (mapdump/registration/m4-dirt-sheet-*.png),
+       so ROAD_QUADS (0x400520) and RIVER_QUADS (0x3fc320) address it as-is —
+       no third UV table exists in the binary (full .rodata parallelogram scan
+       finds only the two; ray + contact evidence mapdump/registration/
+       m4-dirt-sheet-*.png and m4-dirt-ww-vs-xmas-*.png).
+       landinfo.xml is the provenance authority: <RoadMap
+       texture="DirtRoadTileSheet.rgb" type="dirt" drawer="road"
+       origin="0,-7" size="37,64"> (and the type="dirtriver" drawer="river"
+       twin) — the texture NAME is static across seasons (identical in
+       gamescripts r308122 → r497432; the types appeared with WildWest-2016,
+       absent in 2015's r61251) and origin/size match road/river exactly.
+       "DirtRoadTileSheet" resolves from the installed pack set, so the art
+       is PACK LAYERING, not code branching: exactly two packs ship it —
+       WildWest_RiverRoadTiles (sandy .rgb, RGBA4444, avg RGB 177,146,83 —
+       permanent normal-season art in the live game) and XMAS2016/2017_
+       RiverRoadTiles_LTD (brown PNG with 0.7% snow specks, the Christmas
+       override); base manifests ship none. dirtSheetTex() mirrors that
+       layering: winter → XMAS PNG, everything else → WildWest .rgb.
+       landinfo.xml: Dirt type="dirt" SaveInfo map="dirt" savedType="road"
+       (drawer DirtRoadDrawing) and DirtRiver type="dirtriver"
+       (drawer DirtRiverDrawing) — the viewer's `dirtroad` and `dirt` layers
+       respectively. */
+    var dirtHiTex = null, dirtReady = false;        // XMAS winter override
+    var dirtBaseTex = null, dirtBaseReady = false;  // WildWest normal art
+    (function () {
+        var im = new Image();
+        im.onload = function () {
+            dirtHiTex = PIXI.Texture.from(im);
+            dirtReady = true;
+            if (started) buildGround();        // cells pick up the texture
+            markDirty();
+        };
+        im.onerror = function () { /* winter falls back to the WildWest art */ };
+        im.src = B + 'assets/dlc/XMAS2017_RiverRoadTiles_LTD-100-r492453/images/dirtroadtilesheet.png';
+    })();
+    (function () {
+        /* .rgb = the game's raw texture blob; decode mirrors
+           tools/extract_assets.py rgb_to_rgba (the oracle that produced
+           every PNG under web/assets): u32 flags LE, u16 w, u16 h, then
+           payload w*h*4 = straight 8-bit RGBA or w*h*2 = RGBA4444 pairs
+           byte0=(B<<4)|A, byte1=(R<<4)|G, nibbles expanded x17. Header
+           flag 0x2000 claims premultiplied but the dirt sheet stores
+           c4 > a4 (impossible for premul), so verify against the data.
+           An RGB565 read of 4444 data is what made the tiles pink/purple. */
+        if (typeof fetch !== 'function') return;
+        fetch(B + 'assets/dlc/WildWest_RiverRoadTiles-100-r308122/data/dirtroadtilesheet.rgb')
+            .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+            .then(function (buf) {
+                var dv = new DataView(buf);
+                var flags = dv.getUint32(0, true), w = dv.getUint16(4, true), h = dv.getUint16(6, true);
+                var n = w * h, len = buf.byteLength - 8;
+                if (len !== n * 2 && len !== n * 4) throw new Error('bad .rgb payload ' + len + ' for ' + w + 'x' + h);
+                var cv = document.createElement('canvas');
+                cv.width = w; cv.height = h;
+                var cx = cv.getContext('2d'), id = cx.createImageData(w, h), data = id.data, o = 8, i, p;
+                var premul = len === n * 2 && !!(flags & 0x2000) && !(flags & 0x4000);
+                if (premul) {
+                    for (i = 0; i < n; i++) {           // trust the data over the header
+                        var b0 = dv.getUint8(8 + i * 2), b1 = dv.getUint8(8 + i * 2 + 1), a4 = b0 & 15;
+                        if (a4 && a4 < 15 && ((b0 >> 4) > a4 || (b1 >> 4) > a4 || (b1 & 15) > a4)) { premul = false; break; }
+                    }
+                }
+                for (i = 0, p = 0; i < n; i++, p += 4) {
+                    if (len === n * 4) {                 // straight 8-bit RGBA
+                        data[p] = dv.getUint8(o); data[p + 1] = dv.getUint8(o + 1);
+                        data[p + 2] = dv.getUint8(o + 2); data[p + 3] = dv.getUint8(o + 3);
+                        o += 4;
+                        continue;
+                    }
+                    var c0 = dv.getUint8(o), c1 = dv.getUint8(o + 1), a = c0 & 15;
+                    var r = (c1 >> 4) * 17, g = (c1 & 15) * 17, b = (c0 >> 4) * 17;
+                    if (premul && a && a < 15) {         // un-premultiply the semi-transparent subset
+                        r = Math.min(255, Math.round((c1 >> 4) * 255 / a));
+                        g = Math.min(255, Math.round((c1 & 15) * 255 / a));
+                        b = Math.min(255, Math.round((c0 >> 4) * 255 / a));
+                    }
+                    data[p] = r; data[p + 1] = g; data[p + 2] = b; data[p + 3] = a * 17;
+                    o += 2;
+                }
+                cx.putImageData(id, 0, 0);
+                dirtBaseTex = PIXI.Texture.from(cv);
+                dirtBaseReady = true;
+                if (started) buildGround();        // cells pick up the texture
+                markDirty();
+            })
+            .catch(function () { /* keep flat dirt fills */ });
+    })();
+    /* Engine pack-priority mirrored: winter takes the Christmas LTD sheet
+       when present, everything else the permanent WildWest sheet. */
+    function dirtSheetTex() {
+        if (SEASON.mode === 'winter') return dirtReady ? dirtHiTex : (dirtBaseReady ? dirtBaseTex : null);
+        return dirtBaseReady ? dirtBaseTex : null;
+    }
     applySeasonMode();
     if ($('btn-season')) $('btn-season').addEventListener('click', function () {
         var modes = ['base'], i;
@@ -496,6 +592,9 @@
             : (i < 0 ? modes[1] : modes[(i + 1) % modes.length]);
         try { localStorage.setItem(SEASON_KEY, SEASON.mode); } catch (e) { /* private mode */ }
         applySeasonMode();
+        buildGround();            // ground quads bake their sheet tex at build
+                                  // time: winter swaps ice/dirt sheets in (and
+                                  // back out), so rebuild the ground now
         markDirty();
     });
     /* sheet cell -> tile-space placement (js/terrain.js _sheetTile): the
@@ -1433,6 +1532,7 @@
     };
     var TI_ROAD = CityTerrain.TYPE_ORDER.indexOf('road');
     var TI_RIVER = CityTerrain.TYPE_ORDER.indexOf('river');
+    var TI_DIRT = CityTerrain.TYPE_ORDER.indexOf('dirt');
     var TI_DIRTROAD = CityTerrain.TYPE_ORDER.indexOf('dirtroad');
     var TI_KLSROAD = CityTerrain.TYPE_ORDER.indexOf('klsroad');
     var FLAT_GRASS_S = CityTerrain.FLAT_GRASS_S;   // grass pattern floor
@@ -1643,8 +1743,18 @@
     var WATERART_KEY = 'mrsnrub.cityview.waterart';
     var waterArtOn = true;                  // ships ON: RE'd RiverDrawer art over the flat fills
     try { if (localStorage.getItem(WATERART_KEY) === '0') waterArtOn = false; } catch (e) { /* private mode */ }
-    function buildSpecCell(parent, tx, ty, big, m, arr, recs) {
+    var DIRTART_KEY = 'mrsnrub.cityview.dirtart';
+    var dirtArtOn = true;                   // ships ON: RE'd dirt-sheet art over the flat dirt fills
+    try { if (localStorage.getItem(DIRTART_KEY) === '0') dirtArtOn = false; } catch (e) { /* private mode */ }
+    var dirtArtRecs = [];                   // {art, fill, big, tn, manh} per dirt cell (notes/09 §11)
+    function buildSpecCell(parent, tx, ty, big, m, arr, recs, tex) {
         var S = [], F = SPEC.FW, B = BLEED;
+        /* tex !== undefined selects the DIRT sheet mode (DirtRoadDrawing):
+           same quadrant model, same ROAD_QUADS, different texture; no
+           legacy bake and no flat-colour fallback — null returns here and
+           the caller keeps the flat fill. */
+        var dirt = tex !== undefined;
+        var stex = dirt ? tex : specSheetTex();
         /* textured draw = the engine-true model (notes/08, road-lab
            2026-10-25): the cell is drawn as FOUR half-cell quadrant quads,
            each sampling one full state diamond chosen by the selector
@@ -1658,7 +1768,7 @@
            diamond, with no corner overdraw and no alpha. The selector flip
            byte (engFlip) picks the anti-diagonal corner assignment
            TL->R TR->B BR->L BL->T (quadGeom). */
-        if (sheetReady) {
+        if (dirt ? !!stex : sheetReady) {
             var pass = { e: m >= 0 && !!(m & 1), w: m >= 0 && !!(m & 2),
                 n: m >= 0 && !!(m & 4), s: m >= 0 && !!(m & 8) };
             if (m >= 0) {
@@ -1678,7 +1788,6 @@
                     [es.ws, engFlip(pass, 'ws'), 0, big / 2, big / 2],
                     [es.es, engFlip(pass, 'es'), big / 2, big / 2, big / 2]];
             }
-            var stex = specSheetTex();
             if (stex) {
                 for (var pi = 0; pi < picks.length; pi++) {
                     var st = picks[pi];
@@ -1690,6 +1799,7 @@
                 return S;
             }
         }
+        if (dirt) return null;      // dirt cells never draw flat SPEC rects
         /* flat fallback: no sheet (file:// without the DLC copy, decode
            error) — plain-colour rects, same 0.75/2.5/0.75 geometry */
         if (m < 0) {                                        // 'P': uniform slab
@@ -1718,8 +1828,11 @@
     function rivDiagOpen(rec, fA, fB) {
         return !!rec && !rec.p && rec.m >= 0 && (rec.m & fA) !== 0 && (rec.m & fB) !== 0;
     }
-    function buildRivCell(parent, tx, ty, big, m, arr, recs) {
-        if (!rivReady) return null;
+    function buildRivCell(parent, tx, ty, big, m, arr, recs, tex) {
+        /* tex !== undefined selects the DIRT sheet mode (DirtRiverDrawing):
+           same quadrant model, same RIVER_QUADS, different texture */
+        var dirt = tex !== undefined;
+        if (dirt ? !tex : !rivReady) return null;
         var S = [], picks;
         if (m < 0) picks = [[1, false, 0, 0, big]];             // 'P': full slab
         else {
@@ -1742,7 +1855,7 @@
                 [es.ws, rivFlip(pass, 'ws'), 0, big / 2, big / 2],
                 [es.es, rivFlip(pass, 'es'), big / 2, big / 2, big / 2]];
         }
-        var rtex = rivSheetTex();
+        var rtex = dirt ? tex : rivSheetTex();
         if (!rtex) return null;
         for (var pi = 0; pi < picks.length; pi++) {
             var st = picks[pi];
@@ -1752,6 +1865,22 @@
         }
         for (var ri = 0; ri < S.length; ri++) { S[ri].visible = false; arr.push(S[ri]); }
         return S;
+    }
+    function applyDirtMode() {
+        /* Dirt art visibility: the dirt-sheet quadrant art for dirtroad
+           (road model, notes/08) and dirt (river model, notes/09 §9) cells.
+           Runs after applySheetMode so it can pull the legacy manhole from
+           under the art; with the art off everything falls back to whatever
+           applySheetMode decided (legacy road-sheet passes or the disc). */
+        for (var i = 0; i < dirtArtRecs.length; i++) {
+            var r = dirtArtRecs[i];
+            var vis = dirtArtOn && !!dirtSheetTex() && !terrain.hidden[r.tn];
+            for (var k = 0; k < r.art.length; k++) r.art[k].visible = vis;
+            r.fill.width = r.fill.height = vis ? r.big : r.big + BLEED;
+            if (r.manh && vis) r.manh.visible = false;
+        }
+        var b = $('btn-dirtart');
+        if (b) b.classList.toggle('on', dirtArtOn && !!dirtSheetTex());
     }
     function applyWaterMode() {
         var vis = waterArtOn && rivReady && !terrain.hidden['river'];
@@ -1782,7 +1911,7 @@
         /* crossing cells reparented into raisedG are no longer featC
            children: drop them here too or a rebuild would leak the old art */
         for (i = raisedG.children.length - 1; i >= 0; i--) raisedG.children[i].destroy();
-        byType = []; sheetRecs = []; waterRecs = [];
+        byType = []; sheetRecs = []; waterRecs = []; dirtArtRecs = [];
         var f = terrain.features;
         /* cell-record map for the spec-mode neighbour probe (engine
            Pass_d = nibble bit OR (contains AND solid)): keyed by cell
@@ -1790,13 +1919,17 @@
            (terrain.js decodeCells), so a cell's neighbour record in a
            direction is the origin at ±big tiles on that axis. River cells
            get their own map (RiverDrawer probes RIVERS, not ROADS). */
-        var recs = {}, rivRecs = {};
+        var recs = {}, rivRecs = {}, dirtRecs = {}, dirtRivRecs = {};
         for (var ri = 0; ri < f.length; ri++) {
             var fe = f[ri];
             if (fe[2] === TI_ROAD && (fe[5] || 1) === 4)
                 recs[fe[0] + ',' + fe[1]] = { m: fe[3], p: fe[4] };
             else if (fe[2] === TI_RIVER && (fe[5] || 1) === 4 && fe[3] >= -1 && fe[3] <= 15)
                 rivRecs[fe[0] + ',' + fe[1]] = { m: fe[3], p: fe[4] };
+            else if (fe[2] === TI_DIRTROAD && (fe[5] || 1) === 4 && fe[3] >= -1 && fe[3] <= 15)
+                dirtRecs[fe[0] + ',' + fe[1]] = { m: fe[3], p: fe[4] };
+            else if (fe[2] === TI_DIRT && (fe[5] || 1) === 4 && fe[3] >= -1 && fe[3] <= 15)
+                dirtRivRecs[fe[0] + ',' + fe[1]] = { m: fe[3], p: fe[4] };
         }
         for (i = 0; i < f.length; i++) {
             var e = f[i], tx = e[0], ty = e[1], ti = e[2],
@@ -1805,6 +1938,23 @@
             var hex = rgbHex(TYPE_STYLE[CityTerrain.TYPE_ORDER[ti]]);
             var fill = mkSprite(UNIT, fillC, tx, ty, big + BLEED, big + BLEED, hex);
             arr.push(fill);
+            if (ti === TI_DIRT && big === 4 && m >= -1 && m <= 15) {
+                /* Dirt art: dirt (DIRT = landinfo "dirtriver", DirtRiver-
+                   Drawing) is the engine's river-model drawer on the dirt
+                   sheet — same quadrant quads as Water art, its own saved-
+                   grid probe map (dirtRivRecs), NOT the RIVERS map. The
+                   cell is built regardless of the sheet state (it may
+                   finish loading after the grid); applyDirtMode drops the
+                   record when the sheet never arrives. */
+                var wr2 = buildRivCell(featC, tx, ty, big, m, arr,
+                    dirtRivRecs, dirtSheetTex());
+                if (wr2) {
+                    dirtArtRecs.push({ art: wr2, fill: fill, big: big,
+                        tn: 'dirt', manh: null });
+                    fill.width = fill.height = big;
+                }
+                continue;
+            }
             if (ti === TI_RIVER && big === 4 && m >= -1 && m <= 15) {
                 /* Water art: the engine-true RiverDrawer quadrant draw
                    (notes/09 §9) over the flat fill; applyWaterMode decides
@@ -1817,7 +1967,23 @@
             /* road-like: manhole when the sheet does not cover the cell
                (js/terrain.js: sheet art OR manhole, never both) */
             var sheets = null, spec = null, manh = null;
+            var dspec = null;
             var cell = m >= -1;              // cell-codebook record?
+            if (ti === TI_DIRTROAD && big === 4 && cell) {
+                /* Dirt art: dirtroad (DIRT_ROADS = landinfo "dirt",
+                   DirtRoadDrawing) draws through the same road function as
+                   paved roads — its sheet art IS the quadrant model, so it
+                   replaces the legacy sheet passes / manhole here exactly
+                   like TI_ROAD's spec mode does, but on the dirt sheet and
+                   always (no Road-art cycle gating). dirtRecs is the
+                   saved dirtroad grid's own record map (the engine probes
+                   its own layer for solid sides, notes/08). Built even
+                   before the sheet loads; the record is dropped if the
+                   sheet never arrives. */
+                dspec = buildSpecCell(featC, tx, ty, big, m, arr,
+                    dirtRecs, dirtSheetTex());
+                if (dspec) fill.width = fill.height = big;
+            }
             if (ti === TI_ROAD && cell && sheetArtMode === 4) {
                 /* Road art·spec: the engine-true quadrant draw (notes/08)
                    replaces the sheet passes entirely (flat fill below,
@@ -1879,13 +2045,21 @@
             if (bridgeCells && bridgeCells[tx + ',' + ty])
                 raiseRoadCell(sheets, spec, manh);
             sheetRecs.push({ sheets: sheets, spec: spec, manh: manh,
-                arr: arr, tx: tx, ty: ty });
+                arr: arr, tx: tx, ty: ty, dirtArt: !!dspec });
             arr.push(sheets ? sheets[0] : manh);
             if (sheets && manh) arr.push(manh);
+            if (dspec) {
+                /* dirtroad cell: the dirt-sheet quadrant art rides the
+                   same record (legacy sheet/manh stay usable when the
+                   Dirt-art toggle is off) */
+                dirtArtRecs.push({ art: dspec, fill: fill, big: big,
+                    tn: 'dirtroad', manh: manh });
+            }
         }
         applySheetMode();
         applyTypeVisibility();
         applyWaterMode();
+        applyDirtMode();
         buildAvenues();
     }
     /* manholes: the canvas page projects the tile centre with a +hh world
@@ -1907,7 +2081,8 @@
         }
         applySheetMode();
         applyWaterMode();          // water quads live in byType[river] too:
-    }                              // re-apply the art toggle after the legend pass
+        applyDirtMode();           // dirt art likewise — last word on the
+    }                              // cell after the legend pass
     /* sheet art ON (road cells): the cleaned diamond sprites cover the
        flat fill and the manhole retires; OFF: flat fill + manhole.
        Multi-pass records (nibble straights, pave bands) assign each
@@ -1919,23 +2094,27 @@
         for (var i = 0; i < sheetRecs.length; i++) {
             var r = sheetRecs[i];
             var vis = !terrain.hidden['road'];
+            /* dirtroad cell whose dirt-sheet art is showing: the legacy
+               road-sheet passes / manhole stay under it (applyDirtMode
+               owns the cell; the toggle re-runs us to hand it back) */
+            var dirtVis = r.dirtArt && dirtArtOn && !!dirtSheetTex();
             if (r.spec) {
                 for (var k = 0; k < r.spec.length; k++) r.spec[k].visible = specOn && vis;
                 if (r.manh) r.manh.visible = false;
             } else if (r.sheets) {
                 for (var j = 0; j < r.sheets.length; j++) {
                     var sh = r.sheets[j], p = sh._pass;
-                    sh.visible = on && vis;
+                    sh.visible = on && vis && !dirtVis;
                     if (!on) continue;
                     var t = p[2] ? pieceTex(p[0], p[2], p[1])
                         : sheetSlotTex(CityTerrain.SHEET_STATES[p[0]]);
                     if (t && sh.texture !== t) sh.texture = t;
                 }
-                r.manh.visible = !on && vis;
+                r.manh.visible = !on && vis && !dirtVis;
             } else if (r.manh) {
                 var tn = r.arr === byType[TI_DIRTROAD] ? 'dirtroad' :
                     (r.arr === byType[TI_KLSROAD] ? 'klsroad' : 'road');
-                r.manh.visible = !on && !terrain.hidden[tn];
+                r.manh.visible = !on && !terrain.hidden[tn] && !dirtVis;
             }
         }
     }
@@ -3337,6 +3516,22 @@
         waterArtOn = !waterArtOn;
         try { localStorage.setItem(WATERART_KEY, waterArtOn ? '1' : '0'); } catch (e) { /* private mode */ }
         applyWaterMode();
+        markDirty();
+    });
+
+    /* ---- dirt art toggle: the same two quadrant models on the dirt tile
+       sheet (notes/09 §11) — dirtroad cells get the RoadDrawer quadrants
+       (DIRT_ROADS / DirtRoadDrawing), dirt cells the RiverDrawer quadrants
+       (DIRT / DirtRiverDrawing), both from dirtroadtilesheet (WildWest .rgb
+       normally, XMAS .png in winter). The sheet is the same lattice as
+       roadrivertiles (ray-measured ±1-2 px at all 11 states) so the shared
+       ROAD_QUADS/RIVER_QUADS tables carry over unchanged; only the texture
+       differs. */
+    if ($('btn-dirtart')) $('btn-dirtart').addEventListener('click', function () {
+        dirtArtOn = !dirtArtOn;
+        try { localStorage.setItem(DIRTART_KEY, dirtArtOn ? '1' : '0'); } catch (e) { /* private mode */ }
+        applySheetMode();                        // hand the legacy passes back
+        applyDirtMode();
         markDirty();
     });
 
