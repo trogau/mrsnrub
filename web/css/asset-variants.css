@@ -73,3 +73,35 @@
     cursor: pointer;
 }
 .variants .vbar button.on { color: var(--gold-bright); border-color: var(--gold); }
+
+/* character family strip (char-variants-pixi.js): tiles reuse .vtile.anim,
+   these add group headings, the in-world-preview highlight and the stop row */
+.variants .vgroup {
+    flex-basis: 100%;
+    color: var(--text-dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    border-bottom: 1px solid #232f44;
+    padding-bottom: 2px;
+    margin: 8px 0 6px;
+}
+.variants .vtile.canim.prev { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.variants .vpreview {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 2px;
+    font-size: 11px;
+    color: var(--gold-bright);
+}
+.variants .vpreview button {
+    background: var(--panel);
+    color: var(--text-dim);
+    border: 1px solid #232f44;
+    border-radius: 4px;
+    font-size: 10px;
+    padding: 1px 6px;
+    cursor: pointer;
+}
+.variants .vdim { font-size: 10px; color: var(--text-dim); margin-top: 6px; }

@@ -17,7 +17,7 @@
 <title>Springfield &mdash; City View (PixiJS)</title>
 <link rel="icon" type="image/png" href="../assets/images/icon.png">
 <link rel="stylesheet" href="../css/city-view.css?v=12">
-<link rel="stylesheet" href="../css/asset-variants.css?v=12">
+<link rel="stylesheet" href="../css/asset-variants.css?v=13">
 </head>
 <body>
 <header>
@@ -43,6 +43,7 @@
   <button class="vbtn" id="btn-sheetart" data-tip="cycle road rendering: flat fills, roadrivertiles sheet art (Terrain#useSheetArt), sheet art with RE'd kerb/sidewalk edge selection (Terrain#sheetSelect), + experimental procedural N-S avenues (Terrain#useAvenues), + spec-grid footpath/carriageway art from the road-lab tuning (0.75/2.5/0.75 — real roadrivertiles asphalt base + kerb/paving band pieces per grass side, uniform 'P' pavement)">Road art</button>
   <button class="vbtn" id="btn-waterart" data-tip="river cells drawn with the RE'd RiverDrawer art (notes/09 §9): same roadrivertiles sheet, the engine's own 0x3fc320 UV table, four quadrant quads per 4×4 cell with the bank on the closed edge and the anti-diagonal mirror byte; solid 'P' cells get the open-water slab. Off = flat blue fills. Ocean base is separate terrain; the 3 s wave shimmer is unproven and not ported">Water art</button>
   <button class="vbtn" id="btn-dirtart" data-tip="dirt cells drawn with the RE'd dirt-sheet art (notes/09 §11): dirtroad park footpaths get the RoadDrawer quadrants (DIRT_ROADS / DirtRoadDrawing), dirt-river scatter gets the RiverDrawer quadrants (DIRT / DirtRiverDrawing), both from dirtroadtilesheet — same lattice as roadrivertiles (ray-measured at all 11 states), so the 0x400520/0x3fc320 UV tables carry over. Each layer probes its own saved grid for the solid-side rays. Art follows the game's pack layering: the permanent WildWest .rgb normally, the snowy XMAS .png in winter. Off = flat tan fills.">Dirt art</button>
+  <button class="vbtn" id="btn-pierart" data-tip="boardwalk and pier brush tiles drawn with the engine's own tile art (notes/09 §12): both are PathBrush textures (boardwalktiles / ornatepiertiles), shipped as building-sprite bsv3 scenes rather than RoadMap tiles, so tools/gen_pier_tiles.py parses them into assets/city/pier-tiles.json and each tile blits its frame — C_Shadow (the tile diamond, painted first), the deck crops ~30 px above it (an elevated deck), the leg subset and the splash. Which lower edge faces water picks the state: PostLeft / PostRight / PostLeftAndRight. Static frame 0 (the wave loop is not ported, same choice as the road art). Off = flat plank fills.">Pier art</button>
   <button class="vbtn" id="btn-bridges" data-tip="road bridges: where a 4-tile road corridor crosses the river, draw the engine's own RoadDrawer deck art (bridgetop/bridgebottom cells, baked by gen_city_sprites.py bridges) instead of plain asphalt over water. Derived from the saved road/river/ocean cell layers — cell-aligned corridor with water UNDER the deck, band at least 4 tiles wide, road reaching both banks; one 3-lamppost bridgetop section per road cell on each side of the carriageway (doubled lampposts at the joins, as in the game), the near row over the road art and the far row under it. Placement measured against the game screenshot by lamppost detection (tools/bridge-sites.py, tools/score-bridge.py; notes/09 §10)">Road bridges</button>
   <button class="vbtn" id="btn-bridgegrass" data-tip="bridge grass ends: swap the end section of each bridge row from the plain deck (what the game screenshot shows at the bank) to the grass-abutment frames shipped in bridgetop.png — bridgetop_f2 (C_Grass_04 rock-and-grass bank) at the tail end, f6 (C_Grass_03 grass fillet) at the head end, f3 (both) on a one-cell crossing. Off by default; notes/09 §10">Bridge grass</button>
   <button class="vbtn" id="btn-frags" data-tip="debug overlay: magenta diamonds on the saved 1-wide N-S road fragments (driveway/frontage stubs, Terrain#debugFrags) — not streets">1-wide frags</button>
@@ -86,13 +87,14 @@
   Academic port for study &mdash; The Simpsons: Tapped Out &copy; EA.
 </footer>
 <script src="vendor/pixi.min.js?v=1"></script>
-<script src="../js/map-explorer-data.js?v=13"></script>
+<script src="../js/map-explorer-data.js?v=14"></script>
 <script src="../js/camera.js?v=12"></script>
-<script src="../js/terrain.js?v=14"></script>
+<script src="../js/terrain.js?v=15"></script>
 <script src="../js/objects.js?v=13"></script>
 <script src="../js/walks.js?v=13"></script>
 <script src="../js/markers.js?v=12"></script>
-<script src="asset-variants-pixi.js?v=1"></script>
-<script src="city-view-pixi.js?v=42"></script>
+<script src="asset-variants-pixi.js?v=2"></script>
+<script src="char-variants-pixi.js?v=1"></script>
+<script src="city-view-pixi.js?v=45"></script>
 </body>
 </html>

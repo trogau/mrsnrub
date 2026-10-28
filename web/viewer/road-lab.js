@@ -1493,6 +1493,8 @@
         renderWater();
         renderDirt(DIRT);
         renderDirt(DIRTR);
+        renderPier(BW);
+        renderPier(PW);
         $('refout').textContent = formatRef();
         syncReadouts();
     }
@@ -1733,14 +1735,262 @@
         }
     });
 
+    /* ---------------- pier / boardwalk brush art (notes/09 §12) -----------
+       The two ocean-grid brushes are NOT RoadMap tiles: landinfo.xml gives
+       them PathBrush textures boardwalktiles / ornatepiertiles (SaveInfo
+       map="ocean"), so the art ships as ordinary building-sprite bsv3
+       scenes. tools/gen_pier_tiles.py parses both into
+       assets/city/pier-tiles.json; these TWO tabs (one per brush, own view
+       state — the same split the dirt layers got) are the calibration rig
+       for that manifest:
+         top    = the sheet with the focused state's crop rects numbered
+                  in ENGINE DRAW order (the manifest stores the block list
+                  already reversed — C_Shadow, listed last, is painted
+                  first and IS the tile diamond)
+         below  = every state blitted into tile space through the viewer's
+                  own transform chain (anchor 0.5, rot 45°,
+                  scale m·SHEET/4 under the 2:1 box→tile map), unclipped,
+                  so the elevated deck shows above the diamond
+       The blue edges are the water probes the viewer's pierState() reads
+       (lower-left neighbour = waterL → PostLeft, lower-right = waterR →
+       PostRight); the white-framed tile is what auto would pick.        */
+    var PIER_SHEET_S = Math.SQRT2 / 127, PIER_SHEET_T = Math.SQRT2 / 66;  // == city-view-pixi.js
+    function newPierView(type, cvId, pre) {
+        return {
+            type: type, cv: cvId, pre: pre,
+            zoom: 1, grid: true, calib: true,
+            waterL: true, waterR: true,
+            force: -1, forceAuto: true,
+        };
+    }
+    var BW = newPierView('boardwalk', 'cv-bw', 'bw');     // boardwalk tab
+    var PW = newPierView('pier', 'cv-pier', 'pw');         // pier tab
+    var PIER_J = null, PIER_FAILED = false;
+    var PIER_IMGS = {};                       // type -> Image | null (failed)
+    function pierStates(S) {
+        return PIER_J ? Object.keys(PIER_J.assets[S.type].states) : [];
+    }
+    function pierAutoState(S) {
+        return 'Normal_' + ['None', 'PostLeft', 'PostRight',
+            'PostLeftAndRight'][(S.waterL ? 1 : 0) | (S.waterR ? 2 : 0)];
+    }
+    function pierFocus(S) {
+        var names = pierStates(S);
+        if (S.forceAuto) {
+            var a = pierAutoState(S);
+            return names.indexOf(a) >= 0 ? a : names[0];
+        }
+        return names[((S.force % names.length) + names.length) % names.length];
+    }
+    function loadPierManifest() {
+        if (typeof fetch !== 'function') { renderPier(BW); renderPier(PW); return; }
+        fetch('../assets/city/pier-tiles.json')     // arrayBuffer idiom (like decodeRgb's .rgb fetch)
+            .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+            .then(function (ab) {
+                PIER_J = JSON.parse(new TextDecoder('utf8').decode(new Uint8Array(ab)));
+                loadPierSheet(BW); loadPierSheet(PW);
+            })
+            .catch(function () { PIER_FAILED = true; renderPier(BW); renderPier(PW); });
+    }
+    function loadPierSheet(S) {
+        if (!(S.type in PIER_IMGS) && PIER_J && typeof Image !== 'undefined') {
+            var im = new Image();
+            PIER_IMGS[S.type] = null;                   // claimed; onload fills it
+            im.onload = function () { PIER_IMGS[S.type] = im; renderPier(S); };
+            im.src = '../' + PIER_J.assets[S.type].sheet;
+        }
+        renderPier(S);
+    }
+    /* box px -> tile-unit centre: (bx, by) in the 127x66 sheet box maps
+       (ux, uy) -> (ux−uy, ux+uy); the 2:1 screen map then folds that to
+       (−2·uy·k, ux·k). Same linear map as the viewer's pass sprites. */
+    function pierBoxPt(bx, by, k) {
+        var ux = (bx - 63.5) / 127, uy = (by - 33) / 66;
+        return [-2 * uy * k, ux * k];
+    }
+    /* one manifest block through the viewer's chain: centre from the crop
+       box (a<0 mirrors about the anchor, so x is the RIGHT edge there),
+       sheet px /4 + calib -> box px. Caller has translated to the tile's
+       top corner; ctx.save/restore around it. */
+    function pierBlockCTM(ctx, k, blk, cal) {
+        var sx = blk.m[0], sy = blk.m[3];
+        var bx = (blk.p[0] + (sx >= 0 ? 1 : -1) * blk.c[2] * Math.abs(sx) / 2) / 4 + cal.ox;
+        var by = (blk.p[1] + (sy >= 0 ? 1 : -1) * blk.c[3] * Math.abs(sy) / 2) / 4 + cal.oy;
+        var c = pierBoxPt(bx, by, k);
+        ctx.translate(c[0], c[1]);
+        ctx.transform(k, k / 2, -k, k / 2, 0, 0);   // tile units -> 2:1 screen px
+        ctx.rotate(Math.PI / 4);
+        ctx.scale(sx * PIER_SHEET_S / 4, sy * PIER_SHEET_T / 4);
+    }
+    function drawPierTile(ctx, S, a, im, name, cx, cy, k) {
+        /* one tile-space preview at centre (cx, cy), tile width 2k; the
+           tile-unit origin is the TOP corner of the diamond */
+        var blocks = a.states[name];
+        if (!blocks) return;
+        ctx.save();
+        ctx.translate(cx, cy - k / 2);
+        /* water hints on the probed lower edges (viewer pierState: +ty =
+           left, +tx = right) */
+        ctx.fillStyle = 'rgba(84,170,252,0.85)';
+        if (S.waterL) {
+            ctx.beginPath();
+            ctx.moveTo(-k, k / 2); ctx.lineTo(0, k);
+            ctx.lineTo(-5, k + 5); ctx.lineTo(-k - 6, k / 2 + 4);
+            ctx.closePath(); ctx.fill();
+        }
+        if (S.waterR) {
+            ctx.beginPath();
+            ctx.moveTo(k, k / 2); ctx.lineTo(0, k);
+            ctx.lineTo(5, k + 5); ctx.lineTo(k + 6, k / 2 + 4);
+            ctx.closePath(); ctx.fill();
+        }
+        for (var i = 0; i < blocks.length; i++) {
+            var b = blocks[i];
+            ctx.save();
+            pierBlockCTM(ctx, k, b, a.calib);
+            ctx.drawImage(im, b.c[0], b.c[1], b.c[2], b.c[3],
+                -b.c[2] / 2, -b.c[3] / 2, b.c[2], b.c[3]);
+            ctx.restore();
+        }
+        if (S.calib) {
+            /* footprint diamond + the C_Shadow crop through the box map:
+               with a correct calib the two outlines coincide (the shadow
+               fills its crop exactly with the tile diamond) */
+            ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+            ctx.beginPath();
+            ctx.moveTo(0, 0); ctx.lineTo(k, k / 2); ctx.lineTo(0, k); ctx.lineTo(-k, k / 2);
+            ctx.closePath(); ctx.stroke();
+            var sh = a.shadow;
+            var c0 = pierBoxPt(sh[0] / 4 + a.calib.ox, sh[1] / 4 + a.calib.oy, k);
+            var c1 = pierBoxPt((sh[0] + sh[2]) / 4 + a.calib.ox,
+                (sh[1] + sh[3]) / 4 + a.calib.oy, k);
+            ctx.strokeStyle = '#3fd0ff';
+            ctx.beginPath();
+            ctx.moveTo(c0[0], c0[1]); ctx.lineTo(c1[0], c0[1]);
+            ctx.lineTo(c1[0], c1[1]); ctx.lineTo(c0[0], c1[1]);
+            ctx.closePath(); ctx.stroke();
+        }
+        ctx.restore();
+    }
+    function renderPier(S) {
+        S = S || BW;
+        var cv = $(S.cv), ctx = cv.getContext('2d');
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = '#101216';
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.font = '11px ui-monospace, Menlo, Consolas, monospace';
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
+        var ty = 8;
+        if (PIER_FAILED) {
+            ctx.fillStyle = '#cfd6df';
+            ctx.fillText('manifest failed to load: assets/city/pier-tiles.json', 12, ty);
+            return;
+        }
+        if (!PIER_J) {
+            ctx.fillStyle = '#cfd6df';
+            ctx.fillText('loading manifest…', 12, ty);
+            return;
+        }
+        var a = PIER_J.assets[S.type];
+        var names = pierStates(S), focus = pierFocus(S);
+        var im = PIER_IMGS[S.type];
+        ctx.fillStyle = '#cfd6df';
+        ctx.fillText(a.pack + ' — ' + a.sheet.split('/').pop()
+            + '   calib ox=' + a.calib.ox + ' oy=' + a.calib.oy
+            + '   states: ' + names.length, 12, ty);
+        ty += 18;
+        ctx.fillStyle = S.forceAuto ? '#ffe86e' : '#cfd6df';
+        ctx.fillText('state: ' + focus + '  (' + a.states[focus].length + ' blocks, engine draw order)'
+            + (S.forceAuto ? '   [auto from water edges]' : '   [forced]'), 12, ty);
+        ty += 18;
+        var zs = S.zoom / 2;
+        var iw = 1024, ih = 606;
+        if (!im) {
+            ctx.fillStyle = '#cfd6df';
+            ctx.fillText('loading sheet…', 12, ty);
+            return;
+        }
+        iw = im.naturalWidth || im.width; ih = im.naturalHeight || im.height;
+        ctx.save();
+        ctx.translate(12, ty);
+        ctx.scale(zs, zs);
+        ctx.drawImage(im, 0, 0);
+        ctx.restore();
+        if (S.grid) {
+            /* crop rects + draw-order numbers (sheet-space text stays 11 px) */
+            var blocks = a.states[focus];
+            for (var i = 0; i < blocks.length; i++) {
+                var b = blocks[i];
+                var isSh = b.n === 'C_Shadow';
+                ctx.strokeStyle = isSh ? '#3fd0ff' : '#ffe86e';
+                ctx.strokeRect(12 + b.c[0] * zs, ty + b.c[1] * zs,
+                    b.c[2] * zs, b.c[3] * zs);
+                ctx.fillStyle = isSh ? '#3fd0ff' : '#ffe86e';
+                ctx.fillText(String(i), 13 + b.c[0] * zs, ty + b.c[1] * zs + 1);
+            }
+        }
+        ty += ih * zs + 14;
+        /* state previews in tile space, wrapped rows; focused gets a frame */
+        var k = 68, cellW = 2 * k + 46, cellH = k + 56, W = cv.width - 16;
+        var x = 12, rowY = ty + 22;
+        ctx.fillText('states in tile space (deck shows above the diamond — unclipped):', 12, ty);
+        for (var si = 0; si < names.length; si++) {
+            if (x + cellW > W) { x = 12; rowY += cellH; }
+            var nm = names[si];
+            if (nm === focus) {
+                ctx.strokeStyle = '#ffffff';
+                ctx.strokeRect(x + k - k - 6, rowY + k / 2 - k / 2 - 16, 2 * k + 12, k + 26);
+            }
+            ctx.fillStyle = nm === focus ? '#ffffff' : '#8b93a0';
+            ctx.fillText(nm, x + 8, rowY - 14);
+            drawPierTile(ctx, S, a, im, nm, x + k + 8, rowY + k / 2 + 6, k);
+            x += cellW;
+        }
+        /* readouts / button states */
+        $(S.pre + '-zoom-v').textContent = '×' + zs;
+        $(S.pre + '-force-v').textContent = S.forceAuto ? 'auto' : focus;
+        $(S.pre + '-force-auto').className = S.forceAuto ? 'on' : '';
+        $(S.pre + '-grid').className = S.grid ? 'on' : '';
+        $(S.pre + '-calib').className = S.calib ? 'on' : '';
+        $(S.pre + '-water-l').className = S.waterL ? 'on' : '';
+        $(S.pre + '-water-r').className = S.waterR ? 'on' : '';
+    }
+    /* one control cluster per brush tab (boardwalk = BW, pier = PW), bound
+       through a shared factory — the two views are fully independent */
+    function bindPierView(S) {
+        var p = S.pre;
+        bindStepper(p + '-zoom-minus', function () { S.zoom = Math.max(1, S.zoom - 1); renderPier(S); });
+        bindStepper(p + '-zoom-plus', function () { S.zoom = Math.min(3, S.zoom + 1); renderPier(S); });
+        bindStepper(p + '-water-l', function () { S.waterL = !S.waterL; renderPier(S); });
+        bindStepper(p + '-water-r', function () { S.waterR = !S.waterR; renderPier(S); });
+        bindStepper(p + '-force-minus', function () {
+            var n = pierStates(S).length;
+            S.forceAuto = false;
+            S.force = S.force < 0 ? n - 1 : (S.force + n - 1) % n;
+            renderPier(S);
+        });
+        bindStepper(p + '-force-plus', function () {
+            var n = pierStates(S).length;
+            S.forceAuto = false;
+            S.force = (S.force < 0 ? 0 : S.force + 1) % n;
+            renderPier(S);
+        });
+        bindStepper(p + '-force-auto', function () { S.forceAuto = !S.forceAuto; renderPier(S); });
+        bindStepper(p + '-grid', function () { S.grid = !S.grid; renderPier(S); });
+        bindStepper(p + '-calib', function () { S.calib = !S.calib; renderPier(S); });
+    }
+    bindPierView(BW);
+    bindPierView(PW);
+
     /* ---------------- tabs ----------------
        tab 1 = road sprite-sheet inspector (default), tab 2 = the river
        slots presented the same way (RiverDrawer reuses the road model),
        tab 3 = the original footpath/carriageway tuning rig. Panes use
        display:contents so their sections remain flex items of <main>;
        [hidden] collapses the pane. */
-    var TABS = ['tab-sheet', 'tab-water', 'tab-dirt', 'tab-dirt2', 'tab-bridge', 'tab-tune'];
-    var TABBTN = { 'tab-sheet': 'tab-btn-sheet', 'tab-water': 'tab-btn-water', 'tab-dirt': 'tab-btn-dirt', 'tab-dirt2': 'tab-btn-dirt2', 'tab-bridge': 'tab-btn-bridge', 'tab-tune': 'tab-btn-tune' };
+    var TABS = ['tab-sheet', 'tab-water', 'tab-dirt', 'tab-dirt2', 'tab-bw', 'tab-pier', 'tab-bridge', 'tab-tune'];
+    var TABBTN = { 'tab-sheet': 'tab-btn-sheet', 'tab-water': 'tab-btn-water', 'tab-dirt': 'tab-btn-dirt', 'tab-dirt2': 'tab-btn-dirt2', 'tab-bw': 'tab-btn-bw', 'tab-pier': 'tab-btn-pier', 'tab-bridge': 'tab-btn-bridge', 'tab-tune': 'tab-btn-tune' };
     var activeTab = 'tab-sheet';
     function setTab(id) {
         if (TABS.indexOf(id) < 0) return;
@@ -2194,6 +2444,7 @@
     loadDirtPack(DIRT);                      // dirtroad tab sheet (async; no-op in harness)
     loadDirtPack(DIRTR);                     // dirt tab sheet
     loadBridgeImgs();                        // bridge tab art (async; no-op in harness)
+    loadPierManifest();                      // pier tab manifest + sheet (async; sync in harness)
     setTab('tab-sheet');                     // default tab
 
     // exposed for the smoke harness
@@ -2215,6 +2466,10 @@
         renderBridge: renderBridge, bridgePieceRects: bridgePieceRects,
         bridgeOrigin: bridgeOrigin, bridgeSiteReset: bridgeSiteReset,
         bridgeView: bridgeView,
+        BW: BW, PW: PW, renderPier: renderPier, pierStates: pierStates,
+        pierAutoState: pierAutoState, pierFocus: pierFocus,
+        getPierManifest: function () { return PIER_J; },
+        PIER_SHEET_S: PIER_SHEET_S, PIER_SHEET_T: PIER_SHEET_T,
         setTab: setTab, getTab: function () { return activeTab; },
     };
 })();

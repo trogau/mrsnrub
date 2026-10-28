@@ -1421,11 +1421,17 @@
         return true;
     }
 
-    /* ---- character idle loops (M4 item 5, 2026-10-23) ----------------------
+    /* ---- character idle loops (M4 item 5, 2026-10-23; timing corrected
+       2026-10-27) ------------------------------------------------------------
        characters.json v3 (gen_city_sprites.py chars) picks animated
-       <name>idleblink-style cells; here the frames cycle on their own
-       delays. The per-character phase is a stable hash of the save id, so
-       the crowd does not blink in lockstep. Loops obey both toggles (Art
+       <name>idleblink-style cells. Like the original client, each cell is
+       ONE play of the animation (its per-frame delay_ms cover that single
+       pass — see notes/01 and the binary's timeBetweenAnimsMin/Max idle
+       triggers), so here it plays once and the character then HOLDS the
+       standby frame fr[0] through a randomised per-character gap; looping
+       the cell end-to-end made a 208 ms blink replay ~5x/second. The
+       per-character phase/gap is a stable hash of the save id, so the
+       crowd does not blink in lockstep. Loops obey both toggles (Art
        + Anim) and a legibility floor — a blink is subtle pixels, wasted
        below ~24 px (knob: ?charAnimMinPx=N). charAnimLive counts looping
        characters in the last frame and drives repaint scheduling. */
@@ -1441,7 +1447,10 @@
         }
         var h = 0, s = String(id), i;
         for (i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-        var t = ((animNow || performance.now()) + Math.abs(h)) % as._tot;
+        h = Math.abs(h);
+        var gap = 2000 + (h >>> 4) % 5000 + (as._tot > 1200 ? as._tot : 0);
+        var t = ((animNow || performance.now()) + h) % (as._tot + gap);
+        if (t >= as._tot) return fr[0].file;    // standby between plays
         for (i = 0; i < fr.length; i++) {
             t -= (fr[i].delay || 100);
             if (t < 0) return fr[i].file;

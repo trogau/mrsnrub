@@ -62,6 +62,8 @@
         <button id="tab-btn-water" data-tab="tab-water">water / river</button>
         <button id="tab-btn-dirt" data-tab="tab-dirt">dirt road</button>
         <button id="tab-btn-dirt2" data-tab="tab-dirt2">dirt (river)</button>
+        <button id="tab-btn-bw" data-tab="tab-bw">boardwalk</button>
+        <button id="tab-btn-pier" data-tab="tab-pier">pier</button>
         <button id="tab-btn-bridge" data-tab="tab-bridge">bridges</button>
         <button id="tab-btn-tune" data-tab="tab-tune">footpath / carriageway tuning</button>
     </div>
@@ -161,6 +163,52 @@
                 <div class="st"><button id="dr-flip">flip</button>
                     <button id="dr-raw">raw boxes</button>
                     <button id="dr-grid" class="on">lattice</button></div>
+            </div>
+        </section>
+    </div>
+    <div id="tab-bw" class="tabpane" hidden>
+        <section>
+            <h2>boardwalk brush tiles <small>not a RoadMap tile — landinfo gives the ocean-grid
+                brush the PathBrush texture <code>boardwalktiles</code> (WaterfrontGame) with SaveInfo
+                map="ocean", so the art ships as a building-sprite bsv3 scene. tools/gen_pier_tiles.py
+                parses it into assets/city/pier-tiles.json: per state the engine's block list
+                already in DRAW order (the list is painted reversed — C_Shadow, listed last, goes
+                down first and IS the tile diamond). Calib from C_Shadow only: box px = sheet px / 4
+                in the 127x66 sheet box; the deck sits ~30 px above the diamond (elevated), so it
+                is never the calibration reference. Pier twin on its own tab</small></h2>
+            <canvas id="cv-bw" width="1040" height="1420"></canvas>
+            <div class="ctl">
+                <div class="st"><span class="lbl">sheet zoom</span>
+                    <button id="bw-zoom-minus">−</button><span class="v" id="bw-zoom-v"></span><button id="bw-zoom-plus">+</button></div>
+                <div class="st"><span class="lbl">water edges</span>
+                    <button id="bw-water-l">lower-left (PostLeft)</button>
+                    <button id="bw-water-r">lower-right (PostRight)</button></div>
+                <div class="st"><span class="lbl">state</span>
+                    <button id="bw-force-minus">−</button><span class="v" id="bw-force-v"></span><button id="bw-force-plus">+</button><button id="bw-force-auto" class="on">auto</button></div>
+                <div class="st"><button id="bw-grid" class="on">crop overlay</button>
+                    <button id="bw-calib" class="on">calib boxes</button></div>
+            </div>
+        </section>
+    </div>
+    <div id="tab-pier" class="tabpane" hidden>
+        <section>
+            <h2>pier brush tiles <small>the ornate pier — PathBrush texture <code>ornatepiertiles</code>
+                (SpringfieldHeights2BuildDecoGame), SaveInfo map="ocean": a building-sprite bsv3 scene,
+                not a RoadMap tile. Same manifest (assets/city/pier-tiles.json) and same engine
+                draw order as the boardwalk tab; no Leg cells ship — waves 1/2/5 (left) and 3/4/6
+                (right) stand in, and C_PierWave6a is the a&lt;0 mirror case. Own view state:
+                zoom / water edges / state focus / overlays are independent of the boardwalk tab</small></h2>
+            <canvas id="cv-pier" width="1040" height="1420"></canvas>
+            <div class="ctl">
+                <div class="st"><span class="lbl">sheet zoom</span>
+                    <button id="pw-zoom-minus">−</button><span class="v" id="pw-zoom-v"></span><button id="pw-zoom-plus">+</button></div>
+                <div class="st"><span class="lbl">water edges</span>
+                    <button id="pw-water-l">lower-left (PostLeft)</button>
+                    <button id="pw-water-r">lower-right (PostRight)</button></div>
+                <div class="st"><span class="lbl">state</span>
+                    <button id="pw-force-minus">−</button><span class="v" id="pw-force-v"></span><button id="pw-force-plus">+</button><button id="pw-force-auto" class="on">auto</button></div>
+                <div class="st"><button id="pw-grid" class="on">crop overlay</button>
+                    <button id="pw-calib" class="on">calib boxes</button></div>
             </div>
         </section>
     </div>
@@ -267,6 +315,6 @@
     <pre id="refout"></pre>
 </div>
 <script src="../js/camera.js"></script>
-<script src="road-lab.js?v=23"></script>
+<script src="road-lab.js?v=25"></script>
 </body>
 </html>

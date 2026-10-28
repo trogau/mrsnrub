@@ -1,5 +1,152 @@
 # Changelog
 
+## 2026-10-28.1
+
+- **Boardwalk and pier tiles are now on the map — the whole Squidport deck,
+  the OrnatePier walkway, the PirateShip dock and the Barnacle Bay jetty.**
+  Before, only 5 tiles drew and the deck under the Squidport shops clicked
+  as `grass`. Cause: `oceanData` (f34) was read with the legacy one-tile-
+  per-char decode as a wave-mark frame. It is the 4×4-cell codebook (3
+  blocks/row, mask reciprocity 1.000, origin (−48, −112) = the land's block
+  pin) and holds only the two brushes: 262 cells. Type split by mask
+  connectivity: pier = the walkway chain reaching the OrnatePier footprint
+  (19 cells), everything else boardwalk (243). notes/09 §12 "The data";
+  notes/01's 2026-10-19 recovery section is marked superseded. Evidence:
+  `mapdump/registration/m4-ocean-brush-celldecode.png`,
+  `m4-boardwalk-before-after.png`, `m4-pier-ornate.png`.
+  - `tools/gen_map_explorer.py`: new cell decode + split; regenerated
+    `web/js/map-explorer-data.js` (only the two brush layers change; the
+    `bridgetop`/`bridgebottom` variant entries were kept as shipped).
+  - `web/js/terrain.js`: the ocean layer contributes no tiles (no more fake
+    wave marks); the Ocean preset frames the sea base; clicks on open sea
+    report `ocean`.
+  - `city-view-pixi.js`: one brush frame per 4×4 CELL (the `C_Shadow`
+    diamond is 512×256 px = a cell; the per-tile blit was 4× too small),
+    back-to-front by oriented depth (the `tx+ty` sort striped every deck
+    row with the far cells' shadows), box→tile from the live camera, and
+    the ground rebuilds once the brush sheets have decoded (it used to
+    rebuild before they loaded). `v=45`, `2026-10-28.1`; data `v=14`,
+    terrain `v=15` on both pages.
+  - Harnesses updated for the new model: `smoke-pier-tiles`,
+    `smoke-city-view-dom`, `smoke-camera`.
+
+## 2026-10-28
+
+- **Road Lab: the pier / boardwalk tab split into two tabs — boardwalk and
+  pier, each in its own context.** One tab with a type button forced the two
+  brush assets to share a single view state; now each brush gets its own tab
+  (`tab-bw` / `tab-pier`, `road-lab.js?v=25`), its own canvas (`cv-bw` /
+  `cv-pier`) and its own independent controls — sheet zoom, water-edge
+  toggles, state stepper + auto, crop overlay and calib boxes — mirroring
+  the two-tab split the dirt layers got. The shared manifest
+  (`assets/city/pier-tiles.json`) and the tile-space preview chain are
+  unchanged; the view objects come from a `newPierView(type, cvId, pre)`
+  factory bound through `bindPierView(S)` (same pattern as
+  `newDirtView`/`bindDirtView`). `tools/smoke-road-lab.cjs` drives both tabs
+  and gates their independence (boardwalk steppers must never move the pier
+  view); `tools/smoke-pier-tiles.cjs` gates the new tab/pane/control wiring.
+
+## 2026-10-27.9
+
+- **Characters are clickable, and their card now shows the whole
+  animation family (walks, actions, outfits) with in-world preview.**
+  Three parts:
+  1. *Pick fix*: in Art mode a character is a billboard but `hitTest`
+     still tested the ~6 px dot box at the feet, so clicking the visible
+     sprite fell through to the building below. The people pass now tests
+     the drawn sprite rect — the exact rect `renderScene` blits
+     (`anchor`, `w×h × scale/ART.S`, skipped under the orbit-LOD floor
+     where characters are dots again).
+  2. *Data*: `gen_city_sprites.py chars` gained **pass 4 (families)** —
+     every pool `.bcell` whose normalized stem starts with a save name
+     (or its `CHAR_ALIASES` asset stem, so Grampa owns the `abe*` cells)
+     is rendered with the existing frame pipeline (64-frame thinning,
+     companion prefetch batched per family pack, `img_cache` capped to
+     keep RAM flat). Ownership is longest-prefix; a card shows its own
+     cells plus every cell owned by a catalog name extending its own, so
+     outfits live under the base character. `characters.json` → **v4**
+     (`familyCells`/`familyRendered`/`unmatchedCells`); cells ship as
+     lazy per-character sidecars `assets/characters/families/<cid>.json`
+     so boot stays lean. First run: 13,105 owned cells → 12,473 rendered
+     (404 `no-pixels`, 12 `no-frames`), 2,026 loose cells listed for
+     triage, 809 sidecars, ~199k PNGs / 2.9 GB, 162,727 bcell13
+     companions pulled from 197 local family packs.
+  3. *UI*: new `web/viewer/char-variants-pixi.js` (companion to
+     asset-variants-pixi) renders the character card's strip — grouped
+     idle/walk/action/pose, one tile per cell with a canvas player
+     stepping the frame PNGs on their per-frame delays (one shared rAF
+     for all tiles, 150-tile cap; Homer owns 600+ cells), play/pause +
+     speed, `data-tip` metadata, Asset Explorer deep link. Clicking a
+     tile sets `charPreview` and the map character replays that cell
+     (one pass on its delays + 1.2 s standby hold) until stopped or
+     deselected. `AssetVariants` gained a `stop` export (both copies)
+     and `setSel` stops all card players + clears the preview on every
+     selection change. `charHtml` now lists the map asset slug.
+  Viewer `v=44`, `char-variants-pixi.js v=1` (new), `asset-variants-pixi.js
+  v=2`, `asset-variants.css v=13`, `DIAG.ver 2026-10-27.9`. Checks:
+  `node --check` all files, a headless boot of the new module against the
+  real Bart sidecar (tiles/groups/preview toggle), a manifest + 809-sidecar
+  verifier (0 errors), and `smoke-city-view-dom.cjs` /
+  `smoke-map-explorer-dom.cjs` fully green.
+
+## 2026-10-27.8
+
+- **Boardwalk / pier brush tiles now draw with the game's own art.** The two
+  ocean-grid brushes were flat plank fills: they are not RoadMap tiles —
+  landinfo.xml gives them PathBrush textures `boardwalktiles`
+  (WaterfrontGame) / `ornatepiertiles` (SpringfieldHeights2BuildDeco) with
+  SaveInfo `map="ocean"`, so the art ships as building-sprite **bsv3
+  scenes**. New `tools/gen_pier_tiles.py` parses both with the shared
+  `parse_bsv3` and emits `web/assets/city/pier-tiles.json` (`--evidence`
+  writes `mapdump/registration/pier-<type>-states.png`); per state it stores
+  the engine's block list **already in draw order** (the tile paints the
+  list reversed — `C_Shadow`, listed last, goes down first and *is* the
+  tile diamond). Each brush tile blits its frame through the road-sheet
+  transform — anchor 0.5, rot 45°, scale matrix·SHEET/4 in the 127×66 sheet
+  box, **box px = sheet px / 4**, calibrated on `C_Shadow` alone
+  (`ox=−x/4, oy=−y/4`; the deck crops sit ~30 px above the diamond — an
+  elevated deck, never a calibration reference). Which lower edge faces
+  water picks the state (PostLeft / PostRight / PostLeftAndRight; water =
+  inside the sea base with no same-layer brush tile); static frame 0, like
+  the road art. The Pixi viewer gained the art (depth-sorted by `tx+ty`,
+  legacy fill shrunk under the opaque shadow) and a **Pier art** toolbar
+  toggle (`btn-pierart`, pref `mrsnrub.cityview.pierart`, ON by default;
+  `city-view-pixi.js?v=43`). Notes: `notes/09-road-tiles.md` §12.
+- **Road Lab pier / boardwalk tab** (`tab-pier`, `road-lab.js?v=24`): the
+  calibration rig for the manifest — sheet with the focused state's crop
+  rects numbered in engine draw order, every state blitted unclipped into
+  tile space (the elevated deck must show), water-edge toggles driving the
+  auto-state pick, crop-overlay and calib-box overlays, type toggle
+  boardwalk/pier, state stepper + auto, sheet zoom. New
+  `tools/smoke-pier-tiles.cjs` re-parses both .bsv3s as a drift guard over
+  every manifest block (cell/crop/pos/matrix), gates calib, draw order and
+  the `a<0` mirror case, and checks the viewer/lab/page integration;
+  `tools/smoke-road-lab.cjs` boots and drives the new tab.
+
+## 2026-10-27.7
+
+- **Fixed: character idle animations now play once, then hold — characters
+  blink every few seconds instead of fluttering.** The idle cells
+  (`<name>IdleBlink` etc.) store **one pass** of the animation: their
+  per-frame `delay_ms` values are the timing of that single play, which is
+  how `tools/tsto2rgb` (the format's own reference writer) bakes them into
+  GIF frame durations, and the client binary drives them through its
+  `IdleAnimation` / `timeBetweenAnimsMin` / `timeBetweenAnimsMax`
+  idle-trigger properties — the character stands on its standby frame and
+  re-triggers the cell after a random gap. The viewer instead replayed the
+  whole cell on a modulo loop, so a 2-frame blink cell (open 41–83 ms +
+  closed 125–167 ms ≈ 0.2 s) fired ~5 times a second — and 693 of the 809
+  mapped characters sit on such a cell, so the whole crowd fluttered.
+  `charFrameFile` (both `web/viewer/city-view-pixi.js` and the reference
+  Canvas page `web/js/city-view.js`) now plays the frames once per cycle
+  and returns `fr[0]` (standby) through a per-character randomised gap of
+  2–7 s (hash of the save id, which also offsets the phase so the crowd
+  doesn't blink in lockstep); loops over 1.2 s ("active" idles like dances)
+  additionally wait one loop-length before replaying. Measured on the live
+  manifest: blink cycle 2.2–17 s (median 4.5 s), closed-eye fraction ~3 %.
+  No new settings; existing toggles/knobs (Art, Anim, `?charAnimMinPx`)
+  unchanged. Viewer `v=43`; `smoke-city-view-dom.cjs` all green.
+
 ## 2026-10-27.6
 
 - **Fixed the pink/purple dirt tiles + Road Lab split into two views.**

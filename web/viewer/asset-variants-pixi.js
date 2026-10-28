@@ -152,5 +152,5 @@
         return t;
     }
 
-    global.AssetVariants = { render: renderVariants };
+    global.AssetVariants = { render: renderVariants, stop: stopPlayers };
 })(window);

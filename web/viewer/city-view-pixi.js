@@ -582,6 +582,128 @@
         if (SEASON.mode === 'winter') return dirtReady ? dirtHiTex : (dirtBaseReady ? dirtBaseTex : null);
         return dirtBaseReady ? dirtBaseTex : null;
     }
+    /* ---- boardwalk / pier brush art (BoardwalkDrawer tiles, 2026-10-27) ----
+       The two ocean-grid brushes are NOT RoadMap tiles: landinfo.xml gives
+       them PathBrush textures boardwalktiles / ornatepiertiles and SaveInfo
+       map="ocean", so their art ships as ordinary building-sprite bsv3
+       scenes (notes/09 §12). tools/gen_pier_tiles.py parses both with
+       gen_city_sprites.parse_bsv3 and emits assets/city/pier-tiles.json:
+       per state, the engine's block list ALREADY IN DRAW ORDER (the engine
+       paints the list reversed — its C_Shadow block, listed last, is the
+       tile diamond and goes down first), each block a sheet crop rect, a
+       float top-left and a 2x2 matrix in 100-tier sheet px.
+       Placement re-uses the sheet-cell transform: box space = sheet px / 4
+       in the 127x66 sheet box whose inscribed diamond IS the tile, so one
+       block is one sprite at anchor 0.5 / rotation 45deg / scale
+       (SHEET_SX, SHEET_SY) / 4, centred at the same linear box->tile map
+       the pass sprites use: (ux, uy) -> (cx + ux - uy, cy + ux + uy).
+       The calibration (ox, oy) comes from C_Shadow, which fills its crop
+       exactly with the diamond; the deck crops sit ~30 px ABOVE it (the
+       deck is elevated), so calibrating on them would sink the tile.
+       State rule (art-derived — the binary's setter was not pinned, notes/09
+       §12): the Normal_* states pick their legs by which lower edge faces
+       water — PostLeft iff the lower-LEFT neighbour (tx, ty+1) is water,
+       PostRight iff (tx+1, ty) is. */
+    var PIERART_KEY = 'mrsnrub.cityview.pierart';
+    var pierArtOn = true;                         // ships ON: fills alone are unreadable
+    var PIER = null;                              // assets/city/pier-tiles.json
+    var pierRecs = [];
+    (function () {
+        if (typeof fetch !== 'function') return;
+        fetch(B + 'assets/city/pier-tiles.json')
+            .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+            .then(function (j) {
+                PIER = j;
+                for (var k in j.assets) texFor(B + j.assets[k].sheet);
+                /* texFor only STARTS the sheet loads: rebuild once they have
+                   decoded (or died), else the brush cells keep the flat
+                   fills until some unrelated rebuild happens along */
+                (function settle() {
+                    for (var k2 in j.assets) {
+                        var u = B + j.assets[k2].sheet;
+                        if (!texFor(u) && !texDead(u)) { setTimeout(settle, 100); return; }
+                    }
+                    if (started) buildGround();   // brush cells pick up the art
+                    markDirty();
+                })();
+            })
+            .catch(function () { /* keep the flat brush fills */ });
+    })();
+    function pierAsset(tn) { return (PIER && PIER.assets[tn]) || null; }
+    function pierTexReady(tn) {
+        var a = pierAsset(tn);
+        return !!a && !!texFor(B + a.sheet);
+    }
+    function pierState(a, tx, ty, occ, big) {
+        /* water probe: inside the RE'd sea base and not another brush tile */
+        var t = terrain;
+        function water(x, y) {
+            if (occ[x + ',' + y]) return false;
+            return x >= t.seaFillX0 - t.ox && x < t.seaFillX1 - t.ox &&
+                   y >= t.seaFillY0 - t.oy && y < t.seaFillY1 - t.oy;
+        }
+        var ix = (water(tx, ty + big) ? 1 : 0) | (water(tx + big, ty) ? 2 : 0);
+        var n = ['Normal_None', 'Normal_PostLeft', 'Normal_PostRight',
+                 'Normal_PostLeftAndRight'][ix];
+        return a.states[n] ? n : 'Normal_None';
+    }
+    function buildPierCell(parent, tn, tx, ty, occ, arr, big) {
+        /* one brush CELL (big = 4 tiles square) == one bsv3 frame: blit its
+           blocks in list order. The frame's C_Shadow diamond is 507x265
+           100-tier px = a 4x4-tile cell at the 128x64 px tile every other
+           -100 asset uses, and the save stores the brushes as 4x4 cells
+           (gen_map_explorer.py), so one frame spans one cell at 1:1 */
+        var a = pierAsset(tn);
+        if (!a) return null;
+        var sheet = B + a.sheet;
+        if (!texFor(sheet)) return null;
+        var blocks = a.states[pierState(a, tx, ty, occ, big)], out = [];
+        /* box -> tile map from the live camera: box px are SCREEN-aligned
+           (the frame is a billboard whose deck is raised straight up), so
+           scale the 127x66 box onto the cell's screen diamond and pull that
+           back through the inverse of the ground matrix's linear part. Same
+           result as a fixed 45deg rotation under the default ORIENT, but it
+           stays upright under Rotate/Mirror too. The ratio is
+           zoom-independent; setOrient rebuilds the ground. */
+        var A = CAM.tileAffine(cam, VW, VH);
+        var det = A.a * A.e - A.b * A.d;
+        var i00 = A.e / det, i01 = -A.b / det, i10 = -A.d / det, i11 = A.a / det;
+        var kx = big * (Math.abs(A.a) + Math.abs(A.b)) / 127,   // screen px per box px
+            ky = big * (Math.abs(A.d) + Math.abs(A.e)) / 66;
+        for (var i = 0; i < blocks.length; i++) {
+            var k = blocks[i], sx = k.m[0], sy = k.m[3];
+            var t = subTex(sheet, k.c[0], k.c[1], k.c[2], k.c[3]);
+            if (!t) continue;
+            var s = new PIXI.Sprite(t);
+            s.anchor.set(0.5);
+            /* drawn-block centre in box px; a<0 mirrors about the anchor, so
+               x is the block's RIGHT edge there */
+            var bx = (k.p[0] + (sx >= 0 ? 1 : -1) * k.c[2] * Math.abs(sx) / 2) / 4 + a.calib.ox;
+            var by = (k.p[1] + (sy >= 0 ? 1 : -1) * k.c[3] * Math.abs(sy) / 2) / 4 + a.calib.oy;
+            var ex = (bx - 63.5) * kx, ey = (by - 33) * ky;      // screen offset
+            var fx = sx * kx / 4, fy = sy * ky / 4;              // sheet px -> screen
+            s.setFromMatrix(new PIXI.Matrix(i00 * fx, i10 * fx, i01 * fy, i11 * fy,
+                tx + big / 2 + i00 * ex + i01 * ey, ty + big / 2 + i10 * ex + i11 * ey));
+            s.visible = false;
+            parent.addChild(s);
+            arr.push(s);
+            out.push(s);
+        }
+        return out.length ? out : null;
+    }
+    function applyPierMode() {
+        /* brush art: the opaque C_Shadow block covers the whole diamond, so
+           the flat fill only has to stop bleeding past its tile (same trick
+           applyDirtMode uses) */
+        for (var i = 0; i < pierRecs.length; i++) {
+            var r = pierRecs[i];
+            var vis = pierArtOn && !!pierTexReady(r.tn) && !terrain.hidden[r.tn];
+            for (var k = 0; k < r.art.length; k++) r.art[k].visible = vis;
+            r.fill.width = r.fill.height = vis ? 1 : 1 + BLEED;
+        }
+        var b = $('btn-pierart');
+        if (b) b.classList.toggle('on', pierArtOn && !!pierTexReady('boardwalk'));
+    }
     applySeasonMode();
     if ($('btn-season')) $('btn-season').addEventListener('click', function () {
         var modes = ['base'], i;
@@ -739,6 +861,8 @@
     var animNow = 0;                      // ms, one clock per rendered frame
     var animLive = 0;                     // animated sprites in the last frame
     var charAnimLive = 0;                 // animating character sprites
+    var charPreview = null;               // {cid, cell} — card-driven preview
+                                          // (CharVariants tile click)
     var CHAR_ANIM_MIN_PX = QP.get('charAnimMinPx') !== null
         ? (Math.abs(QP.get('charAnimMinPx') | 0)) : 24;
     var animNextT = 0;
@@ -1432,7 +1556,18 @@
         return p;
     }
 
-    /* ---- character idle loops (characters.json v3 animated idle cells) ----- */
+    /* ---- character idle loops (characters.json v3 animated idle cells) -----
+       Original-game semantics: a cell like <name>IdleBlink stores ONE pass
+       of the animation — its per-frame delay_ms values are that single play
+       (tsto2rgb, the format's own reference writer, puts them straight into
+       a GIF's frame durations) — and the client holds the standby frame
+       while it waits to re-trigger the cell (the binary's IdleAnimation /
+       timeBetweenAnimsMin / timeBetweenAnimsMax idle-trigger properties,
+       notes/01). Modulo-looping the cell (the old behaviour) replayed a
+       ~208 ms blink ~5x/second. Now: play the frames once per cycle and
+       hold fr[0] (standby) through a randomised per-character gap; the
+       per-character hash of the save id offsets both phase and gap so the
+       crowd does not blink in lockstep. */
     function charFrameFile(as, id, k) {
         var fr = as.frames;
         if (!fr || !fr.length) return as.png;
@@ -1445,7 +1580,14 @@
         }
         var h = 0, s = String(id), j;
         for (j = 0; j < s.length; j++) h = (h * 31 + s.charCodeAt(j)) | 0;
-        var t = ((animNow || performance.now()) + Math.abs(h)) % as._tot;
+        h = Math.abs(h);
+        // one play, then a randomised hold on the standby frame (2-7 s,
+        // like the client's time-between-anims); loops long enough to read
+        // as an "active" idle wait at least another loop-length before
+        // replaying, so long gags don't run back-to-back
+        var gap = 2000 + (h >>> 4) % 5000 + (as._tot > 1200 ? as._tot : 0);
+        var t = ((animNow || performance.now()) + h) % (as._tot + gap);
+        if (t >= as._tot) return fr[0].file;    // standby between plays
         for (j = 0; j < fr.length; j++) {
             t -= (fr[j].delay || 100);
             if (t < 0) return fr[j].file;
@@ -1455,6 +1597,35 @@
     function charAnimating(as, k) {
         return !!(as.frames && as.frames.length > 1 && animOn && artMode &&
                   Math.max(as.w, as.h) * k >= CHAR_ANIM_MIN_PX);
+    }
+    /* the art asset to draw for a character: the card's preview cell wins
+       over the manifest pick — shared by the scene pass and the click
+       hit-test so both agree on the drawn sprite rect */
+    function charArtOf(c) {
+        if (!artMode || !charMan) return null;
+        if (charPreview && String(charPreview.cid) === String(c[0]))
+            return charPreview.cell;
+        var rec = charMan.characters[c[0]];
+        return (rec && charMan.assets[rec.slug]) || null;
+    }
+    /* preview playback: replay the chosen cell continuously (one pass on
+       its own delays, 1.2 s hold on the standby frame) — steadier than
+       the crowd's 2-7 s randomised blink gaps, this is an inspection loop */
+    function charPreviewFrame(as) {
+        var fr = as.frames;
+        if (!fr || !fr.length || !animOn)
+            return (fr && fr[0] || { file: as.png }).file;
+        if (as._ptot === undefined) {
+            var tot = 0, i;
+            for (i = 0; i < fr.length; i++) tot += fr[i].delay || 100;
+            as._ptot = tot || 1;
+        }
+        var t = (animNow || performance.now()) % (as._ptot + 1200);
+        for (i = 0; i < fr.length; i++) {
+            t -= (fr[i].delay || 100);
+            if (t < 0) return fr[i].file;
+        }
+        return fr[0].file;
     }
 
     /* ---- tile grid overlay (debug) + wireframe toggles ---------------------- */
@@ -1535,6 +1706,8 @@
     var TI_DIRT = CityTerrain.TYPE_ORDER.indexOf('dirt');
     var TI_DIRTROAD = CityTerrain.TYPE_ORDER.indexOf('dirtroad');
     var TI_KLSROAD = CityTerrain.TYPE_ORDER.indexOf('klsroad');
+    var TI_BOARDWALK = CityTerrain.TYPE_ORDER.indexOf('boardwalk');
+    var TI_PIER = CityTerrain.TYPE_ORDER.indexOf('pier');
     var FLAT_GRASS_S = CityTerrain.FLAT_GRASS_S;   // grass pattern floor
     var BUILD_LOD_S = 2;                            // orbit LOD threshold
     var MANH_R = 4 / (64 * Math.SQRT2);             // manhole radius, tile units
@@ -1912,6 +2085,8 @@
            children: drop them here too or a rebuild would leak the old art */
         for (i = raisedG.children.length - 1; i >= 0; i--) raisedG.children[i].destroy();
         byType = []; sheetRecs = []; waterRecs = []; dirtArtRecs = [];
+        pierRecs = [];
+        var pierCells = [];
         var f = terrain.features;
         /* cell-record map for the spec-mode neighbour probe (engine
            Pass_d = nibble bit OR (contains AND solid)): keyed by cell
@@ -1919,7 +2094,7 @@
            (terrain.js decodeCells), so a cell's neighbour record in a
            direction is the origin at ±big tiles on that axis. River cells
            get their own map (RiverDrawer probes RIVERS, not ROADS). */
-        var recs = {}, rivRecs = {}, dirtRecs = {}, dirtRivRecs = {};
+        var recs = {}, rivRecs = {}, dirtRecs = {}, dirtRivRecs = {}, brushOcc = {};
         for (var ri = 0; ri < f.length; ri++) {
             var fe = f[ri];
             if (fe[2] === TI_ROAD && (fe[5] || 1) === 4)
@@ -1930,6 +2105,8 @@
                 dirtRecs[fe[0] + ',' + fe[1]] = { m: fe[3], p: fe[4] };
             else if (fe[2] === TI_DIRT && (fe[5] || 1) === 4 && fe[3] >= -1 && fe[3] <= 15)
                 dirtRivRecs[fe[0] + ',' + fe[1]] = { m: fe[3], p: fe[4] };
+            else if (fe[2] === TI_BOARDWALK || fe[2] === TI_PIER)
+                (brushOcc[fe[2]] || (brushOcc[fe[2]] = {}))[fe[0] + ',' + fe[1]] = 1;
         }
         for (i = 0; i < f.length; i++) {
             var e = f[i], tx = e[0], ty = e[1], ti = e[2],
@@ -1961,6 +2138,15 @@
                    visibility so the toggle never needs a rebuild */
                 var wr = buildRivCell(featC, tx, ty, big, m, arr, rivRecs);
                 if (wr) { waterRecs.push(wr); fill.width = fill.height = big; }
+                continue;
+            }
+            if ((ti === TI_BOARDWALK || ti === TI_PIER) && big === 1) {
+                /* brush tile on the ocean grid: the flat fill stays (it is
+                   what the page drew before the art existed) and the bsv3
+                   block art is assembled after the loop, so the tiles
+                   overlap in screen order; applyPierMode decides */
+                pierCells.push({ tn: CityTerrain.TYPE_ORDER[ti], tx: tx, ty: ty,
+                                 occ: brushOcc[ti] || {}, fill: fill, arr: arr });
                 continue;
             }
             if (ti !== TI_ROAD && ti !== TI_DIRTROAD && ti !== TI_KLSROAD) continue;
@@ -2056,10 +2242,30 @@
                     tn: 'dirtroad', manh: manh });
             }
         }
+        /* brush art last, back to front: a cell's raised deck, legs and
+           splash must overdraw the cell BEHIND it, and its C_Shadow must
+           never land on a nearer deck. Screen depth is the ORIENTED tile
+           sum (the terrain feature sort's key) — plain tx + ty only holds
+           for one orientation, and under the default ORIENT it drew the
+           far cells last, their shadows striping every deck row blue */
+        pierCells.sort(function (p, q) {
+            var up = CAM.oriented(p.tx, p.ty), uq = CAM.oriented(q.tx, q.ty);
+            return (up[0] + up[1]) - (uq[0] + uq[1]) || up[0] - uq[0];
+        });
+        for (i = 0; i < pierCells.length; i++) {
+            var pc = pierCells[i];
+            /* the brushes are 4x4 cells on the land's cell lattice (town
+               x = -48 + 4c, y = -112 + 4r): one frame per cell, at its
+               origin tile; the other 15 tiles keep only their fills */
+            if ((pc.tx & 3) || (pc.ty & 3)) continue;
+            var art = buildPierCell(featC, pc.tn, pc.tx, pc.ty, pc.occ, pc.arr, 4);
+            if (art) pierRecs.push({ art: art, tn: pc.tn, fill: pc.fill });
+        }
         applySheetMode();
         applyTypeVisibility();
         applyWaterMode();
         applyDirtMode();
+        applyPierMode();
         buildAvenues();
     }
     /* manholes: the canvas page projects the tile centre with a +hh world
@@ -2082,6 +2288,7 @@
         applySheetMode();
         applyWaterMode();          // water quads live in byType[river] too:
         applyDirtMode();           // dirt art likewise — last word on the
+        applyPierMode();           // brush art likewise (notes/09 §12)
     }                              // cell after the legend pass
     /* sheet art ON (road cells): the cleaned diamond sprites cover the
        flat fill and the manhole retires; OFF: flat fill + manhole.
@@ -2223,7 +2430,7 @@
     /* ============================ render ===================================== */
     var DIAG = {
         mode: 'Pixi', ms: 0, fps: 0, maxMs: 0, anims: 0, charAnims: 0,
-        pool: 0, ver: '2026-10-27.3'
+        pool: 0, ver: '2026-10-28.1'
     };
     window.__CV_DIAG = DIAG;
     window.__CV_VER = DIAG.ver;                    // console sanity check
@@ -2364,10 +2571,12 @@
                     y = A.d * cxw + A.e * cyw + A.f;
                 if (x < -4 || x > VW + 4 || y < -4 || y > VH + 4) continue;
                 if (artC && !lod) {
-                    var rec = charMan.characters[c[0]];
-                    var as2 = rec && charMan.assets[rec.slug];
+                    var as2 = charArtOf(c);
                     if (as2 && !(as2.w * kc < 12 && as2.h * kc < 12)) {
-                        var url = B + 'assets/characters/' + charFrameFile(as2, c[0], kc);
+                        var url = B + 'assets/characters/' +
+                            (charPreview && charPreview.cell === as2
+                                ? charPreviewFrame(as2)
+                                : charFrameFile(as2, c[0], kc));
                         if (charAnimating(as2, kc)) charAnimLive++;
                         var t = texFor(url);
                         if (t) { emitSpr(t, x - as2.anchor[0] * kc,
@@ -3193,13 +3402,17 @@
         var name = M.charNames[c[0]];
         var count = 0;
         for (var k = 0; k < M.chars.length; k++) if (M.chars[k][0] === c[0]) count++;
+        var rec = charMan && charMan.characters[c[0]];
         return '<h3>' + esc(name || 'char #' + c[0]) + '</h3>' +
             '<div class="tagrow"><span class="tag">character <b>#' + c[0] + '</b></span>' +
             '<span class="tag"><b>' + count + '</b>&times; in save</span></div>' +
             '<table><tr><td>position</td><td>' + c[1] + ', ' + c[2] + '</td></tr>' +
             '<tr><td>name resolved</td><td>' +
-            (name ? 'yes (character catalog)' : 'no') + '</td></tr></table>' +
-            '<div class="pinnote">Selected — Esc or clicking a ground tile deselects.</div>';
+            (name ? 'yes (character catalog)' : 'no') + '</td></tr>' +
+            '<tr><td>map asset</td><td>' +
+            (rec ? esc(rec.slug) : 'none &mdash; drawn as a dot') + '</td></tr></table>' +
+            '<div class="pinnote">Selected &mdash; Esc or clicking a ground tile deselects.' +
+            ' Click an animation tile below to play it on the map.</div>';
     }
     function terrainHtml(x, y, type) {
         var isGrass = type === 'grass';
@@ -3235,6 +3448,9 @@
     }
     function setSel(sel) {
         selected = sel;
+        charPreview = null;                        // preview follows the card
+        if (window.AssetVariants && AssetVariants.stop) AssetVariants.stop();
+        if (window.CharVariants && CharVariants.stop) CharVariants.stop();
         details.innerHTML = !sel ? PLACEHOLDER
             : sel.kind === 'c' ? charHtml(sel.i)
             : sel.kind === 't' ? terrainHtml(sel.x, sel.y, sel.type)
@@ -3244,6 +3460,17 @@
             var e = M.binfo[M.buildings[sel.i][0]];
             var v = AssetVariants.render(e && e[2]);
             if (v) details.appendChild(v);
+        }
+        // family strip under the character card (families/<cid>.json sidecar)
+        if (sel && sel.kind === 'c' && window.CharVariants) {
+            var ch = M.chars[sel.i];
+            var fv = CharVariants.render(ch[0], M.charNames[ch[0]], {
+                onPreview: function (cell) {
+                    charPreview = cell ? { cid: ch[0], cell: cell } : null;
+                    markDirty();
+                }
+            });
+            if (fv) details.appendChild(fv);
         }
         markResultSel();
         markDirty();
@@ -3272,9 +3499,23 @@
     }
     function hitTest(sx, sy) {
         if (!objHidden.people) {           // people draw on top -> claim clicks first
+            // In Art mode the character is a billboard, not a dot: test the
+            // drawn sprite rect (same geometry renderScene blits) — the old
+            // dot-sized box made visible characters near-unclickable.
+            var s = CAM.scale(cam);
+            var ka = s / ART.S;
+            var art = artMode && charMan && s >= BUILD_LOD_S;
             for (var i = M.chars.length - 1; i >= 0; i--) {
                 var p = charScreen(M.chars[i]);
-                if (Math.abs(sx - p.x) <= p.r + 2 && Math.abs(sy - p.y) <= p.r + 2)
+                var as4 = art ? charArtOf(M.chars[i]) : null;
+                if (as4 && !(as4.w * ka < 12 && as4.h * ka < 12)) {
+                    var hx = p.x - as4.anchor[0] * ka,
+                        hy = p.y - as4.anchor[1] * ka;
+                    if (sx >= hx - 2 && sx <= hx + as4.w * ka + 2 &&
+                        sy >= hy - 2 && sy <= hy + as4.h * ka + 2)
+                        return { kind: 'c', i: i };
+                } else if (Math.abs(sx - p.x) <= p.r + 2 &&
+                           Math.abs(sy - p.y) <= p.r + 2)
                     return { kind: 'c', i: i };
             }
         }
@@ -3534,6 +3775,19 @@
         applyDirtMode();
         markDirty();
     });
+
+    /* ---- pier / boardwalk art toggle: the bsv3 tile art the engine draws
+       for the two ocean-grid brushes (notes/09 §12) — off = the flat plank
+       fill the page drew before the art was extracted. */
+    if ($('btn-pierart')) $('btn-pierart').addEventListener('click', function () {
+        pierArtOn = !pierArtOn;
+        try { localStorage.setItem(PIERART_KEY, pierArtOn ? '1' : '0'); } catch (e) { /* private mode */ }
+        applyPierMode();
+        markDirty();
+    });
+    (function () {                 // ON by default: only an explicit "0" hides it
+        try { pierArtOn = localStorage.getItem(PIERART_KEY) !== '0'; } catch (e) { /* private mode */ }
+    })();
 
     /* ---- road bridges toggle: the RoadDrawer's own deck art on the crossings
        this save produces (notes/09 §10) — off = the flat road fill over the

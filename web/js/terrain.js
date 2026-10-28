@@ -25,10 +25,12 @@
    (-48,-112): walk hit 22.5% -> 80.7%, building-anchor purity
    87.6% -> 91.0%, and every shared-origin layer improved (buildings
    on river 2.5% -> 0.9%, on sand 4.1% -> 3.6%, on road
-   13.1% -> 9.3%). Only the 3072-char ocean
-   sea-patch keeps the legacy per-tile frame (its reciprocity is 0.87,
-   i.e. not this codebook; the notes/06 §10 water-prop anchoring for
-   it stands). town = grid - (ox, oy) (legacy frames only).
+   13.1% -> 9.3%). The 3072-char oceanData string is the SAME
+   codebook at 3 blocks/row (reciprocity 1.000; the per-tile reading's
+   0.87 was the wrong layout, not a different format) and holds only the
+   boardwalk/pier brush cells — gen_map_explorer.py decodes it into the
+   boardwalk/pier pts layers and this file draws no ocean tiles
+   (notes/10). town = grid - (ox, oy) (pts layers only).
 
    Model (occupancy-driven — documented, notes/06):
      The ground is a flat oblique plane. The base is grass, filling the
@@ -82,8 +84,9 @@
         klsroad:  { c: [176, 158, 128], road: true },
         /* brush tiles recovered from the ocean frame (gen_map_explorer
            "brush tiles" block): warm plank tan for boardwalk, weathered
-           grey-brown for pier. Flat fills — the plank art is not in the
-           extracted packs. */
+           grey-brown for pier. This Canvas page keeps the flat fills — the
+           art is bsv3 scene art, not sheet art, and only the Pixi viewer
+           blits it (assets/city/pier-tiles.json, notes/09 §12). */
         boardwalk: { c: [190, 140, 90] },
         pier:      { c: [126, 110, 96] }
     };
@@ -141,9 +144,10 @@
     };
 
     /* Decode a layer string to a flat [x0, y0, x1, y1, ...] grid list.
-       LEGACY per-tile codebook — retained ONLY for the 3072-char ocean
-       sea-patch (reciprocity 0.87: not the cell codebook) and the
-       pre-decoded brush layers. Normal layers: char i covers row y=i/32,
+       LEGACY per-tile codebook — no longer used by the viewer (kept for
+       the export / older tools). Its 3072-char oceanData reading below
+       is WRONG: that string is the cell codebook at 3 blocks/row
+       (notes/10). Normal layers: char i covers row y=i/32,
        16 sub-columns along x.
        The sea patch (vert=true, the 3072-char oceanData frame) is stored
        COLUMN-major: each char covers column x=i/32, 16 sub-cells along
@@ -368,8 +372,9 @@
             var ti = TYPE_IDX[L.n];
             if (ti == null) continue;
             if (L.pts) {
-                /* brush layers ship pre-decoded (pts already in grid
-                   coords, seaColOffset applied) — legacy frame */
+                /* brush layers ship pre-decoded: one entry per tile, in
+                   grid coords (town + ox/oy), from the oceanData cell
+                   decode in gen_map_explorer.py */
                 var t0 = L.pts.slice(), pts0 = new Array(t0.length);
                 for (var i0 = 0; i0 < t0.length; i0 += 2) {
                     pts0[i0] = t0[i0] - this.ox; pts0[i0 + 1] = t0[i0 + 1] - this.oy;
@@ -378,20 +383,14 @@
                 continue;
             }
             if (L.s.length === 3072) {
-                /* the sea-patch frame is not the cell codebook (legacy
-                   column-major per-tile decode; see decodeTiles) */
-                var pout = [];
-                var t = decodeTiles(L.s, true, pout);
-                for (var j = 0; j < t.length; j += 2) t[j] += this.seaColOffset;
-                for (var pj = 0; pj < pout.length; pj += 2) pout[pj] += this.seaColOffset;
-                var pts = new Array(t.length), pkeys = {};
-                for (var i = 0; i < t.length; i += 2) {
-                    pts[i] = t[i] - this.ox; pts[i + 1] = t[i + 1] - this.oy;
-                }
-                for (var pi = 0; pi < pout.length; pi += 2) {
-                    pkeys[(pout[pi] - this.ox) + ',' + (pout[pi + 1] - this.oy)] = true;
-                }
-                this._raw.push({ ti: ti, pts: pts, p: pkeys });
+                /* oceanData is NOT a wave-mark frame (re-decoded
+                   2026-10-28, notes/09 §12): it is the 4x4-cell codebook
+                   at 3 blocks/row holding ONLY the boardwalk/pier brush
+                   cells, which the generator ships as the boardwalk/pier
+                   pts layers. Reading it here as column-major per-tile
+                   sea patches drew those cells as fake wave marks, so the
+                   ocean layer contributes no tiles: the sea is the solid
+                   base (seaFill*) alone. */
                 continue;
             }
             this._raw.push({ ti: ti, cells: decodeCells(L.s), p: null });
@@ -596,6 +595,13 @@
                 if (g[0] + sp2 > tb.x1) tb.x1 = g[0] + sp2;
                 if (g[1] + sp2 > tb.y1) tb.y1 = g[1] + sp2;
             }
+            /* the ocean layer has no tiles (oceanData is brush cells, see
+               the constructor): frame the solid sea base instead */
+            if (!this.typeBBox[TYPE_IDX.ocean] && this.seaFill &&
+                this.seaFillX1 > this.seaFillX0)
+                this.typeBBox[TYPE_IDX.ocean] = {
+                    x0: this.seaFillX0 - this.ox, y0: this.seaFillY0 - this.oy,
+                    x1: this.seaFillX1 - this.ox - 1, y1: this.seaFillY1 - this.oy - 1 };
             /* ground changed shape: the LOD atlas (Terrain#drawAtlas) is stale */
             this._atlas = null;
             this._atlasFlat = null;
@@ -729,6 +735,11 @@
                 var n = TYPE_ORDER[a[i]];
                 if (!this.hidden[n]) return n;
             }
+            /* the sea is the solid base, not tiles: report it as ocean */
+            if (this.seaFill && !this.hidden['ocean'] &&
+                x >= this.seaFillX0 - this.ox && x < this.seaFillX1 - this.ox &&
+                y >= this.seaFillY0 - this.oy && y < this.seaFillY1 - this.oy)
+                return 'ocean';
             return this.hidden['grass'] ? null : 'grass';
         },
 
