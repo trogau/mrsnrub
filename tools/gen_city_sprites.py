@@ -1,0 +1,3560 @@
+#!/usr/bin/env python3
+"""City sprite pipeline: local CDN pool -> static sprite PNGs + anchor manifest.
+
+Phase 2 (planning/phase-2-camera-view.md). Local-only: reads cdn/ + data/,
+scratch pool in /tmp/opencode/citypool/ (disposable — re-run if wiped; the
+path is a symlink to the project's .scratch/ on disk — the 12 GiB per-user
+tmpfs quota cannot hold pool + season archives + worker staging),
+generated output in web/assets/city/ (never hand-edit that directory).
+
+Subcommands
+-----------
+  extract --worker N --workers M   pull the required slugs' rgb/bsv3/xml out
+                                   of the 611-family *Game-100* pool into
+                                   /tmp/opencode/citypool/. Run one process
+                                   per worker (N = 0..M-1). Also handles the
+                                   core game-100 pack with --core.
+  backfill --worker N --workers M  scan EVERY candidate row (all revisions
+                                   of every family) against the pool: keep
+                                   files the first pass missed, and archive
+                                   byte-different re-ships under
+                                   /tmp/opencode/citypool/season/<class>/
+                                   (the season-mode art; see classify_season).
+                                   Never overwrites a pool main file.
+  resolve                          base-preferred resolution: for every pool
+                                   main whose family is a seasonal pack,
+                                   promote the archived base copy from
+                                   season/base/ and file the seasonal art
+                                   into season/<class>/ (idempotent; sprites
+                                   and anims run it automatically).
+  report                           merge per-worker index files, print the
+                                   coverage report (required slugs vs pool).
+  sprites [--slug X] [--parse-only]  bsv3 parse (0x0103 + 0x0303 variants),
+                                    static-frame compositing (fullest frame
+                                    for 0x0103, frame 0 for 0x0303), writes
+                                    web/assets/city/<slug>.png plus the
+                                    city-sprites.json anchor manifest, and
+                                    the per-slug season variants under
+                                    web/assets/city/seasons/<class>/<slug>.png
+                                    (manifest 'seasons' sub-maps).
+                                    --shard I --shards N renders only
+                                    sorted-required[I::N] into a private
+                                    city-sprites-shardI.json — run N of
+                                    these in parallel (single process gets
+                                    OOM-killed on the full run even with the
+                                    periodic malloc_trim), then sprites-merge.
+                                    --parse-only validates every pool bsv3
+                                    to exact EOF without rendering.
+  sprites-merge                      fold city-sprites-shard*.json fragments
+                                    into city-sprites.json, prune stale
+                                    season PNGs, unlink the fragments.
+  reanchor                         rewrite city-sprites.json anchors from the
+                                    pool xml defs (no PNG re-render): a
+                                    non-zero transImageX/Y pair is the
+                                    authoritative engine anchor.
+  chars                            character idle-frame PNGs from .bcell animation cells in the pool
+  chars                            (family packs — run the extract workers first for full coverage) plus
+  chars                            the core game-100 pack, matched to the save character names; writes
+  chars                            web/assets/characters/<slug>*.png plus characters.json (asset
+  chars                            manifest + save-id -> asset map for the M3 defID lookup).
+  anims [--slug X] [--cap N] [--placed]  named-anim filmstrip atlases for animated 0x0103 bsv3 files:
+                                   every named anim with >1 distinct frame is rendered (deduped,
+                                   thinned to N frames, anchor-centred cells) into
+                                   web/assets/city/anims/<slug>__<anim>.png + city-anims.json
+                                   (consumed by the map pages' variant strips). --placed limits
+                                   the batch to slugs the save actually places. city-anims.json
+                                   also carries the 'behavior' gate (engine idle/tap anim per
+                                   slug, plus the part loops a multi-part asset composites over its
+                                   body) consumed by the City View map player.
+                                     behavior [--refresh] [--write-map]
+                                                           scan the extracted gamescripts packs for what the
+                                                           engine actually animates: the
+                                                           ActiveAnimationController/neutralAnim idle loop, the
+                                                           BuildingTouched script's tap anim, and the
+                                                           <AnimationLayerOrder> part lists per building. Cached in
+                                                           data/building_behaviors.json (the scan walks ~190 packs;
+                                                           re-run after new DLC extraction). --write-map regenerates
+                                                           only city-anims.json's behavior gate from the existing
+                                                           filmstrips (no atlas work).
+
+The family list is the 611-family candidate set from the footprint pool
+work (g100_cands{,2,3}.tsv in /tmp/opencode/, rebuilt from cdn/ with the
+*Game-100* / *Game_LTD-100* / *BuildDecoGame*{Fall,Snow}-100 patterns if
+gone — Game-25/50 excluded, see notes/01 catalog section).
+"""
+
+import argparse
+import hashlib
+import json
+import math
+import os
+import re
+import shutil
+import struct
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from PIL import Image  # noqa: E402
+from extract_assets import rgb_to_rgba  # noqa: E402
+
+ROOT = Path(__file__).resolve().parent.parent
+CDN = ROOT / 'cdn'
+DATA = ROOT / 'data'
+POOL = Path('/tmp/opencode/citypool')
+WORK_BASE = Path('/tmp/opencode/citypool_work')
+CANDS = [Path(f'/tmp/opencode/g100_cands{i}.tsv')
+         for i in ('', '2', '3', '4', '5')]
+CORE_ZIP = CDN / '3_0_30' / 'game-100-v3_0_30.zip'
+
+
+# ---------------------------------------------------------------- catalogs
+
+def load_json(name):
+    with open(DATA / name) as f:
+        return json.load(f)
+
+
+def compute_required():
+    """The set of slugs the save can actually instantiate, plus their
+    flipped variants (mirror buildings + monorail straight-track) and the
+    directional fence assets. Superset on purpose: the save's per-instance
+    flipState only removes from this, never adds to it."""
+    ids = load_json('building_ids.json')
+    sav = load_json('save_buildings.json')
+    fp = load_json('building_footprints.json')
+    fl = load_json('flip_assets.json')
+    kmap = {k.lower().replace('_', ''): k for k in fl}
+
+    req = set()
+    for bid, rec in sav.items():
+        slug = ids.get(bid, {}).get('slug') or rec['name'].lower()
+        req.add(slug)
+        if (slug + 'flipped') in fp:
+            req.add(slug + 'flipped')
+        if rec.get('via') == 'flip':
+            key = kmap.get(rec['name'].lower())
+            if key:
+                req.update(v.lower() for v in fl[key].values())
+    return req
+
+
+# ---------------------------------------------------------------- families
+
+def load_families():
+    """family -> first (pack7z, innerzip) row. Later rows are alternate
+    revisions of the same family; the first row in the candidate list wins
+    (same policy as the original g100 pipeline)."""
+    fams = {}
+    for tsv in CANDS:
+        if not tsv.exists():
+            continue
+        for line in open(tsv):
+            parts = line.rstrip('\n').split('\t')
+            if len(parts) < 4:
+                continue
+            fam, size, pack, inner = parts[0], int(parts[1]), parts[2], parts[3]
+            fams.setdefault(fam, (pack, inner, size))
+    return dict(sorted(fams.items()))
+
+
+def open_inner_zip(work, pack, inner):
+    """7z the inner pack zip out of the bundle, then open it (or its
+    nested '1' payload) as a zip. Returns a zip path + cleanup dir."""
+    work = Path(work)
+    c = work / 'c'
+    c.mkdir(parents=True, exist_ok=True)
+    r = subprocess.run(
+        ['7z', 'x', '-y', str(CDN / pack), f'-o{c}', '--', inner],
+        capture_output=True)
+    zf = c / inner
+    if r.returncode != 0 or not zf.exists():
+        return None
+    if zf.stat().st_size < 4096 or open(zf, 'rb').read(4) != b'PK\x03\x04':
+        # not itself a zip — the pack zip IS the asset zip (flat packs)
+        return zf
+    x = work / 'x'
+    x.mkdir(exist_ok=True)
+    # extract only the '1' payload member (unzipping the whole pack staged
+    # multiple GB on the quota-limited tmpfs pool volume for nothing)
+    import zipfile
+    with zipfile.ZipFile(zf) as z:
+        names = z.namelist()
+        if '1' in names:
+            with z.open('1') as src, open(x / '1', 'wb') as dst:
+                shutil.copyfileobj(src, dst)
+            zf.unlink()
+            return x / '1'
+    return zf
+
+
+# ---------------------------------------------------------------- worker
+
+KINDS = {'.rgb': 'rgb', '.bsv3': 'bsv3', '.xml': 'xml', '.bcell': 'bcell'}
+
+# ---------------------------------------------------------------- seasons
+#
+# TSTO has no client-side season switch: during an event the CDN simply
+# RE-SHIPPED the same slug with themed art (XMAS*_Buildings_Snow_* reskinned
+# the town in snow, Blargsgiving painted fall leaves, and every event patch
+# carried a *BuildDecoGameSnow twin re-shipping the build-deco set with a
+# snow overlay). The extraction pool used to resolve that by first-write-
+# wins, so a seasonal copy that raced in first became THE art — which is why
+# the map showed LawnChair/ChristmasGame snow under a summer town. The pool
+# now keeps one main file per slug (base provider preferred) and archives
+# byte-different re-ships under POOL/season/<class>/ for the season modes.
+# Family-name classes (the pack naming is the only season signal the CDN
+# layout leaves us); None = a plain/base content family.
+SEASON = POOL / 'season'
+SEASON_RULES = (
+    ('base', r'nonwinter'),                # the 2014 unfreeze packs
+    ('halloween', r'thoh|halloween'),      # before 'snow': THOH*...Snow
+    ('winter', r'snow|xmas|christmas|coldturkey|newyears'),
+    ('fall', r'blargsgiving|thanksgiving|gamefall'),
+    ('easter', r'easter'),
+    ('valentine', r'valentine'),
+    ('july4th', r'4thofjuly'),
+    ('stpatricks', r'stpatrick'),
+    ('pride', r'pride'),
+    ('summer', r'summergames|summerofourdiscontent|summerdonuts'),
+)
+SEASON_ORDER = ('winter', 'fall', 'halloween', 'easter', 'valentine',
+                'july4th', 'stpatricks', 'pride', 'summer')
+_SEASON_RE = [(c, re.compile(p)) for c, p in SEASON_RULES]
+
+
+def classify_season(fam):
+    """family name -> season class, or None for plain content packs.
+    'base' means the name says so explicitly (NonWinter*); None is the
+    ordinary base provider — both are non-seasonal for every policy here.
+    Post-event *Takedown* revert packs ship the pre-event art, so they are
+    base providers too — EXCEPT their own *Snow* families, which re-ship the
+    generic snow cover (the revert removes the event decorations, not the
+    winter skin), so those fall through to the ordinary season rules."""
+    low = fam.lower()
+    if 'takedown' in low and 'snow' not in low:
+        return None
+    for cls, rx in _SEASON_RE:
+        if rx.search(low):
+            return None if cls == 'base' else cls
+    return None
+
+
+def is_seasonal(fam):
+    return classify_season(fam) is not None
+
+
+def _md5_bytes(b):
+    return hashlib.md5(b).hexdigest()
+
+
+def load_rows():
+    """every (fam, pack, inner, size) candidate row across the candidate
+    TSVs, order-stable, exact-duplicate rows collapsed. load_families()
+    keeps only each family's first row; the fill/backfill pass needs them
+    all — a revision's zip can omit art its sibling revision ships
+    (skinnerhouse's base art lives only in ArtieZiffGame-100 r119367, not
+    first-listed r146180; crazycatladyshouse's lives only in the post-event
+    XMAS*Takedown* revert packs)."""
+    rows, seen = [], set()
+    for tsv in CANDS:
+        if not tsv.exists():
+            continue
+        for line in open(tsv):
+            parts = line.rstrip('\n').split('\t')
+            if len(parts) < 4:
+                continue
+            fam, size, pack, inner = parts[0], int(parts[1]), parts[2], parts[3]
+            key = (fam, pack, inner)
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append((fam, pack, inner, size))
+    return rows
+
+
+def _wait_space(wid, need_bytes):
+    """the pool volume (a tmpfs by default, symlinkable to disk) is quota
+    limited; a multi-GB pack must not start its 7z staging when the volume
+    is nearly full (workers run concurrently and one ENOSPC mid-write loses
+    the family's keeps). Poll until there is room for the staged payload."""
+    import time
+    POOL.mkdir(parents=True, exist_ok=True)
+    floor = max(int(need_bytes) * 3, 6 << 30)
+    while shutil.disk_usage(POOL).free < floor:
+        print(f'worker {wid}: waiting for pool volume space '
+              f'({shutil.disk_usage(POOL).free >> 30} GiB free, '
+              f'need {floor >> 30} GiB)', flush=True)
+        time.sleep(30)
+
+
+def _keep_files(z, fam, pack, log, required, stats):
+    """write every keep-worthy entry of one pack zip into the pool.
+    First copy of a file lands on POOL/<base>; a byte-DIFFERENT copy from a
+    later family is archived under POOL/season/<class>/<base> ('base' when
+    the later family is itself plain content — that copy lost the main race
+    only to the scheduler). Byte-identical re-ships stay plain dup rows.
+    .bcell cells never archive (character idle art has no season variants,
+    and they are the pool's bulk — skipping their hash saves minutes)."""
+    base_dir = SEASON / 'base'
+    for n in z.namelist():
+        b = os.path.basename(n)
+        kind = KINDS.get(os.path.splitext(b)[1])
+        if kind is None:
+            continue
+        slug = slug_of(b)
+        is_tile = b.lower().startswith('roadtilesheet')
+        is_bcell = kind == 'bcell'
+        if not (is_tile or slug in required or is_bcell):
+            continue
+        stats['seen'] += 1
+        dest = POOL / b
+        if dest.exists():
+            data = z.read(n)
+            if is_bcell or _md5_bytes(dest.read_bytes()) == _md5_bytes(data):
+                log.write(f'dup\t{b}\t{fam}\t{pack}\n')
+                continue
+            cls = classify_season(fam) or 'base'
+            adir = SEASON / cls
+            adir.mkdir(parents=True, exist_ok=True)
+            adest = adir / b
+            if adest.exists():      # one archived copy per (file, class)
+                log.write(f'dup\t{b}\t{fam}\t{pack}\n')
+                continue
+            tmp = adest.with_suffix(adest.suffix + '.part')
+            tmp.write_bytes(data)
+            tmp.rename(adest)
+            log.write(f'season\t{b}\t{fam}\t{pack}\t{cls}\n')
+            stats['archived'] += 1
+            continue
+        tmp = dest.with_suffix(dest.suffix + '.part')
+        tmp.write_bytes(z.read(n))
+        tmp.rename(dest)
+        stats['kept'] += 1
+        log.write(f'{kind}\t{b}\t{fam}\t{pack}\n')
+
+
+def backfill(wid, nworkers, only=None):
+    """scan EVERY candidate row (all revisions of all families) against the
+    existing pool, archiving byte-different re-ships into POOL/season/<cls>/
+    and filling pool files the original extraction missed entirely. Never
+    overwrites a pool main file. Run after extract; then `resolve`.
+    `only` restricts the pass to rows whose family contains one of the given
+    (comma-separated, case-insensitive) substrings — used to re-scan just
+    the packs added to the candidate lists after the main run."""
+    POOL.mkdir(parents=True, exist_ok=True)
+    WORK_BASE.mkdir(parents=True, exist_ok=True)
+    required = compute_required()
+    rows = load_rows()
+    if only:
+        pats = [p.lower() for p in only.split(',') if p.strip()]
+        rows = [r for r in rows if any(p in r[0].lower() for p in pats)]
+    mine = [r for i, r in enumerate(rows) if i % nworkers == wid]
+    log = open(POOL / f'index_bf{wid}.tsv', 'a')
+    stats = {'seen': 0, 'kept': 0, 'archived': 0}
+    fails = 0
+    for fam, pack, inner, size in mine:
+        work = WORK_BASE / f'bf{wid}'
+        shutil.rmtree(work, ignore_errors=True)
+        _wait_space(wid, size)
+        zpath = open_inner_zip(work, pack, inner)
+        if zpath is None:
+            fails += 1
+            log.write(f'FAIL\t{fam}\n')
+            continue
+        import zipfile
+        try:
+            with zipfile.ZipFile(zpath) as z:
+                _keep_files(z, fam, pack, log, required, stats)
+        except (OSError, zipfile.BadZipFile):
+            fails += 1
+            log.write(f'FAIL\t{fam}\n')
+        shutil.rmtree(work, ignore_errors=True)
+    log.close()
+    print(f'backfill {wid}/{nworkers}: rows={len(mine)} kept={stats["kept"]} '
+          f'archived={stats["archived"]} seen={stats["seen"]} fail={fails}',
+          flush=True)
+
+
+def _kept_fam_index():
+    """pool basename -> family of its pool-keep index row (first row wins)."""
+    fams = {}
+    for log in sorted(POOL.glob('index_*.tsv')):
+        try:
+            for line in open(log):
+                p = line.rstrip('\n').split('\t')
+                if len(p) >= 3 and p[0] in ('rgb', 'bsv3', 'xml', 'bcell'):
+                    fams.setdefault(p[1], p[2])
+        except OSError:
+            pass
+    return fams
+
+
+def resolve_seasons(verbose=True):
+    """Deterministic base-preferred resolution over the extracted pool.
+
+    Backfill archives every byte-different re-ship but never touches pool
+    main files, which may still hold a seasonal winner from the original
+    first-write-wins race (LawnChair shipped snowy because ChristmasGame
+    raced in first). For each pool main whose keeping family is a seasonal
+    pack, if POOL/season/base/ holds a byte-different copy from a base
+    provider, promote that copy to main and file the seasonal copy under
+    POOL/season/<class>/ — the art the season modes render. Idempotent:
+    after a swap the main and the base archive are byte-equal, so re-runs
+    no-op. Event-only art (no base provider anywhere) stays main in every
+    mode: its seasonal art IS its only art."""
+    if not SEASON.exists():
+        return 0
+    kept = _kept_fam_index()
+    base_dir = SEASON / 'base'
+    swaps = 0
+    for f in sorted(POOL.iterdir()):
+        if not f.is_file() or f.suffix not in ('.rgb', '.bsv3', '.xml'):
+            continue
+        fam = kept.get(f.name)
+        if not fam or not is_seasonal(fam):
+            continue
+        basef = base_dir / f.name
+        if not basef.exists():
+            continue
+        data = f.read_bytes()
+        if basef.read_bytes() == data:
+            continue                     # already resolved
+        cls = classify_season(fam)
+        cdir = SEASON / cls
+        cdir.mkdir(parents=True, exist_ok=True)
+        tgt = cdir / f.name
+        if tgt.exists() and tgt.read_bytes() != data:
+            tgt.unlink()                 # main copy wins its season slot
+        if tgt.exists():
+            f.unlink()
+        else:
+            shutil.move(str(f), str(tgt))
+        shutil.copy2(basef, f)
+        swaps += 1
+        if verbose:
+            print(f'resolve: {f.name} <- season/base (was {fam}, '
+                  f'{cls} copy archived)', flush=True)
+    if verbose and swaps:
+        print(f'resolve: {swaps} pool files promoted from season/base '
+              f'archives')
+    return swaps
+
+
+def slug_of(fname):
+    """pool filename -> canonical slug it provides ('' if none)."""
+    stem = os.path.basename(fname)
+    for ext in ('.rgb', '.bsv3', '.xml'):
+        if stem.endswith(ext):
+            stem = stem[: -len(ext)]
+            break
+    else:
+        return ''
+    if stem.endswith('_transimage'):
+        stem = stem[: -len('_transimage')]
+    if stem.endswith('flipped'):
+        stem = stem[: -len('flipped')]
+    return stem
+
+
+def worker(wid, nworkers, core=False):
+    POOL.mkdir(parents=True, exist_ok=True)
+    WORK_BASE.mkdir(parents=True, exist_ok=True)
+    fams = load_families()
+    mine = [f for i, f in enumerate(fams) if i % nworkers == wid]
+    required = compute_required()
+    stats = {'seen': 0, 'kept': 0, 'archived': 0}
+    missing_fam = 0
+    log = open(POOL / f'index_{wid}.tsv', 'a')
+    for fam in mine:
+        pack, inner, size = fams[fam]
+        work = WORK_BASE / f'w{wid}'
+        shutil.rmtree(work, ignore_errors=True)
+        _wait_space(wid, size)
+        zpath = open_inner_zip(work, pack, inner)
+        if zpath is None:
+            missing_fam += 1
+            log.write(f'FAIL\t{fam}\n')
+            continue
+        import zipfile
+        try:
+            with zipfile.ZipFile(zpath) as z:
+                _keep_files(z, fam, pack, log, required, stats)
+        except (OSError, zipfile.BadZipFile):
+            missing_fam += 1
+            log.write(f'FAIL\t{fam}\n')
+        shutil.rmtree(work, ignore_errors=True)
+    log.close()
+    print(f'worker {wid}/{nworkers}: families={len(mine)} kept={stats["seen"]} '
+          f'new_files={stats["kept"]} archived={stats["archived"]} '
+          f'missing={missing_fam}', flush=True)
+
+
+def do_core():
+    """The core game-100 pack: keep EVERYTHING (the landmark set is small
+    and it is the A/B reference region)."""
+    POOL.mkdir(parents=True, exist_ok=True)
+    work = WORK_BASE / 'core'
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True, exist_ok=True)
+    c = work / 'c'
+    c.mkdir()
+    subprocess.run(['unzip', '-o', '-q', str(CORE_ZIP), '-d', str(c)],
+                   check=True, capture_output=True)
+    zpath = c / '1'
+    log = open(POOL / 'index_core.tsv', 'a')
+    n = 0
+    import zipfile
+    with zipfile.ZipFile(zpath) as z:
+        for info in z.infolist():
+            base = os.path.basename(info.filename)
+            if os.path.splitext(base)[1] not in KINDS and not base.lower().startswith('roadtilesheet'):
+                continue
+            dest = POOL / base
+            if dest.exists():
+                continue
+            tmp = dest.with_suffix(dest.suffix + '.part')
+            tmp.write_bytes(z.read(info))
+            tmp.rename(dest)
+            log.write(f'{KINDS.get(os.path.splitext(base)[1], "rgb")}\t'
+                      f'{base}\tgame-100-core\t{CORE_ZIP.name}\n')
+            n += 1
+    log.close()
+    shutil.rmtree(work, ignore_errors=True)
+    print(f'core game-100: files={n}', flush=True)
+
+
+# ---------------------------------------------------------------- report
+
+def _pool_names():
+    return {p.name for p in POOL.iterdir()
+            if p.is_file() and not p.name.startswith('index_')}
+
+
+def _fence_base_satisfied(slug, pool):
+    """A via:flip fence id's base slug is not a real asset — it is
+    satisfied when all four directional variants' rgb are in the pool."""
+    sav = load_json('save_buildings.json')
+    ids = load_json('building_ids.json')
+    fl = load_json('flip_assets.json')
+    kmap = {k.lower().replace('_', ''): k for k in fl}
+    base_ids = [i for i, v in sav.items()
+                if (ids.get(i, {}).get('slug') or v['name'].lower()) == slug]
+    if not any(sav[i].get('via') == 'flip' for i in base_ids):
+        return False
+    key = kmap.get(slug)
+    if not key:
+        return False
+    return all(any(f.lower().startswith(v.lower()) and f.endswith('.rgb')
+                   for f in pool) for v in fl[key].values())
+
+
+def do_report():
+    required = compute_required()
+    pool = _pool_names()
+    idx = []
+    season_files = {}
+    for f in sorted(POOL.glob('index_*.tsv')):
+        for line in open(f):
+            p = line.rstrip('\n').split('\t')
+            if len(p) >= 2 and p[0] in ('rgb', 'bsv3', 'xml', 'bcell'):
+                idx.append((p[1], p[2] if len(p) > 2 else '?'))
+            elif len(p) >= 5 and p[0] == 'season':
+                season_files.setdefault(p[4], set()).add(slug_of(p[1]))
+    have = {}
+    for base, fam in idx:
+        slug = slug_of(base)
+        ext = os.path.splitext(base)[1]
+        kind = ext.lstrip('.')
+        if kind == 'xml':
+            continue
+        key = slug if not base.endswith('flipped' + ext) else slug + 'flipped'
+        if kind == 'rgb' and base.endswith('_transimage.rgb'):
+            key += '_transimage'
+        have.setdefault(key, {})[kind if kind != 'rgb' else 'rgb'] = fam
+
+    ok = missing = partial = 0
+    missing_list = []
+    for slug in sorted(required):
+        if slug in have and 'rgb' in have[slug] and 'bsv3' in have[slug]:
+            ok += 1
+        elif slug in have and 'rgb' in have[slug]:
+            partial += 1  # rgb without bsv3: still drawable (sheet frame 0)
+        elif _fence_base_satisfied(slug, pool):
+            ok += 1  # fence base: satisfied by its directional variants
+        else:
+            missing += 1
+            missing_list.append(slug)
+    print(f'required slugs: {len(required)}')
+    print(f'  rgb+bsv3: {ok}   rgb-only: {partial}   missing: {missing}')
+    if missing_list:
+        print('missing:', ' '.join(missing_list[:40]),
+              f'(+{max(0, len(missing_list) - 40)} more)')
+    files = [p for p in POOL.iterdir() if p.is_file() and not p.name.startswith('index_')]
+    tot = sum(p.stat().st_size for p in files)
+    print(f'pool files: {len(files)}  size: {tot / 1e6:.1f} MB')
+    if season_files:
+        print('season archives (distinct required slugs):',
+              {c: len(v & required) for c, v in sorted(season_files.items())
+               if c != 'base'})
+    kept = _kept_fam_index()
+    gaps = [s for s in sorted(required)
+            if kept.get(s + '.rgb') and is_seasonal(kept[s + '.rgb'])
+            and not (SEASON / 'base' / (s + '.rgb')).exists()]
+    if gaps:
+        print(f'seasonal-only art ({len(gaps)} slugs, shown as-is every '
+              f'mode):', ' '.join(gaps[:40]),
+              f'(+{max(0, len(gaps) - 40)} more)')
+    return ok + partial, len(required)
+
+
+# ---------------------------------------------------------------- bsv3
+
+class Bsv3Error(ValueError):
+    pass
+
+
+def _find_anim_section(data, name):
+    """Locate the trailing named-anim section by walking backward from
+    EOF (the 0x0303 frame section before it is variable-length and not
+    fully decoded, so it cannot be reached by walking forward). The
+    section is `u16 n_anims` followed by records of `u8 len, name (len
+    bytes, NUL-terminated), u16 first_frame, u16 last_frame`. Returns
+    (anims, section_start) or None. Verified on all 142 pool 0x0303
+    files; the caller re-parses the section forward to exact EOF."""
+    pos = len(data)
+    recs = []
+    while True:
+        found = None
+        for L in range(2, 64):
+            li = pos - 5 - L  # len byte, given this record ends at `pos`
+            if li < 2:
+                break
+            if data[li] != L:
+                continue
+            nm = data[li + 1:li + 1 + L]
+            if nm[-1] != 0:
+                continue
+            if not all(32 <= ch < 127 for ch in nm[:-1]):
+                continue
+            f0, f1 = struct.unpack_from('<HH', data, pos - 4)
+            if f0 > 0x7FFF or f1 > 0x7FFF:
+                continue
+            found = (li, nm[:-1].decode('latin1'), f0, f1)
+            break
+        if found is None:
+            return None
+        li, anm, f0, f1 = found
+        recs.append((anm, f0, f1))
+        na, = struct.unpack_from('<H', data, li - 2)
+        if na == len(recs):
+            recs.reverse()
+            return recs, li - 2
+        pos = li
+        if len(recs) > 64:
+            return None
+
+
+def _v3_frame0(data, start, end, nbt):
+    """Frame 0 of a 0x0303 frame section: it opens with a run of u16
+    values encoding pool indices as (idx << 8), ending at the first u16
+    that is not a valid one. Returns the de-duplicated pool index list,
+    draw order preserved."""
+    idxs = []
+    seen = set()
+    p = start
+    while p + 2 <= end:
+        u, = struct.unpack_from('<H', data, p)
+        p += 2
+        if u % 256 or u // 256 >= nbt:
+            break
+        i = u // 256
+        if i not in seen:
+            seen.add(i)
+            idxs.append(i)
+    return idxs
+
+
+def _v3_clusters(pool, cells, thr=64.0):
+    """Position clusters over the LOCAL pool blocks (ci < n_cells), keyed
+    per cell index: blocks of the same cell within thr px of each other
+    (greedy + one merge pass) are the animation variants of one slot."""
+    clusters = []
+    for i, (ci, x, y, _a, _b, _c, _d) in enumerate(pool):
+        if ci >= len(cells):
+            continue
+        hit = None
+        for c in clusters:
+            if (c['ci'] == ci
+                    and c['minx'] - thr <= x <= c['maxx'] + thr
+                    and c['miny'] - thr <= y <= c['maxy'] + thr):
+                hit = c
+                break
+        if hit is None:
+            clusters.append({'ci': ci, 'blocks': [i], 'minx': x, 'maxx': x,
+                             'miny': y, 'maxy': y})
+            continue
+        hit['blocks'].append(i)
+        hit['minx'] = min(hit['minx'], x)
+        hit['maxx'] = max(hit['maxx'], x)
+        hit['miny'] = min(hit['miny'], y)
+        hit['maxy'] = max(hit['maxy'], y)
+    changed = True
+    while changed:  # merge clusters whose bboxes came within thr
+        changed = False
+        for i in range(len(clusters)):
+            for j in range(i + 1, len(clusters)):
+                A, B = clusters[i], clusters[j]
+                if (A['ci'] == B['ci']
+                        and A['minx'] - B['maxx'] <= thr
+                        and B['minx'] - A['maxx'] <= thr
+                        and A['miny'] - B['maxy'] <= thr
+                        and B['miny'] - A['maxy'] <= thr):
+                    A['blocks'] += B['blocks']
+                    A['minx'] = min(A['minx'], B['minx'])
+                    A['maxx'] = max(A['maxx'], B['maxx'])
+                    A['miny'] = min(A['miny'], B['miny'])
+                    A['maxy'] = max(A['maxy'], B['maxy'])
+                    del clusters[j]
+                    changed = True
+                    break
+            if changed:
+                break
+    return clusters
+
+
+def _cluster_reps(pool, cells, thr=64.0):
+    """One representative (first) pool block per position cluster, sorted
+    largest-crop first so bodies draw under their details. Fallback for
+    0x0303 files whose frame-0 run resolves to no local blocks."""
+    reps = [c['blocks'][0] for c in _v3_clusters(pool, cells, thr)]
+
+    def area(i):
+        _n, _x, _y, w, h = cells[pool[i][0]]
+        return w * h
+    return sorted(reps, key=area, reverse=True)
+
+
+def parse_bsv3(data, name):
+    """Parse a Tapped Out bsv3 building-sprite file, validating to exact
+    EOF. Returns a dict:
+
+      v        1 (magic 0x0103) or 3 (magic 0x0303)
+      alpha    header alpha flag (0/1)
+      cells    [(name, x, y, w, h)] — sheet crop rects, in index order
+      nf       frame count
+      anims    [(name, first, last)] — named state ranges
+      v1: frames  [ [(ci, x, y, a, b, c, d), ...], ... ]
+      v3: pool    [ (ci, x, y, a, b, c, d), ... ]  (shared block pool)
+           frame0  [int, ...]  pool indices of frame 0, decoded from the
+                     leading (idx<<8) run of the frame section,
+                     de-duplicated, draw order preserved
+      warnings [str]
+
+    Variant notes (empirically pinned on the 3.0.30 pool, 2026-10-16):
+
+    0x0103: frames inline — `u16 nb, u8 pad(0), nb x block` where
+        block = u16 ci, f32 x, f32 y, f32 a, f32 b, f32 c, f32 d
+                (+ u8 alpha when the header alpha flag is set, so the
+                stride is 26 or 27).
+        Block x,y are FLOAT PIXEL offsets of the cell crop from the
+        building anchor (0,0); a<0 marks a horizontal flip. (a b; c d)
+        is the block's 2x2 matrix: scale/rotation/shear, applied by
+        render_static (body cells are identity; effects, glows and
+        drop shadows carry the transforms).
+
+    0x0303 (142 pool files — landmarks with moving parts, e.g. satellite
+        dish buildings): 4 extra header bytes (f32 1.0) after the magic,
+        then the same cells, then
+        u16 n_frames, u16 n_blocks, u16 reserved (varies per file:
+        0, 1, 3, 4, 12, 13, 22, 30, 32 — semantics unknown, ignored),
+        then the POOL:
+        n_blocks x (f32 x, f32 y, f32 a, f32 b, f32 c, f32 d, u16 ci,
+                    + u8 alpha when the alpha flag is set)
+        x,y are float PIXEL offsets of the cell crop from the building
+        anchor. ci resolution depends on the header alpha flag:
+          alpha=0: ci is a LOCAL cell index; rare entries >= n_cells
+                   are global sprite references (renderer skips them).
+          alpha=1: ci is a GLOBAL sprite handle (ci>>8 = sprite,
+                   ci&255 = pose/frame); there is no in-file mapping to
+                   local cells, so these files fall back to body-only
+                   rendering (see static_blocks).
+        The pool is followed by the FRAME section: n_frames variable-
+        length records of pool indices — NOT fully decoded. Pinned: the
+        section opens with frame 0 as a run of u16 (idx << 8) values,
+        ending at the first u16 that is not a valid (idx<<8); verified
+        against exact tilings on agencyheadquarters, arcdetriomphe and
+        globe (other record strides seen: 13B, 15B = u16(6)+u24(0)+
+        5xu16, 16B; alpha=1 files differ). The frame section is skipped
+        whole: its end = the start of the anim section, located by
+        walking backward from EOF; the anim list is then forward-parsed
+        to exact EOF.
+    """
+    if len(data) < 8:
+        raise Bsv3Error(f'{name}: too small ({len(data)} bytes)')
+    magic = struct.unpack_from('<H', data, 0)[0]
+    if magic == 0x0103:
+        v, p = 1, 2
+    elif magic == 0x0303:
+        v, p = 3, 6  # skip the extra f32 (1.0)
+        if struct.unpack_from('<f', data, 2)[0] != 1.0:
+            warnings_extra = [f'{name}: 0x0303 header f32 is not 1.0']
+        else:
+            warnings_extra = []
+    else:
+        raise Bsv3Error(f'{name}: unknown magic {magic:#06x}')
+    warnings = warnings_extra if v == 3 else []
+
+    nc = struct.unpack_from('<H', data, p)[0]
+    alpha = data[p + 2]
+    p += 3
+    cells = []
+    for _ in range(nc):
+        ln = data[p]
+        p += 1
+        nm = data[p:p + ln].split(b'\0')[0].decode('latin1')
+        p += ln
+        x, y, w, h = struct.unpack_from('<hhhh', data, p)
+        p += 8
+        cells.append((nm, x, y, w, h))
+    if p + 2 > len(data):
+        raise Bsv3Error(f'{name}: truncated before frame count')
+    nf = struct.unpack_from('<H', data, p)[0]
+    p += 2
+
+    frames = pool = frame0 = None
+    if v == 1:
+        bs = 26 + alpha
+        fmt = '<HffffffB' if alpha else '<Hffffff'
+        frames = []
+        for _f in range(nf):
+            if p + 3 > len(data):
+                raise Bsv3Error(f'{name}: truncated in frame {len(frames)}')
+            nb = struct.unpack_from('<H', data, p)[0]
+            pad = data[p + 2]
+            p += 3
+            if pad:
+                warnings.append(f'{name}: frame {len(frames)} pad byte = {pad}')
+            if p + bs * nb > len(data):
+                raise Bsv3Error(f'{name}: truncated in frame {len(frames)}')
+            blocks = []
+            for _b in range(nb):
+                t = struct.unpack_from(fmt, data, p)
+                blocks.append(t[:7])
+                p += bs
+            frames.append(blocks)
+    else:
+        nb_total, _resv = struct.unpack_from('<HH', data, p)
+        p += 4
+        bs = 26 + alpha
+        fmt = '<6fHB' if alpha else '<6fH'
+        pool = []
+        for _k in range(nb_total):
+            if p + bs > len(data):
+                raise Bsv3Error(f'{name}: truncated in pool block {_k}')
+            t = struct.unpack_from(fmt, data, p)
+            p += bs
+            ci, x, y, a, b, c, dd = t[6], t[0], t[1], t[2], t[3], t[4], t[5]
+            if not all(math.isfinite(f) for f in (x, y, a, b, c, dd)):
+                raise Bsv3Error(f'{name}: non-finite float in pool block {_k}')
+            pool.append((ci, x, y, a, b, c, dd))
+        pool_end = p
+        found = _find_anim_section(data, name)
+        if found is None:
+            raise Bsv3Error(f'{name}: 0x0303 anim section not found')
+        _anims, anim_start = found
+        if anim_start < pool_end:
+            raise Bsv3Error(f'{name}: anim section overlaps block pool')
+        frame0 = _v3_frame0(data, pool_end, anim_start, nb_total)
+        p = anim_start  # frame section skipped; anims parsed below
+
+    if p + 2 > len(data):
+        raise Bsv3Error(f'{name}: truncated before anim list')
+    na = struct.unpack_from('<H', data, p)[0]
+    p += 2
+    anims = []
+    for _ in range(na):
+        if p >= len(data):
+            raise Bsv3Error(f'{name}: truncated in anim list')
+        ln = data[p]
+        p += 1
+        nm = data[p:p + ln].split(b'\0')[0].decode('latin1')
+        p += ln
+        f0, f1 = struct.unpack_from('<HH', data, p)
+        p += 4
+        anims.append((nm, f0, f1))
+    if p != len(data):
+        raise Bsv3Error(f'{name}: {len(data) - p} trailing bytes after anims')
+    return dict(v=v, alpha=alpha, cells=cells, nf=nf, frames=frames,
+                pool=pool, frame0=frame0, anims=anims, warnings=warnings)
+
+
+def _frame_local_area(frame, cells):
+    """Total crop area (px^2) of a frame's blocks that map to local
+    cells — a proxy for how complete the building is in that frame."""
+    tot = 0
+    for ci, _x, _y, _a, _b, _c, _d in frame:
+        if ci < len(cells):
+            tot += cells[ci][3] * cells[ci][4]
+    return tot
+
+
+def _best_frame_index(parsed):
+    """The frame index that best represents the building statically: the
+    first frame with the maximum total local-cell area. Frame 0 is often
+    a partial pose, an effect, or an empty construction start; the
+    fullest frame is the one where the body is actually present.
+    Returns (index, area); (-1, 0) when no frame has any local block."""
+    cells = parsed['cells']
+    best_i, best_a = -1, 0
+    for i, fr in enumerate(parsed['frames']):
+        a = _frame_local_area(fr, cells)
+        if a > best_a:
+            best_i, best_a = i, a
+    return best_i, best_a
+
+
+def _neutral_frame_index(parsed):
+    """Canonical idle pose: the first frame of an anim whose name
+    contains 'neutral' (case-insensitive), when it has local blocks.
+    Backed by tsto2rgb: its bsv writer likewise promotes the atlas
+    containing 'neutral/0' to the main file (bsv.py, neutral_atlas_index).
+    Returns None when no neutral anim resolves to a drawable frame."""
+    for nm, f0, _f1 in parsed.get('anims') or []:
+        if 'neutral' in nm.lower() and f0 < len(parsed['frames']):
+            fr = parsed['frames'][f0]
+            if _frame_local_area(fr, parsed['cells']) > 0:
+                return f0
+    return None
+
+
+def static_blocks(parsed, name):
+    """The blocks for the static frame, in draw order, as
+    (ci, x, y, a, b, c, d) tuples. Sets parsed['static_src']:
+      0x0103  'neutral' — the Neutral anim's first frame (the engine's
+                      own promoted default; see _neutral_frame_index),
+                      when one exists and draws.
+              'best'    — otherwise the fullest frame (max total
+                      local-cell area; frame 0 is often an
+                      effect/partial pose/empty).
+      0x0303  'run'    — frame 0 (the section's leading (idx<<8) run),
+                         filtered to local cells;
+              'cluster'— one pool block per (cell, position) cluster,
+                         when the run resolved to nothing;
+      both    'body'   — the largest sheet cell alone, bottom-centre on
+                         the anchor, when nothing resolves to local
+                         blocks (alpha=1 global-handle pools, or frames
+                         referencing no local cell).
+    The decoded frame-0 run can spill past frame 0 into later frames
+    (whose records are also (idx<<8) in some files); a real frame shows
+    at most one pool block per position slot, so the run is capped to
+    the first value of each cluster."""
+    if parsed['v'] == 1:
+        # the engine's own default pose: tsto2rgb promotes the atlas
+        # holding 'neutral/0' to the main file (bsv.py,
+        # neutral_atlas_index), so the Neutral anim's first frame is
+        # what the game shows untoggled. Only fall back to the
+        # max-area frame when no neutral anim resolves — 'best' on its
+        # own picks motion frames whenever they're fatter than idle
+        # (redstarhelicopter shipped its Active_In rotor-blur sweep
+        # because the spinning-disc area beats the parked pose).
+        ni = _neutral_frame_index(parsed)
+        if ni is not None:
+            parsed['static_src'] = 'neutral'
+            return list(parsed['frames'][ni])
+        fi, area = _best_frame_index(parsed)
+        if fi >= 0 and area > 0:
+            parsed['static_src'] = 'best'
+            return list(parsed['frames'][fi])
+        return _body_fallback(parsed, name)
+    parsed['v3_fallback'] = False
+    pool = parsed['pool']
+    nc = len(parsed['cells'])
+    idxs = [i for i in (parsed.get('frame0') or [])
+            if i < len(pool) and pool[i][0] < nc]
+    if idxs:
+        # cap to one block per position slot (first value wins)
+        owner = {}
+        for c_i, c in enumerate(_v3_clusters(pool, parsed['cells'])):
+            for b in c['blocks']:
+                owner.setdefault(b, c_i)
+        claimed = set()
+        kept = []
+        for i in idxs:
+            c_i = owner.get(i)
+            if c_i is not None and c_i not in claimed:
+                claimed.add(c_i)
+                kept.append(i)
+        # a 1-2 block "frame 0" against a multi-slot pool is an encoding
+        # mismatch (some files open the section with a different, not yet
+        # decoded format) — prefer the full-building cluster picture
+        if len(kept) >= 3:
+            parsed['static_src'] = 'run'
+            return [pool[i] for i in kept]
+    if any(b[0] < nc for b in pool):
+        parsed['warnings'].append(
+            f'{name}: frame-0 run too thin ({len(idxs)} local blocks); '
+            f'using one block per position cluster')
+        idxs = _cluster_reps(pool, parsed['cells'])
+        if idxs:
+            parsed['static_src'] = 'cluster'
+            return [pool[i] for i in idxs]
+    return _body_fallback(parsed, name)
+
+
+def _body_fallback(parsed, name):
+    """Last-resort static blocks: the largest sheet cell alone, its
+    bottom-centre on the building anchor. Used when no frame resolves to
+    local blocks (0x0103 frames referencing no local cell, or 0x0303
+    global-handle pools)."""
+    cells = parsed['cells']
+    parsed['warnings'].append(
+        f'{name}: no local blocks resolvable; drawing largest sheet cell only')
+    parsed['v3_fallback'] = True
+    parsed['static_src'] = 'body'
+    bi = max(range(len(cells)), key=lambda i: cells[i][3] * cells[i][4])
+    _nm, _cx, _cy, cw, ch = cells[bi]
+    return [(bi, -cw / 2.0, -float(ch), 1.0, 0.0, 0.0, 1.0)]
+
+
+# Per-block measured corrections. Key: (asset, cell name,
+# round(anchor_x, 1), round(anchor_y, 1)) -> (dx, dy) in engine units,
+# added to the block anchor.
+# EMPTY since 2026-10-24: the giantrobot east C_Upperarm_1 entry (0,
+# +114.5) was the transformed-bbox top-left offset (ry0 = b*w) read out
+# by hand before _composite adopted the bbox-TL placement rule directly;
+# it would now double-apply. Kept as infrastructure for any future
+# reference-fit outlier.
+BLOCK_NUDGE = {}
+
+
+def _composite(parsed, img, name, blocks):
+    """Composite one block list (ci, x, y, a, b, c, d) onto a fresh canvas.
+    Shared by render_static (the static frame) and the animation frame
+    renderer. Returns (canvas, anchor_x, anchor_y, drawn, skipped, rotmax)
+    or None when nothing drawable. Anchor = canvas px of the building
+    anchor (0,0).
+
+    Placement (revised 2026-10-24, see the long rule note in the body):
+    the block's transformed content AABB starts at (x, y), with content
+    spanning (x,y)+(M(u,v)-(rx0,ry0)) where X = a*u + c*v, Y = b*u + d*v
+    ((b,c) are stored transposed); the diagonal signs of (a, dd) mirror
+    the crop in place. Identity blocks paste without resampling; pure
+    diagonal scales resize NEAREST; rotations/shears go through the
+    affine path, BILINEAR.
+    Evidence: b=c=0 blocks obey the mirror-pair relation x' ~ -(x + w)
+    (fresh raw audit 5907:10 over the pool's flipped pairs — identical
+    under both placement rules); rotated blocks pin their transformed-bbox
+    top-left at (x, y) with transposed (b, c) (redstarhelicopter rotor
+    hub-attachment, parked-vs-rotated same-cell anchor consistency, and
+    the C_Blade03_01 two-angle pivot inconsistency).
+    rotmax records the largest |b| or |c| seen for triage."""
+    cells = parsed['cells']
+    plan = []
+    skipped = 0
+    rotmax = 0.0
+    for ci, x, y, a, b, c, dd in blocks:
+        nudge = BLOCK_NUDGE.get((name, cells[ci][0], round(x, 1), round(y, 1)))
+        if nudge:
+            x, y = x + nudge[0], y + nudge[1]
+        if ci >= len(cells):
+            skipped += 1  # global sprite id not in this file
+            continue
+        _nm, cx, cy, cw, ch = cells[ci]
+        if not (0 <= cx and 0 <= cy and cx + cw <= img.width
+                and cy + ch <= img.height):
+            skipped += 1
+            parsed['warnings'].append(
+                f'{name}: cell {ci} crop out of sheet at ({cx},{cy},{cw},{ch})')
+            continue
+        det = a * dd - b * c
+        if abs(det) < 1e-6:
+            skipped += 1
+            parsed['warnings'].append(
+                f'{name}: block {ci} degenerate matrix {a},{b},{c},{dd}')
+            continue
+        rotmax = max(rotmax, abs(b), abs(c))
+        # (See docstring + the placement note below for the full evidence
+        # chain: mirror-pair audit pins the b=c=0 case; the rotation fan
+        # and limb chaining pin the rotated case.)
+        flip_h, flip_v = a < 0, dd < 0
+        # (b, c) are stored transposed relative to [X;Y]=[a b;c d][u;v]:
+        # X = a*u + c*v, Y = b*u + d*v. Evidence 2026-10-19: the GiantRobot
+        # 54-deg upperarm only chains toward its forearm/hand this way
+        # (elbow gaps 300->83, 110->48 px), with the per-asset joint vote
+        # 21:17.
+        ma, mb, mc, md = abs(a), c, b, abs(dd)
+        rel = [(ma * u + mb * v, mc * u + md * v)
+               for u, v in ((0, 0), (cw, 0), (cw, ch), (0, ch))]
+        rx0 = min(p[0] for p in rel)
+        ry0 = min(p[1] for p in rel)
+        rx1 = max(p[0] for p in rel)
+        ry1 = max(p[1] for p in rel)
+        # Transformed-bbox top-left placement: content spans (x,y) ..
+        # (x,y)+(rx1-rx0, ry1-ry0), i.e. the rotated cell's AABB starts at
+        # (x, y) — pinned 2026-10-24 by three independent checks on
+        # redstarhelicopter rotor data: (1) every rotated blade piece's
+        # content rect intersects its hub (centre of C_Top) to within
+        # 0-4 px across all angle groups and both rotors, vs up to 161 px
+        # misses under crop-origin; (2) the SAME cell used identity-parked
+        # (frames 0/193) and rotated (189/193) predicts the stored rotated
+        # anchor to within 2-4 px as hub-rotation + (rx0, ry0), while
+        # crop-origin misses y by 9-45 px; (3) a per-cell pivot model dies
+        # on C_Blade03_01, whose two rotation groups imply pivots 80 px
+        # apart. The earlier crop-origin vote (innstable C_Ray fan roots
+        # coinciding at (x,y)) is not a counterexample: with bbox-TL the
+        # beam roots simply sit at M^-1*(rx0, ry0) inside each crop, which
+        # reproduces the same convergence. The 2026-10-19 BLOCK_NUDGE on
+        # giantrobot's east upperarm is the same effect read out by hand
+        # (its ry0 = b*w = -114.5). For b=c=0 flip/scale blocks
+        # (mirror-pair audit 5907:10) rx0=ry0=0 and this is IDENTICAL to
+        # crop-origin placement, so that audit still holds.
+        qx0, qy0 = x, y
+        qx1 = qx0 + rx1 - rx0
+        qy1 = qy0 + ry1 - ry0
+        if (qx1 - qx0) * (qy1 - qy0) > 4_000_000:
+            skipped += 1
+            parsed['warnings'].append(
+                f'{name}: block {ci} transformed rect too large '
+                f'({qx1 - qx0:.0f}x{qy1 - qy0:.0f})')
+            continue
+        plan.append((qx0, qy0, qx1, qy1, ma, mb, mc, md, flip_h, flip_v,
+                     cx, cy, cw, ch, rx0, ry0))
+    if plan:
+        # Garbage-placement guard (2026-10-25): the winter re-ship of
+        # museumofsuperfinearts places C_Shadow at (-2.15e6,-2.15e6). The
+        # block is small so the 4 Mpx rect guard misses it, but the canvas
+        # bbox stretches to 2.1M px — Image.new asked for 18 TB of RGBA and
+        # the OOM killer took two sprites runs down (dmesg total-vm
+        # 18030802388kB). Cull rects whose centre sits > 20k px from the
+        # median centre: the widest legitimate sprite spans ~3.3k px
+        # (thetoothchipper 2498x1929, privateisland05 1938x2414), and the
+        # median rect's own centre is distance 0 from itself, so a cull
+        # pass can never empty the plan.
+        cen = [((t[0] + t[2]) / 2.0, (t[1] + t[3]) / 2.0) for t in plan]
+        mx = sorted(c[0] for c in cen)[len(cen) // 2]
+        my = sorted(c[1] for c in cen)[len(cen) // 2]
+        kept = [t for t, (ccx, ccy) in zip(plan, cen)
+                if abs(ccx - mx) <= 20000 and abs(ccy - my) <= 20000]
+        if len(kept) < len(plan):
+            parsed['warnings'].append(
+                f'{name}: culled {len(plan) - len(kept)} block(s) >20k px '
+                f'from the block cluster (garbage placement)')
+            plan = kept
+    if not plan:
+        return None
+    X0 = min(t[0] for t in plan)
+    Y0 = min(t[1] for t in plan)
+    X1 = max(t[2] for t in plan)
+    Y1 = max(t[3] for t in plan)
+    W = max(1, int(round(X1 - X0)))
+    H = max(1, int(round(Y1 - Y0)))
+    if W * H > 16_000_000:
+        # 3.3x the largest legitimate sprite (4.8 Mpx); catches whatever
+        # coordinate garbage survives the cull above before the allocation
+        parsed['warnings'].append(
+            f'{name}: canvas {W}x{H} over the 16 Mpx sanity cap, skipped')
+        return None
+    canvas = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    # Draw order = REVERSE file record order (pinned 2026-10-19 against
+    # the official Giant_Robot_Menu render: luma-NCC 0.903 reversed vs
+    # 0.807 forward, 0.832 shadow-first — see notes/06). Ground shadows
+    # are the last records in every file we have, so reversed they land
+    # behind everything, which is also what every building needs.
+    for (qx0, qy0, qx1, qy1, ma, mb, mc, md, flip_h, flip_v,
+         cx, cy, cw, ch, rx0, ry0) in reversed(plan):
+        cr = img.crop((cx, cy, cx + cw, cy + ch))
+        if flip_h:
+            cr = cr.transpose(Image.FLIP_LEFT_RIGHT)
+        if flip_v:
+            cr = cr.transpose(Image.FLIP_TOP_BOTTOM)
+        ow = max(1, int(round(qx1 - qx0)))
+        oh = max(1, int(round(qy1 - qy0)))
+        if abs(mb) < 1e-3 and abs(mc) < 1e-3:
+            if not (abs(ma - 1.0) < 1e-3 and abs(md - 1.0) < 1e-3):
+                cr = cr.resize((ow, oh), Image.NEAREST)
+        else:
+            detm = ma * md - mb * mc
+            if abs(detm) < 1e-9:
+                continue
+            # PIL transform samples the crop at (a*x+b*y+c, d*x+e*y+f) for
+            # WINDOW-LOCAL x,y; window pixel (x,y) displays the transformed
+            # point rel = (rx0 + x, ry0 + y), so the inverse map is
+            # (u, v) = M^-1 * (x + rx0, y + ry0) — constants M^-1*(rx0,ry0).
+            coeffs = (md / detm, -mb / detm, (md * rx0 - mb * ry0) / detm,
+                      -mc / detm, ma / detm, (-mc * rx0 + ma * ry0) / detm)
+            cr = cr.transform((ow, oh), Image.AFFINE, coeffs,
+                              resample=Image.BILINEAR)
+        canvas.alpha_composite(cr, (int(round(qx0 - X0)), int(round(qy0 - Y0))))
+    return canvas, -X0, -Y0, len(plan), skipped, rotmax
+
+
+def render_static(parsed, img, name):
+    """Composite the static frame (see static_blocks) onto a canvas."""
+    return _composite(parsed, img, name, static_blocks(parsed, name))
+
+
+def load_sheet(path, name):
+    data = path.read_bytes()
+    w, h, _bpp, rgba, _premul = rgb_to_rgba(data, name)
+    return Image.frombytes('RGBA', (w, h), rgba)
+
+
+# ---------------------------------------------------------------- animation frames
+
+# No frame timing is encoded in bsv3 (notes/01: the 26 B block stride has
+# no room for delays), so loops play at a chosen constant. 12 fps sits in
+# the range TSTO's particle/prop loops read as "live" at city zoom.
+ANIM_FPS = 12
+ANIM_MAX_FRAMES = 48      # per animation, sampled evenly from the range
+ANIM_MAX_ANIMS = 4        # longest loops kept per asset
+ANIM_SPARSE_PX = 12_000_000   # layer atlases above this try cluster-rect
+                              # packing (the player gates at 16 Mpx)
+
+
+def _frame_sig(blocks):
+    """Hashable identity of a frame: its block list, floats rounded."""
+    return tuple((b[0], round(b[1], 3), round(b[2], 3),
+                  round(b[3], 4), round(b[4], 4), round(b[5], 4),
+                  round(b[6], 4)) for b in blocks)
+
+
+def _sample_range(a, b, cap):
+    """Indices a..b (inclusive), thinned evenly to <= cap, endpoints kept."""
+    n = b - a + 1
+    if n <= cap:
+        return list(range(a, b + 1))
+    step = (n - 1) / (cap - 1)
+    return sorted({a, b, *(a + round(i * step) for i in range(cap))})
+
+
+def _placed_slugs():
+    """Slugs the decoded save can actually instantiate (placed buildings +
+    their flip_assets.json directional variants), from data/ catalogs."""
+    sav = load_json('save_buildings.json')
+    ids = load_json('building_ids.json')
+    fl = load_json('flip_assets.json')
+    out = set()
+    for bid in sav:
+        s = ((ids.get(bid) or {}).get('slug') or '').lower()
+        if s:
+            out.add(s)
+    for variants in fl.values():
+        for s in variants.values():
+            out.add(s.lower())
+    return out
+
+
+# ------------------------------------------------- engine idle/tap behaviour table
+#
+# The real game does NOT loop every named anim a bsv3 carries:
+#   * what loops on its own is the building's controller animation —
+#     <ActiveAnimationController name="X"/> (per-building or its file's
+#     BuildingDefaults, default 'Neutral'), with <BSv2 neutralAnim="X"/> in
+#     the *_assetdata.xml files as the asset-level override;
+#   * everything else plays on demand: <OnEvent event="BuildingTouched">
+#     binds a <Script name package> in the same pack's *_scripts*.xml, and
+#     that script's first self-targeting <Action type="anim-play"> names the
+#     tap animation. The verb's 'NoLoop' suffix is engine playback
+#     semantics, never part of a bsv3 anim name (verified: zero anims named
+#     *NoLoop in the whole 0x0103 pool), so 'ActiveNoLoop' plays 'Active'
+#     once and reverts to the controller anim.
+# Scanning the extracted gamescripts packs once for both halves gives the
+# city map its animation gate: loop only the controller anim, keep the tap
+# strip for click-to-play. Cache: data/building_behaviors.json.
+#
+# A third signal covers the buildings the engine COMPOSITES: a lot whose art
+# is one bsv3 drawn as several stacked parts. Two places declare the parts —
+#   * <AnimationLayerOrder><Animation name="X"/></AnimationLayerOrder> in the
+#     *_assetdata.xml files (the draw-order list; EscalatorToNowhere is
+#     StairsUL, Stairs, Characters, StairsOV), and
+#   * sibling buildings that render from the same asset (building_ids.json
+#     maps OldEnglishStationBase and OldEnglishStationTop to slug
+#     'oldenglishstation'), each with its own controller anim — NeutralBase
+#     and NeutralTop, which are loops of the base part and the roof part.
+# So for those assets no single anim is "the" idle: the parts loop TOGETHER,
+# each over the building's static body. The behavior map carries them as
+# slug -> layers: [anim, ...] (in draw order) and the map player composites
+# them; see _layer_wants().
+
+DLC = ROOT / 'web' / 'assets' / 'dlc'
+BEHAVIORS = DATA / 'building_behaviors.json'
+
+# anim-play target attributes (the data uses all three spellings)
+_ANIMPLAY_TARGET_ATTRS = ('Building', 'building', 'onBuilding')
+# anim-play actions aimed at these are not building-targeted at all
+_ANIMPLAY_SKIP_ATTRS = ('character', 'object0', 'object1', 'flyBy')
+
+
+def _gamescript_packs():
+    """gamescripts-r*/data dirs, newest revision first."""
+    packs = []
+    for d in DLC.glob('gamescripts-r*/data'):
+        try:
+            rev = int(d.parent.name.rsplit('r', 1)[1])
+        except ValueError:
+            continue
+        packs.append((rev, d))
+    return [d for _rev, d in sorted(packs, reverse=True)]
+
+
+def _script_anim_steps(elem):
+    """[(verb, target|None)] for self-candidate anim-play actions of a
+    script element, document order (the engine plays them in sequence;
+    character/object-targeted actions are not ours to animate)."""
+    steps = []
+    for act in elem.iter('Action'):
+        if (act.get('type') or '').lower() != 'anim-play':
+            continue
+        if any(act.get(k) for k in _ANIMPLAY_SKIP_ATTRS):
+            continue
+        verb = act.get('animation')
+        if not verb:
+            continue
+        tgt = next((act.get(k) for k in _ANIMPLAY_TARGET_ATTRS
+                    if act.get(k)), None)
+        steps.append((verb, tgt))
+    return steps
+
+
+def _scan_behaviors():
+    """name -> {'idle': ctrlAnimOrNone, 'tapVerb': verbOrNone} from every
+    gamescripts pack, newest revision winning each field separately (a
+    newer def's controller is kept even when only an older pack carries
+    the building's OnEvent). A <Building> element counts as a definition
+    only with id=/type=/children (reward/quest XMLs carry bare name-only
+    references that must not shadow the real def). Only names with a
+    signal (explicit controller or a tap anim) are stored; everything
+    else is engine-default and absent-from-cache."""
+    by_name = {}
+    packs = _gamescript_packs()
+    for dat in packs:
+        defs_here = {}          # name -> partial record, this pack
+        scripts = {}            # script tag -> anim-play steps, this pack
+        for f in sorted(dat.glob('*.xml')):
+            try:
+                t = f.read_text(errors='replace')
+            except OSError:
+                continue
+            if ('<Building ' in t or '<BSv2 ' in t) and 'Building' in t:
+                try:
+                    root = ET.fromstring(t)
+                except ET.ParseError:
+                    continue
+                defaults = None
+                for d in root.findall('BuildingDefaults'):
+                    for tag in ('NeutralAnimationController',
+                                'ActiveAnimationController'):
+                        a = d.find(tag)
+                        if a is not None and a.get('name'):
+                            defaults = a.get('name')
+                            break
+                    if defaults:
+                        break
+                for b in root.iter('Building'):
+                    nm = b.get('name')
+                    if not nm:
+                        continue
+                    prior = by_name.get(nm)
+                    if prior and prior.get('idle') is not None \
+                            and prior.get('tapVerb'):
+                        continue          # fully resolved by a newer pack
+                    rec = {'idle': None, 'tapVerb': None}
+                    bs = b.find('BSv2')
+                    if bs is not None and bs.get('neutralAnim'):
+                        rec['idle'] = bs.get('neutralAnim')
+                    else:
+                        # NeutralAnimationController is the idle-loop
+                        # declaration; ActiveAnimationController drives the
+                        # state machine but doubles as the loop name for
+                        # always-on props; file BuildingDefaults fill gaps
+                        for tag in ('NeutralAnimationController',
+                                    'ActiveAnimationController'):
+                            a = b.find(tag)
+                            if a is not None and a.get('name'):
+                                rec['idle'] = a.get('name')
+                                break
+                        if rec['idle'] is None and defaults:
+                            rec['idle'] = defaults
+                            rec['idleFromDefaults'] = True
+                    for ev in b.findall('OnEvent'):
+                        if ev.get('event') != 'BuildingTouched':
+                            continue
+                        sc = ev.find('Script')
+                        if sc is not None and sc.get('name'):
+                            rec['tapRef'] = sc.get('name')
+                            break
+                    existing = defs_here.get(nm)
+                    if existing:
+                        # same building defined in two files of the pack
+                        # (def + *_assetdata): merge the signals — an
+                        # explicit neutralAnim/controller beats a value
+                        # inherited from the other file's BuildingDefaults
+                        if (existing['idle'] is None
+                                or (existing.get('idleFromDefaults')
+                                    and rec['idle'] is not None
+                                    and not rec.get('idleFromDefaults'))):
+                            if rec['idle'] is not None:
+                                existing['idle'] = rec['idle']
+                                existing['idleFromDefaults'] = \
+                                    rec.get('idleFromDefaults', False)
+                        if not existing.get('tapRef') and rec.get('tapRef'):
+                            existing['tapRef'] = rec['tapRef']
+                        continue
+                    if not (b.get('id') or b.get('type') or len(b)):
+                        continue          # name-only reference, not a def
+                    defs_here[nm] = rec
+            if '<ScriptPackage' in t:
+                try:
+                    root = ET.fromstring(t)
+                except ET.ParseError:
+                    continue
+                for sc in root:
+                    if sc.tag and sc.tag not in scripts and len(sc):
+                        steps = _script_anim_steps(sc)
+                        vars_set = {a.get('variable')
+                                    for a in sc.iter('Action')
+                                    if (a.get('type') or '') ==
+                                    'setObjectVariable' and a.get('variable')}
+                        if steps or vars_set:
+                            scripts[sc.tag] = (steps, vars_set)
+        for nm, rec in defs_here.items():
+            ref = rec.pop('tapRef', None)
+            rec.pop('idleFromDefaults', None)
+            if ref:
+                steps, vars_set = (scripts.get(ref) or ((), set()))
+                for verb, tgt in steps:
+                    if tgt is None or tgt == nm:
+                        rec['tapVerb'] = verb
+                        break
+                if vars_set:
+                    # which object variables the tap flips: a controller
+                    # machine only clicks through if its driving variable
+                    # is among them (_toggle_anims checks this)
+                    rec['tapVars'] = sorted(vars_set)
+            if (rec['idle'] is not None or rec['tapVerb'] is not None
+                    or rec.get('tapVars')):
+                prior = by_name.get(nm)
+                if prior:
+                    # a newer pack resolved half the record (e.g. its def
+                    # carries the controller but the BuildingTouched lives
+                    # only in older revisions' files): fill the gap, never
+                    # clobber the newer value
+                    if prior['idle'] is None and rec['idle'] is not None:
+                        prior['idle'] = rec['idle']
+                    if prior['tapVerb'] is None and rec['tapVerb'] is not None:
+                        prior['tapVerb'] = rec['tapVerb']
+                    if not prior.get('tapVars') and rec.get('tapVars'):
+                        prior['tapVars'] = rec['tapVars']
+                else:
+                    by_name[nm] = rec
+    return by_name, len(packs)
+
+
+def _scan_layer_orders():
+    """name -> [<AnimationLayerOrder> anim names] from the packs'
+    *_assetdata*.xml, newest revision winning. The list is the engine's own
+    compositor: those named anims are drawn together (first entry at the
+    back) over the building's body, so for a multi-part asset they are the
+    loops that belong on at the same time. Only four buildings declare one
+    today (EscalatorToNowhere is the only multi-layer one: StairsUL, Stairs,
+    Characters, StairsOV), but the scan is a pass over a few small files and
+    the data is the authority when it exists."""
+    out = {}
+    for dat in _gamescript_packs():              # newest revision first
+        for f in sorted(dat.glob('*assetdata*.xml')):
+            try:
+                t = f.read_text(errors='replace')
+            except OSError:
+                continue
+            if '<AnimationLayerOrder' not in t:
+                continue
+            try:
+                root = ET.fromstring(t)
+            except ET.ParseError:
+                continue
+            for b in root.iter('Building'):
+                nm = b.get('name')
+                lo = b.find('AnimationLayerOrder')
+                if not nm or lo is None or nm in out:
+                    continue
+                names = [x.get('name') for x in lo if x.get('name')]
+                if names:
+                    out[nm] = names
+    return out
+
+
+def _write_behavior_cache(by_name, orders, n_packs, controllers=None):
+    import datetime
+    BEHAVIORS.write_text(json.dumps(
+        {'version': 3,
+         'generated': datetime.date.today().isoformat(),
+         'packs_scanned': n_packs,
+         'byName': dict(sorted(by_name.items())),
+         'layers': dict(sorted(orders.items())),
+         'controllers': dict(sorted((controllers or {}).items()))}, indent=1))
+
+
+def load_behaviors(refresh=False):
+    """name -> {'idle', 'tapVerb'}; cached in data/building_behaviors.json
+    (the pack scan is minutes-long, the packs are static) — build on first
+    use, re-scan with --refresh or after new DLC extraction. The cache
+    records how many packs it saw; extracting new gamescripts revisions
+    invalidates it automatically (a stale cache silently under-resolves
+    every building that only the new packs define — FortuneTellerMachine
+    shipped with a 'Tap' strip and no binding until a refreshed scan
+    found its tragedy-era definition). The same file caches the
+    <AnimationLayerOrder> table (load_layer_orders)."""
+    if not refresh and BEHAVIORS.exists():
+        try:
+            cached = json.loads(BEHAVIORS.read_text())
+            if cached.get('packs_scanned') == len(_gamescript_packs()) and \
+                    'layers' in cached and 'controllers' in cached:
+                return cached['byName']
+            # a v2 cache cannot be topped up: byName needs the tapVars
+            # field the toggle gate resolves against — re-scan
+            if 'controllers' not in cached:
+                refresh = True
+            else:
+                print('  (gamescripts packs changed since the last scan — '
+                      're-scanning; or run: gen_city_sprites.py behavior)')
+        except (ValueError, KeyError):
+            pass
+    by_name, n_packs = _scan_behaviors()
+    _write_behavior_cache(by_name, _scan_layer_orders(), n_packs,
+                          _scan_controllers())
+    return by_name
+
+
+def load_layer_orders(refresh=False):
+    """name -> [<AnimationLayerOrder> anim names]; shares the idle/tap
+    cache file, so it is refreshed by the same --refresh."""
+    if not refresh and BEHAVIORS.exists():
+        try:
+            cached = json.loads(BEHAVIORS.read_text())
+            if 'layers' in cached and \
+                    cached.get('packs_scanned') == len(_gamescript_packs()):
+                return cached['layers']
+        except (ValueError, KeyError):
+            pass
+    load_behaviors(refresh=refresh)
+    try:
+        return json.loads(BEHAVIORS.read_text()).get('layers') or {}
+    except (OSError, ValueError):
+        return _scan_layer_orders()
+
+
+def _match_anim_verb(want, have, allow_base=False):
+    """engine anim verb -> actual bsv3 anim name from `have` (case-
+    insensitive; a trailing 'NoLoop' is engine semantics and stripped
+    before the retry). With allow_base (idle matches only) a '_Base'/'Base'
+    suffix is also tried: multi-part buildings (SubFootprints) store the
+    base part's loop as '<controller>_Base' on the main asset — ChineseJunk
+    loops Neutral_Base, KrustyStation's base part loops ActiveBase. None
+    when no strip exists for it."""
+    if not want:
+        return None
+    low = {n.lower(): n for n in have}
+    w = want.lower()
+    if w in low:
+        return low[w]
+    if w.endswith('noloop'):
+        base = w[:-len('noloop')].rstrip('_-')
+        if base in low:
+            return low[base]
+        w = base
+    if allow_base:
+        for cand in (w + '_base', w + 'base'):
+            if cand in low:
+                return low[cand]
+    return None
+
+
+def _slug_name_index():
+    """slug -> building name(s) from data/building_ids.json."""
+    ids = load_json('building_ids.json')
+    idx = {}
+    for v in ids.values():
+        s = (v.get('slug') or '').lower()
+        if not s:
+            continue
+        names = idx.setdefault(s, [])
+        if v['name'] not in names:
+            names.append(v['name'])
+    return idx
+
+
+def _slug_names(name_idx, slug):
+    """every building name that renders from this asset slug. Multi-part
+    lots share one bsv3 (OldEnglishStation + …Base + …Top all map to
+    'oldenglishstation'); directional/flipped twins borrow the base list."""
+    names = name_idx.get(slug)
+    if names:
+        return names
+    for suf in ('flipped', 'ne', 'nw', 'se', 'sw'):
+        if slug.endswith(suf):
+            names = name_idx.get(slug[:-len(suf)])
+            if names:
+                return names
+    return None
+
+
+def _behavior_rec(by_name, slug, name_idx):
+    """behavior record for a slug: building_ids gives the building name(s)
+    behind the asset slug; directional/flipped twins borrow their base
+    asset's record. {'idle': ..|None, 'tapVerb': ..|None} or None when the
+    slug maps to no building with a signal."""
+    names = _slug_names(name_idx, slug)
+    if not names:
+        return None
+    best = None
+    for nm in names:
+        rec = by_name.get(nm)
+        if not rec:
+            continue
+        if rec.get('tapVerb'):
+            return rec
+        if best is None and rec.get('idle') is not None:
+            best = rec
+    return best
+
+
+def _fallback_tap_anim(have):
+    """No BuildingTouched binding was found, but the asset carries a strip
+    literally named 'Tap': that naming is the authors' own tap-anim
+    convention (the scripts' tap verbs include 'Tap' x105), so trust it
+    as the tap anim anyway — e.g. FortuneTellerMachine, whose def lives
+    only in retired event packs the gamescripts data no longer ships."""
+    for n in have:
+        if n.lower() == 'tap':
+            return n
+    return None
+
+
+# Engine click-state-machines. Many buildings' NeutralAnimationController
+# name is NOT a bsv3 anim — it names a <Sequence> in the packs'
+# buildingcontrollers.xml: an object-variable state machine whose branches
+# each pick one named anim, advanced by the BuildingTouched script (which
+# carries no anim-play step: DecorationTapped_WithActiveInOut flips
+# State/ActiveIn/ActiveOut, Three_Way_Toggle_Tapped cycles ToggleState…).
+# In the game RedstarHelicopter therefore sits at Neutral (static art),
+# plays Active_In on the first tap and loops Active while active; the next
+# tap plays Active_Out back to Neutral. Parsing the Sequences gives the
+# map a click-toggle record for the whole family — three shapes:
+#   inout  {in, loop?, out}  ActiveIn/ActiveOut transitions + State 0/1
+#   active {loop}            State 0 static/Neutral, State 1 loops <loop>
+#   cycle  {poses:[…]}       ToggleState 0..N, each state loops poses[i]
+# (pose 0 renders through the normal idle gate when the asset has a
+# Neutral strip; the map player only blits states 1..N).
+# Land::/System:: conditions are game-state-driven (EspionageMode_*), not
+# click-driven, so those Sequences are skipped — as are names ending in
+# '_Tap' (the BuildingTouched script anim-plays once; the tapVerb path
+# already gates those) and branches that don't select exactly one anim.
+_CTRL_PAIR_RE = re.compile(r'Object::(\w+)\s*==\s*(\d+)')
+
+
+def _parse_controller(seq):
+    """<Sequence> element -> machine spec, or None when it is not a pure
+    object-variable click state machine (see the note above)."""
+    if (seq.get('name') or '').lower().endswith('_tap'):
+        return None
+    logic = seq.find('Logic')
+    if logic is None:
+        return None                       # linear Sequence, not a toggle
+    branches = []                         # [(pairs|None, anim), ...]
+    for br in logic:
+        if br.tag not in ('If', 'ElseIf', 'Else'):
+            return None
+        anims = [a.get('name') for a in br.iter('Animation')]
+        if len(anims) != 1 or not anims[0]:
+            return None                   # zero- or multi-anim branch
+        expr = br.get('expression')
+        if expr and ('Land::' in expr or 'System::' in expr):
+            return None
+        pairs = None if br.tag == 'Else' else _CTRL_PAIR_RE.findall(expr or '')
+        if br.tag != 'Else' and not pairs:
+            return None                   # condition on something unparsable
+        branches.append((pairs, anims[0]))
+    if len(branches) < 2:
+        return None
+    varset = {v for pr, _a in branches if pr for v, _n in pr}
+    # inout: ActiveIn / ActiveOut transitions, State 0 = neutral, Else = loop
+    if varset == {'ActiveIn', 'ActiveOut', 'State'} and len(branches) == 4:
+        get = lambda want: next(
+            (a for pr, a in branches
+             if pr and any(v == want and n == '1' for v, n in pr)), None)
+        a_in, a_out = get('ActiveIn'), get('ActiveOut')
+        neutral = next((a for pr, a in branches
+                        if pr and any(v == 'State' and n == '0' for v, n in pr)),
+                       None)
+        loop = next((a for pr, a in branches if pr is None), None)
+        if a_in and a_out and neutral and loop:
+            return {'kind': 'inout', 'var': 'State',
+                    'in': a_in, 'loop': loop, 'out': a_out}
+        return None
+    # active: State==0 neutral, Else loops one anim
+    if varset == {'State'} and len(branches) == 2:
+        loop = next((a for pr, a in branches if pr is None), None)
+        neutral = next((a for pr, a in branches
+                        if pr and any(v == 'State' and n == '0' for v, n in pr)),
+                       None)
+        if loop and neutral:
+            return {'kind': 'active', 'var': 'State', 'loop': loop}
+        return None
+    # cycle: Var==1..N branches + Else (state 0); one pose per state
+    else:
+        numbered, poses0 = [], None
+        for pr, a in branches:
+            if pr is None:
+                if poses0 is not None:
+                    return None           # more than one Else
+                poses0 = a
+                continue
+            if len(pr) != 1:
+                return None               # compound condition
+            (v, n), = pr
+            numbered.append((v, int(n), a))
+        if poses0 is None or not numbered:
+            return None
+        var = numbered[0][0]
+        if any(v != var for v, _n, _a in numbered):
+            return None
+        states = {n for _v, n, _a in numbered}
+        if states != set(range(1, max(states) + 1)) or \
+                len(numbered) != max(states):
+            return None
+        poses = [poses0] + [None] * max(states)
+        for _v, n, a in numbered:
+            poses[n] = a
+        return {'kind': 'cycle', 'var': var, 'poses': poses}
+
+
+def _scan_controllers():
+    """Sequence name -> click-machine spec, newest pack revision winning
+    each name (mirrors _scan_layer_orders: a few small files, and the
+    Sequences are the engine's own definition of what clicking does)."""
+    out = {}
+    for dat in _gamescript_packs():
+        for f in sorted(dat.glob('*buildingcontrollers*.xml')):
+            try:
+                root = ET.fromstring(f.read_text(errors='replace'))
+            except (OSError, ET.ParseError):
+                continue
+            for seq in root.iter('Sequence'):
+                nm = seq.get('name')
+                if not nm or nm in out:
+                    continue
+                spec = _parse_controller(seq)
+                if spec:
+                    out[nm] = spec
+    return out
+
+
+def load_controllers(refresh=False):
+    """controller name -> click-machine spec; shares the idle/tap cache."""
+    if not refresh and BEHAVIORS.exists():
+        try:
+            cached = json.loads(BEHAVIORS.read_text())
+            if 'controllers' in cached and \
+                    cached.get('packs_scanned') == len(_gamescript_packs()):
+                return cached['controllers']
+        except (ValueError, KeyError):
+            pass
+    load_behaviors(refresh=refresh)
+    try:
+        return json.loads(BEHAVIORS.read_text()).get('controllers') or {}
+    except (OSError, ValueError):
+        return _scan_controllers()
+
+
+def _toggle_anims(controllers, bv, have):
+    """behavior record -> manifest toggle gate, or None: the building's
+    controller must be a parsed click-machine, its driving variable must be
+    one the BuildingTouched script actually sets (otherwise clicks never
+    advance it), and the strips the states name must exist — a half-toggle
+    would leave the building stuck on a pose with no way back."""
+    spec = controllers.get(bv.get('idle') or '')
+    if not spec or spec['var'] not in (bv.get('tapVars') or ()):
+        return None
+    if spec['kind'] == 'inout':
+        a_in = _match_anim_verb(spec['in'], have)
+        a_out = _match_anim_verb(spec['out'], have)
+        if not (a_in and a_out):
+            return None
+        return {'kind': 'inout', 'in': a_in,
+                'loop': _match_anim_verb(spec['loop'], have),
+                'out': a_out}
+    if spec['kind'] == 'active':
+        m = _match_anim_verb(spec['loop'], have)
+        return {'kind': 'active', 'loop': m} if m else None
+    poses = [_match_anim_verb(w, have) if w else None
+             for w in spec['poses']]
+    if any(p is None for p in poses[1:]) or len(poses) < 2:
+        return None                       # a missing pose has no way back
+    return {'kind': 'cycle', 'poses': poses}
+
+
+def _anim_motion(parsed):
+    """anim name -> number of DISTINCT frames in its range. A range whose
+    frames are all one pose is a hold, not a loop: the atlas step drops it
+    (deduped frames < 2), so it can never be an idle or a layer."""
+    sigs = [_frame_sig(fr) for fr in parsed['frames']]
+    out = {}
+    for nm, a, b in (parsed['anims'] or []):
+        if b <= a or b > len(parsed['frames']):
+            continue
+        out[nm] = len(set(sigs[a:b]))
+    return out
+
+
+def _pack_sparse(comps, blk=6, pad=3, max_w=4096):
+    """Cluster-rect packing for layer strips whose cells are almost all
+    transparency (the escalator's riders: ~20k opaque px in a 2.8 Mpx
+    canvas). Instead of one full-cell-per-frame atlas, pack the bbox of
+    every opaque figure-cluster into one shelf atlas and record per-frame
+    source rects for the player to blit (entry 'sub'). Returns
+    (atlas, subs, maxw, maxh) or None when the clusters are too big or the
+    packing saves too little to be worth the extra manifest weight."""
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    from collections import deque
+    rects = []                    # (k, X0, Y0, X1, Y1, fx, fy)
+    per = [[] for _ in comps]
+    for k, tup in enumerate(comps):
+        im, fx, fy = tup[0], int(round(tup[1])), int(round(tup[2]))
+        a = np.asarray(im)[:, :, 3]
+        hgt, wid = a.shape
+        m = a > 8
+        gh, gy = hgt // blk, wid // blk
+        if not gh or not gy:
+            return None
+        grid = m[:gh * blk, :gy * blk].reshape(gh, blk, gy, blk).any(
+            axis=(1, 3))
+        seen = np.zeros_like(grid, bool)
+        for i in range(gh):
+            for j in range(gy):
+                if not grid[i, j] or seen[i, j]:
+                    continue
+                q = deque([(i, j)])
+                seen[i, j] = True
+                y0, x0, y1, x1 = i, j, i, j
+                while q:
+                    y, x = q.popleft()
+                    if y < y0:
+                        y0 = y
+                    if y > y1:
+                        y1 = y
+                    if x < x0:
+                        x0 = x
+                    if x > x1:
+                        x1 = x
+                    for dy in (-1, 0, 1):
+                        for dx in (-1, 0, 1):
+                            ny, nx = y + dy, x + dx
+                            if 0 <= ny < gh and 0 <= nx < gy and \
+                                    grid[ny, nx] and not seen[ny, nx]:
+                                seen[ny, nx] = True
+                                q.append((ny, nx))
+                X0, Y0 = max(0, x0 * blk - pad), max(0, y0 * blk - pad)
+                X1, Y1 = min(wid, x1 * blk + blk + pad), \
+                    min(hgt, y1 * blk + blk + pad)
+                if (X1 - X0) * (Y1 - Y0) > 1_000_000:
+                    return None   # fat blob: clustering buys nothing
+                per[k].append(len(rects))
+                rects.append((k, X0, Y0, X1, Y1, fx, fy))
+    if not rects:
+        return None
+    mxw = max(r[3] - r[1] for r in rects)
+    mxh = max(r[4] - r[2] for r in rects)
+    W = min(max_w, mxw + 4)
+    pos = [None] * len(rects)
+    x = y = rowH = 0
+    for i in sorted(range(len(rects)), key=lambda n: -(rects[n][4] -
+                                                        rects[n][2])):
+        _, X0, Y0, X1, Y1 = rects[i][:5]
+        rw, rh = X1 - X0, Y1 - Y0
+        if x + rw + 2 > W:
+            x = 0
+            y += rowH + 2
+            rowH = 0
+        pos[i] = (x, y)
+        x += rw + 2
+        if rh > rowH:
+            rowH = rh
+    H = y + rowH + 2
+    full = sum(t[0].width * t[0].height for t in comps)
+    if W * H * 3 > full:           # less than a 3x win: keep uniform cells
+        return None
+    atlas = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    subs = []
+    for k, idxs in enumerate(per):
+        fr = []
+        for idx in idxs:
+            _, X0, Y0, X1, Y1, fx, fy = rects[idx]
+            px, py = pos[idx]
+            atlas.alpha_composite(
+                comps[k][0].crop((X0, Y0, X1, Y1)), (px, py))
+            fr.append({'sx': px, 'sy': py, 'w': X1 - X0, 'h': Y1 - Y0,
+                       'ox': X0 - fx, 'oy': Y0 - fy})
+        subs.append(fr)
+    return atlas, subs, mxw, mxh
+
+
+def _layer_wants(by_name, orders, slug, name_idx):
+    """ordered anim names the engine composites for this asset — the parts
+    that loop TOGETHER over the body: the <AnimationLayerOrder> list when
+    the assetdata declares one, then the controller anim of every building
+    that renders from this slug (OldEnglishStationBase loops NeutralBase,
+    …Top loops NeutralTop). Deduped case-insensitively, draw order first."""
+    names = _slug_names(name_idx, slug)
+    if not names:
+        return []
+    out, seen = [], set()
+    for lst in ([orders.get(nm) or [] for nm in names] +
+                [[(by_name.get(nm) or {}).get('idle')] for nm in names]):
+        for w in lst:
+            if w and w.lower() not in seen:
+                seen.add(w.lower())
+                out.append(w)
+    return out
+
+
+def _behavior_map(by_name, orders, controllers, ameta, name_idx):
+    """slug -> {'idle': bsv3 anim name|None, 'tap': bsv3 anim name|None,
+    'layers': [anim, ...]|absent, 'toggle': {...}|absent} restricted to
+    slugs the filmstrip manifest carries; verbs resolved against the strips
+    that actually exist, so the map never points the web player at a missing
+    atlas.
+
+    'layers' is only for the assets no single anim can animate: their idle
+    resolves to nothing (EscalatorToNowhere's controller says 'Neutral', the
+    bsv3 has no such loop) while the engine still moves them — as stacked
+    part-loops. The map player then draws the static body and blits every
+    layer cell over it, in list order.
+
+    'toggle' is the click-state-machine gate (_scan_controllers): the
+    building's taps flip the machine's variable, so clicks cycle states
+    even though nothing loops on its own. State 0 is the idle/static look:
+    when the machine names a Neutral strip and it exists, it ALSO gates as
+    the ordinary idle loop; the player blits the toggle record's strips for
+    states 1..N."""
+    out = {}
+    for s, rows in ameta.items():
+        have = [e['anim'] for e in rows]
+        bv = _behavior_rec(by_name, s, name_idx) or {}
+        tap_verb = bv.get('tapVerb')
+        tap = (_match_anim_verb(tap_verb, have) if tap_verb
+               else _fallback_tap_anim(have))
+        idle = _match_anim_verb(bv.get('idle') or 'Neutral', have,
+                                allow_base=True)
+        ctl = controllers.get(bv.get('idle') or '')
+        tog = None if tap else _toggle_anims(controllers, bv, have)
+        if idle is None and (tog or ctl):
+            # state 0 of a click-machine IS the Neutral anim: assets that
+            # carry it keep an idle loop even while generic-controlled —
+            # even when the click cycle itself was rejected (a pose has no
+            # strip; ChokeCam's Toggle02)
+            idle = _match_anim_verb('Neutral', have, allow_base=True)
+        rec = {'idle': idle, 'tap': tap}
+        if idle is None:
+            lay, seen = [], set()
+            tap_low = (tap or '').lower()
+            for w in _layer_wants(by_name, orders, s, name_idx):
+                m = _match_anim_verb(w, have, allow_base=True)
+                if m and m.lower() not in seen and m.lower() != tap_low:
+                    seen.add(m.lower())
+                    lay.append(m)
+            if lay:
+                rec['layers'] = lay       # composites own the no-idle slot
+            elif tog:
+                rec['toggle'] = tog
+        elif tog:
+            rec['toggle'] = tog           # idle Neutral + clickable states
+        out[s] = rec
+    return out
+
+
+def _anim_note(cap):
+    """manifest header, shared by the atlas pass and the map-only rewrite."""
+    return ('bsv3 0x0103 named-anim filmstrips; frames deduped, thinned to '
+            f'{cap}/anim, anchor-centred cells; no timing encoded, played at '
+            f'{ANIM_FPS} fps. behavior: engine idle/tap anim per slug (loop '
+            'only idle; play tap once on click), from the gamescripts packs; '
+            'layers: the part loops a multi-part asset composites over its '
+            'body (1-frame entries are its static parts); sparse: cluster-'
+            'rect packed, blit per entry in sub[]; toggle: the engine\'s '
+            'click state machine from buildingcontrollers.xml — inout '
+            '{in,loop,out} plays in then loops loop, click again plays out; '
+            'active {loop} toggles the loop on/off; cycle {poses} walks '
+            'pose loops on each click (state 0 is the idle/static look)')
+
+
+def do_behavior_map():
+    """rewrite ONLY city-anims.json's 'behavior' gate from the manifest as
+    it stands (no atlas work): the pack tables changed, or the gate rules
+    did, and the map player needs the new idle/tap/layers without waiting
+    on a full filmstrip pass."""
+    import datetime
+    ameta_path = ROOT / 'web/assets/city/city-anims.json'
+    man = json.loads(ameta_path.read_text())
+    ameta = man.get('anims') or {}
+    man['generated'] = datetime.date.today().isoformat()
+    man['note'] = _anim_note(ANIM_MAX_FRAMES)
+    man['behavior'] = _behavior_map(load_behaviors(), load_layer_orders(),
+                                    load_controllers(),
+                                    ameta, _slug_name_index())
+    ameta_path.write_text(json.dumps(man, indent=1))
+    n_lay = sum(1 for v in man['behavior'].values() if v.get('layers'))
+    n_id = sum(1 for v in man['behavior'].values() if v.get('idle'))
+    n_tp = sum(1 for v in man['behavior'].values() if v.get('tap'))
+    n_tg = sum(1 for v in man['behavior'].values() if v.get('toggle'))
+    n_var = len(load_controllers())
+    print(f'behavior map: {len(man["behavior"])} slugs — {n_id} idle loops, '
+          f'{n_lay} layered, {n_tp} tap anims, {n_tg} toggles '
+          f'({n_var} click-machines parsed) -> {ameta_path}')
+
+
+def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
+    """Filmstrip atlases for the animated bsv3 assets (0x0103 only: the
+    0x0303 frame section is not decoded, notes/01). For every named anim
+    spanning >1 distinct frame, render its frames (deduped, thinned to
+    `cap`) and pack them into one atlas PNG under
+    web/assets/city/anims/ + web/assets/city/city-anims.json. Each cell
+    is the same canvas, the frame pasted so its building anchor lands at
+    the cell centre — cells share a size and the player just translates.
+    --placed limits the batch to the slugs the save actually places.
+
+    city-anims.json also carries a 'behavior' map (the M4 gate): per slug,
+    which named anim the engine loops on its own (ActiveAnimationController
+    / neutralAnim, default 'Neutral') and which one the BuildingTouched
+    script plays on tap. do_anims forces strips for both so the web player
+    never points at a missing atlas; the packs scan itself is cached in
+    data/building_behaviors.json (see `behavior` subcommand).
+
+    Assets with no controller loop of their own but with <AnimationLayerOrder>
+    / multi-part sibling buildings are the third case: their motion lives in
+    the PART loops (escalatortonowhere: Stairs + Characters), so those are
+    forced into `wanted` too and the map records them as slug -> layers."""
+    import datetime
+    resolve_seasons()          # filmstrips must follow the resolved base art
+    man_path = ROOT / 'web/assets/city/city-sprites.json'
+    sprites = json.loads(man_path.read_text())['sprites']
+    out_dir = ROOT / 'web/assets/city/anims'
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ameta_path = ROOT / 'web/assets/city/city-anims.json'
+    ameta = {}
+    if ameta_path.exists():
+        try:
+            ameta = json.loads(ameta_path.read_text()).get('anims', {})
+        except ValueError:
+            ameta = {}
+    behaviors = load_behaviors()
+    orders = load_layer_orders()
+    controllers = load_controllers()
+    name_idx = _slug_name_index()
+
+    def write_meta():
+        ameta_path.write_text(json.dumps({
+            'version': 2,
+            'generated': datetime.date.today().isoformat(),
+            'note': _anim_note(cap),
+            'anims': dict(sorted(ameta.items())),
+            'behavior': _behavior_map(behaviors, orders, controllers,
+                                      ameta, name_idx)},
+            indent=1))
+
+    slugs = [slug] if slug else sorted(sprites)
+    if placed:
+        keep = _placed_slugs()
+        slugs = [s for s in slugs if s in keep]
+    n_assets = n_anims = 0
+    fails = []
+    since_ckpt = 0
+    for s in slugs:
+        bsv3f, rgbf = POOL / (s + '.bsv3'), POOL / (s + '.rgb')
+        if not bsv3f.exists() or not rgbf.exists():
+            continue
+        try:
+            parsed = parse_bsv3(bsv3f.read_bytes(), s)
+            if parsed['v'] != 1 or not parsed['frames'] or parsed['nf'] < 2:
+                continue
+            rngs = [(nm, a, b) for nm, a, b in (parsed['anims'] or [])
+                    if b > a and b < len(parsed['frames'])]
+            all_ranges = [(nm, a, b) for nm, a, b in (parsed['anims'] or [])
+                          if a <= b < len(parsed['frames'])]
+            if not rngs:
+                continue
+            # the engine's own loop (controller anim) and tap anim must
+            # both have strips, even when they lose the longest-4 cut
+            bv = _behavior_rec(behaviors, s, name_idx) or {}
+            have_names = [nm for nm, _a, _b in rngs]
+            strips = {e['anim'].lower() for e in ameta.get(s, [])}
+            idle_want = _match_anim_verb(bv.get('idle') or 'Neutral',
+                                         have_names, allow_base=True)
+            tap_want = (_match_anim_verb(bv['tapVerb'], have_names)
+                        if bv.get('tapVerb')
+                        else _fallback_tap_anim(have_names))
+            wanted = [w for w in (idle_want, tap_want) if w]
+            layset, statics = set(), set()
+            if not idle_want:
+                # no controller loop of its own: the asset may still be a
+                # multi-part one whose parts loop together — force those
+                # strips too, or the map player has nothing to composite
+                motion = None
+                for want in _layer_wants(behaviors, orders, s, name_idx):
+                    m = _match_anim_verb(want, have_names, allow_base=True)
+                    if not m:
+                        continue
+                    layset.add(m.lower())
+                    if m.lower() in strips or \
+                            m.lower() in [q.lower() for q in wanted]:
+                        continue
+                    if motion is None:
+                        motion = _anim_motion(parsed)
+                    if motion.get(m, 0) > 1:      # a hold is not a loop
+                        wanted.append(m)
+                # a part whose range is a single frame is a static piece of
+                # the composite (EscalatorToNowhere's StairsOV is the front
+                # panel that hides the step ends): it must still ship, as a
+                # 1-frame layer, or the loops paint over art the engine
+                # would have drawn on top of them
+                declared = set()
+                for nm_ in _slug_names(name_idx, s) or []:
+                    declared.update(w.lower() for w in orders.get(nm_) or [])
+                for nm_, a_, b_ in all_ranges:
+                    if a_ != b_ or nm_.lower() not in declared or \
+                            nm_.lower() in strips or \
+                            nm_.lower() in [q.lower() for q in wanted]:
+                        continue
+                    wanted.append(nm_)
+                    statics.add(nm_.lower())
+                    layset.add(nm_.lower())
+            if slug is None and s in ameta:
+                have = {e['anim'].lower() for e in ameta[s]}
+                if all(w.lower() in have for w in wanted):
+                    continue  # resumable: strips already generated
+            sigs = {_frame_sig(fr) for fr in parsed['frames']}
+            if len(sigs) < 2:
+                continue      # every frame identical: no motion to show
+            img = load_sheet(rgbf, s)
+            # keep the longest loops; dedupe identical frame ranges
+            have_ranges = list(all_ranges)
+            seen = set()
+            rngs = sorted(rngs, key=lambda r: -(r[2] - r[1]))
+            rngs = [r for r in rngs
+                    if not (r[1], r[2]) in seen and not seen.add((r[1], r[2]))]
+            rngs = rngs[:ANIM_MAX_ANIMS]
+            for want in wanted:
+                if any(r[0].lower() == want.lower() for r in rngs):
+                    continue
+                rr = next((r for r in have_ranges
+                           if r[0].lower() == want.lower()), None)
+                if rr:
+                    rngs.append(rr)   # may duplicate a kept range under
+                                      # its own name: entries key by name
+            entry = ameta.setdefault(s, [])
+            for nm, a, b in rngs:
+                idxs = _sample_range(a, b, cap)
+                # drop frames identical to their predecessor in the loop
+                keep, prev = [], None
+                for i in idxs:
+                    sg = _frame_sig(parsed['frames'][i])
+                    if sg != prev:
+                        keep.append(i)
+                        prev = sg
+                if not keep or (len(keep) < 2 and b > a):
+                    continue          # a single-frame hold ships as 1 cell
+                # cell = the union bbox of the loop's frames expressed in
+                # ANCHOR space: every frame's art spans (w - fx) right and
+                # (h - fy) down from its anchor, and Ax/Ay px left/up of it
+                # (_composite returns the anchor as canvas px). Centreing
+                # the ANCHOR (not the canvas) in the cell is what keeps the
+                # ground pin still AND keeps art that hangs above/below the
+                # anchor — e.g. fountain sprays, ay > h — inside the cell.
+                # Frames are rendered twice (cheap geometry pass, then the
+                # paste pass) rather than held in RAM: a 48-frame loop of a
+                # large landmark would be ~0.7 Gpx otherwise.
+                def render(fi):
+                    return _composite(parsed, img, s, parsed['frames'][fi])
+                comps = [render(i) for i in keep]
+                comps = [c for c in comps if c is not None]
+                if not comps or (len(comps) < 2 and b > a):
+                    continue
+                Ax = max(int(round(c[1])) for c in comps)
+                Ay = max(int(round(c[2])) for c in comps)
+                cell_w = max(1, max(c[0].width - int(round(c[1]))
+                                    for c in comps) + Ax)
+                cell_h = max(1, max(c[0].height - int(round(c[2]))
+                                    for c in comps) + Ay)
+                cols = min(cap, max(1, int(math.ceil(math.sqrt(len(comps))))))
+                rows = math.ceil(len(comps) / cols)
+                if nm.lower() in layset and b > a and \
+                        cols * cell_w * rows * cell_h > ANIM_SPARSE_PX:
+                    # mostly-empty layer strip (the riders): a uniform atlas
+                    # would blow the player's decode gate for ~1% of pixels
+                    sp = _pack_sparse(comps)
+                    if sp is not None:
+                        atlas, subs, mw, mh = sp
+                        png = f'{s}__{_safe_anim(nm)}.png'
+                        atlas.save(out_dir / png)
+                        entry[:] = [e for e in entry if e['anim'] != nm]
+                        entry.append({'anim': nm, 'png': f'anims/{png}',
+                                      'frames': len(comps), 'cols': 1,
+                                      'cellw': mw, 'cellh': mh,
+                                      'w': atlas.width, 'h': atlas.height,
+                                      'sub': subs, 'ax': Ax, 'ay': Ay,
+                                      'fps': ANIM_FPS, 'sparse': 1})
+                        n_anims += 1
+                        continue
+                atlas = Image.new('RGBA', (cols * cell_w, rows * cell_h),
+                                  (0, 0, 0, 0))
+                drawn = 0
+                for k, i in enumerate(keep):
+                    r = render(i)
+                    if r is None:
+                        continue
+                    fr, fx, fy = r[0], int(round(r[1])), int(round(r[2]))
+                    ox = (k % cols) * cell_w + Ax - fx
+                    oy = (k // cols) * cell_h + Ay - fy
+                    atlas.alpha_composite(fr, (ox, oy))
+                    drawn += 1
+                if not drawn or (drawn < 2 and b > a):
+                    continue
+                png = f'{s}__{_safe_anim(nm)}.png'
+                atlas.save(out_dir / png)
+                entry[:] = [e for e in entry if e['anim'] != nm]
+                entry.append({'anim': nm, 'png': f'anims/{png}',
+                              'frames': drawn, 'cols': cols,
+                              'cellw': cell_w, 'cellh': cell_h,
+                              'ax': Ax, 'ay': Ay,
+                              'fps': ANIM_FPS})
+                n_anims += 1
+            if entry:
+                n_assets += 1
+            else:
+                ameta.pop(s, None)
+        except Exception as e:
+            fails.append((s, f'{type(e).__name__}: {e}'))
+        since_ckpt += 1
+        if since_ckpt >= 100:      # checkpoint so an interrupted run resumes
+            since_ckpt = 0
+            write_meta()
+
+    write_meta()
+    print(f'anims: {n_assets} assets, {n_anims} new atlases '
+          f'(manifest {len(ameta)} assets in {ameta_path})')
+    if fails:
+        print(f'  failures: {len(fails)}')
+        for s, e in fails[:10]:
+            print(f'    {s}: {e}')
+
+
+def _safe_anim(nm):
+    return ''.join(c if c.isalnum() else '_' for c in nm)[:32] or 'anim'
+
+
+
+
+def xml_anchor(slug, canvas_h, pool_dir=None):
+    """Authoritative sprite anchor from the asset's pool xml def, or None.
+
+    transImageX/Y semantics (pinned 2026-10-19, notes/06): for assets whose
+    bsv3 pivot is sound, the pair may be anything the author typed (several
+    healthy assets carry far-off values — powerplant00 non-flipped tx
+    -320.05 vs its bsv3 anchor 778.75 — while ~347 others match the bsv3
+    anchor to <1.5px, e.g. powerplant00flipped ax 757.30 vs -tx 757.299),
+    so it is NOT a universal anchor source. It is, however, the authoring
+    ground truth for the degenerate single-block 'C_Building' assets whose
+    bsv3 pivot forced the bbox bottom-centre guess: ax = -transImageX,
+    ay = canvas_h + transImageY there (powerplant01flipped true ax 757.0 vs
+    bbox guess 539.0, a 3.5-tile error that hung the building east/south of
+    its lot — user eye-test picked this render: m4-pp2-variants.png panel
+    B). Hence: authoritative only when pivot would be 'bbox'.
+    A (0, 0) pair is 'unspecified' and returns None (most assets).
+    """
+    p = (pool_dir or POOL) / (slug + '.xml')
+    if not p.exists():
+        return None
+    try:
+        r = ET.fromstring(p.read_text(errors='replace'))
+        tx = float(r.get('transImageX') or 0)
+        ty = float(r.get('transImageY') or 0)
+    except Exception:
+        return None
+    if tx == 0.0 and ty == 0.0:
+        return None
+    return (-tx, canvas_h + ty)
+
+
+def do_reanchor():
+    """Apply the xml-anchor rule to an existing manifest without re-rendering
+    any PNGs (anchors are manifest-only metadata)."""
+    import datetime
+    manifest_path = ROOT / 'web' / 'assets' / 'city' / 'city-sprites.json'
+    manifest = json.loads(manifest_path.read_text())
+    man = manifest['sprites']
+    changed = 0
+    for s, e in sorted(man.items()):
+        if e.get('pivot') != 'bbox':
+            continue  # xml only replaces the degenerate bbox guesses
+        xa = xml_anchor(s, e['h'])
+        if xa and (abs(xa[0] - e['anchor'][0]) > 0.01
+                   or abs(xa[1] - e['anchor'][1]) > 0.01):
+            e['anchor'] = [round(xa[0], 2), round(xa[1], 2)]
+            e['pivot'] = 'xml'
+            changed += 1
+    manifest['generated'] = datetime.date.today().isoformat()
+    manifest_path.write_text(json.dumps(manifest, indent=1))
+    from collections import Counter
+    print(f'reanchor: {changed}/{len(man)} anchors taken from xml defs; '
+          f'pivot {dict(Counter(e.get("pivot") for e in man.values()))}')
+
+
+def _render_sprite(s, bsv3f, rgbf, xml_dir, out_png, png_field):
+    """Composite one slug's static frame to out_png, recorded in the entry
+    as png=<png_field> (path relative to web/assets/city). Returns
+    (manifest_entry, warnings, canvas) or (None, warnings, None) when the
+    static frame holds nothing drawable. Shared by the base render and the
+    season-variant render in do_sprites."""
+    parsed = parse_bsv3(bsv3f.read_bytes(), s)
+    img = load_sheet(rgbf, s)
+    r = render_static(parsed, img, s)
+    if r is None:
+        return None, parsed['warnings'], None
+    canvas, ax, ay, drawn, skipped, rotmax = r
+    pivot = 'bsv3'
+    if ay < 4.0:
+        # Degenerate authoring pivot: some single-block 'C_Building'
+        # assets (powerplant01/02, generichouse00/02/03/04, skipsdiner,
+        # bench & similar props) export with the block rect's TOP-LEFT
+        # at the origin (ay ~ 0; healthy assets sit at ay ~ h..1.5h),
+        # which would hang the whole image below its ground pin. Re-pin
+        # the bbox bottom-centre onto the anchor — the engine's own
+        # convention for well-formed 1x1 props. Distribution of raw ay
+        # over the pool is bimodal (max 1.25px broken vs >=289px
+        # healthy — flat ground decals like runwaypiece03 sit BELOW the
+        # origin and must not re-pin), so an absolute px threshold
+        # never fires on healthy sprites.
+        ax, ay = canvas.width / 2.0, float(canvas.height)
+        pivot = 'bbox'
+        parsed['warnings'].append(
+            f'{s}: degenerate bsv3 pivot, anchor re-pinned '
+            f'to bbox bottom-centre')
+    xa = xml_anchor(s, canvas.height, xml_dir)
+    if xa and pivot == 'bbox':
+        # xml def beats the bbox guess for degenerate pivots only;
+        # healthy bsv3 anchors stay untouched (see xml_anchor docstring).
+        ax, ay = xa
+        pivot = 'xml'
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(out_png)
+    entry = {
+        'png': png_field,
+        'w': canvas.width,
+        'h': canvas.height,
+        'anchor': [round(ax, 2), round(ay, 2)],
+        'pivot': pivot,
+        'variant': f'0{parsed["v"]}03',
+        'static': parsed.get('static_src'),
+        'blocks': drawn,
+        'skipped': skipped,
+        'rotmax': round(rotmax, 4),
+    }
+    return entry, parsed['warnings'], canvas
+
+
+def _trim_malloc():
+    """PIL's big transient canvases leave glibc arenas mapped even after the
+    Image objects die, and a multi-hour single-process sprites run grows to
+    the cgroup limit and gets OOM-killed (observed 2026-10-25: Killed at
+    ~2000 slugs). gc + malloc_trim(0) after every checkpoint hands the RSS
+    back to the kernel."""
+    try:
+        import ctypes
+        import gc
+        gc.collect()
+        ctypes.CDLL('libc.so.6').malloc_trim(0)
+    except Exception:
+        pass
+
+
+def do_sprites(slug=None, parse_only=False, shard=None, shards=1):
+    import datetime
+    pool_bsv3 = sorted(POOL.glob('*.bsv3'))
+    if parse_only:
+        ok = fails = v3n = v1n = 0
+        for f in pool_bsv3:
+            try:
+                r = parse_bsv3(f.read_bytes(), f.name)
+            except Exception as e:
+                fails += 1
+                if fails <= 20:
+                    print(f'  FAIL {f.name}: {type(e).__name__}: {e}')
+                continue
+            ok += 1
+            if r['v'] == 3:
+                v3n += 1
+            else:
+                v1n += 1
+        print(f'parse-only: {ok}/{len(pool_bsv3)} bsv3 files parse to exact EOF'
+              f'  (0x0103: {v1n}, 0x0303: {v3n})  failures: {fails}')
+        return
+
+    required = compute_required()
+    # seasonal race winners -> base art before anything renders (see
+    # resolve_seasons; a no-op once the pool is resolved). Shard 0 owns the
+    # swap so parallel shards never race on the pool moves.
+    if shard in (None, 0):
+        resolve_seasons()
+    out_dir = ROOT / 'web' / 'assets' / 'city'
+    out_dir.mkdir(parents=True, exist_ok=True)
+    # shard mode writes a private fragment; `sprites-merge` folds all
+    # fragments into city-sprites.json (single writers avoid corruption)
+    manifest_path = (out_dir / f'city-sprites-shard{shard}.json'
+                     if shard is not None else out_dir / 'city-sprites.json')
+    manifest = {}
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except ValueError:
+            manifest = {}
+    man = manifest.setdefault('sprites', {})
+
+    slugs = [slug] if slug else sorted(required)
+    if shard is not None:
+        slugs = [s for i, s in enumerate(slugs) if i % shards == shard]
+    rendered = v1 = v3 = nosrc = rgbonly = failed = 0
+    tot_skipped = 0
+    fail_list = []
+    warn_list = []
+    season_count = {}
+    keep_season = set()
+    for s in slugs:
+        bsv3f = POOL / (s + '.bsv3')
+        rgbf = POOL / (s + '.rgb')
+        if not bsv3f.exists():
+            if rgbf.exists():
+                rgbonly += 1
+            else:
+                nosrc += 1
+            continue
+        try:
+            e, warns, canvas = _render_sprite(
+                s, bsv3f, rgbf, POOL, out_dir / f'{s}.png', f'{s}.png')
+        except Exception as ex:
+            failed += 1
+            if len(fail_list) < 20:
+                fail_list.append((s, f'{type(ex).__name__}: {ex}'))
+            continue
+        warn_list.extend(warns)
+        if e is None:
+            failed += 1
+            if len(fail_list) < 20:
+                fail_list.append((s, 'nothing drawable in static frame'))
+            continue
+        rendered += 1
+        v1 += e['variant'] == '0103'
+        v3 += e['variant'] == '0303'
+        tot_skipped += e['skipped']
+        base_md5 = _md5_bytes(canvas.tobytes())
+        # season variants: byte-different archived re-ships (resolve has
+        # also filed swapped-out seasonal mains into their class dirs)
+        se = {}
+        if SEASON.exists():
+            for cls in SEASON_ORDER:
+                cdir = SEASON / cls
+                vrgb, vbs = cdir / (s + '.rgb'), cdir / (s + '.bsv3')
+                if not vrgb.exists() and not vbs.exists():
+                    continue
+                rbs = vbs if vbs.exists() else bsv3f
+                rrg = vrgb if vrgb.exists() else rgbf
+                if rbs == bsv3f and rrg == rgbf:
+                    continue
+                if (not vbs.exists()
+                        or vbs.read_bytes() == bsv3f.read_bytes()) \
+                        and (not vrgb.exists()
+                             or vrgb.read_bytes() == rgbf.read_bytes()):
+                    continue     # archived copy is the base art verbatim
+                spng = f'seasons/{cls}/{s}.png'
+                try:
+                    ve, vw, vcanvas = _render_sprite(
+                        s, rbs, rrg, cdir, out_dir / spng, spng)
+                except Exception:
+                    continue
+                warn_list.extend(vw)
+                if ve is None or vcanvas is None or \
+                        _md5_bytes(vcanvas.tobytes()) == base_md5:
+                    (out_dir / spng).unlink(missing_ok=True)
+                    continue     # re-encoded same pixels: not a season art
+                ve['season'] = cls
+                se[cls] = ve
+                season_count[cls] = season_count.get(cls, 0) + 1
+                keep_season.add(spng)
+        if se:
+            e['seasons'] = se
+        man[s] = e
+        if rendered % 250 == 0:
+            print(f'  ...{rendered} rendered ({s})', flush=True)
+            manifest['version'] = 1
+            manifest['generated'] = datetime.date.today().isoformat()
+            manifest['count'] = len(man)
+            manifest_path.write_text(json.dumps(manifest, indent=1))
+            _trim_malloc()
+    if rendered or (slug and rendered == 0):
+        manifest['version'] = 1
+        manifest['generated'] = datetime.date.today().isoformat()
+        manifest['count'] = len(man)
+        manifest_path.write_text(json.dumps(manifest, indent=1))
+
+    if not slug and shard is None:
+        # stale season PNGs: only what the manifest references may stay
+        sroot = out_dir / 'seasons'
+        if sroot.exists():
+            for p in sroot.glob('*/*.png'):
+                if p.relative_to(out_dir).as_posix() not in keep_season:
+                    p.unlink()
+            for d in sroot.iterdir():
+                if d.is_dir() and not any(d.iterdir()):
+                    d.rmdir()
+
+    files = [p for p in out_dir.rglob('*.png')]
+    tot = sum(p.stat().st_size for p in files)
+    print(f'sprites: slugs={len(slugs)} rendered={rendered} '
+          f'(0x0103={v1}, 0x0303={v3})')
+    if season_count:
+        print(f'  season variants: '
+              + '  '.join(f'{c}={n}' for c, n in
+                          sorted(season_count.items(), key=lambda kv: -kv[1])))
+    if not slug:
+        print(f'  no rgb+bsv3 in pool: {nosrc}   rgb-only (no bsv3): {rgbonly}'
+              f'   failed: {failed}')
+    if fail_list:
+        print('  failures:')
+        for s, e in fail_list:
+            print(f'    {s}: {e}')
+    if warn_list:
+        print(f'  warnings: {len(warn_list)}')
+        for w in warn_list[:10]:
+            print(f'    {w}')
+    print(f'  output: {len(files)} png, {tot / 1e6:.1f} MB in {out_dir}')
+    print(f'  manifest: {manifest_path} ({len(man)} sprites, '
+          f'{tot_skipped} blocks skipped as global ids)')
+
+
+# The road-bridge pieces: the engine's RoadDrawer stacks one deck cell and one
+# strut cell per 4-tile segment, and neither slug is ever a building INSTANCE
+# (no binfo/instance rows), so compute_required() never lists them and
+# `sprites` would bake only their static frame. Frame indices are the bsv3
+# Neutral range (bridgetop 0 = C_BridgeTop_05 arch, 5 = C_BridgeTop_09 far-end
+# flat; bridgebottom 0 = C_BridgeBottom_02 far, 1 = C_BridgeBottom_03 arch).
+BRIDGE_FRAMES = {'bridgetop': (0, 1, 2, 3, 4, 5, 6, 7), 'bridgebottom': (0, 1)}
+
+
+def do_bridges():
+    """Bake the engine-composited bridge pieces as their own manifest entries.
+
+    Keys are `<slug>_f<frame>` and the anchors keep the raw bsv3 block-origin
+    convention (no degenerate-pivot re-pin, no xml override): the pieces are
+    placed by their own instance origin, which is where the bsv3 block origin
+    sits, so the viewer's rule and tools/bridge-sites.py both work in that
+    frame. Every frame ships because the road-bridge rule picks one by depth
+    under the deck (deep piers vs abutment-length piers) and by end (the `g`
+    frames add the grass abutment cell). See notes/09 §10.
+    """
+    import datetime
+    out_dir = ROOT / 'web' / 'assets' / 'city'
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = out_dir / 'city-sprites.json'
+    manifest = {}
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except ValueError:
+            manifest = {}
+    man = manifest.setdefault('sprites', {})
+    n = 0
+    for slug, frames in BRIDGE_FRAMES.items():
+        bsv3f, rgbf = POOL / f'{slug}.bsv3', POOL / f'{slug}.rgb'
+        if not bsv3f.exists() or not rgbf.exists():
+            print(f'  MISSING {slug}: no bsv3/rgb in the pool')
+            continue
+        parsed = parse_bsv3(bsv3f.read_bytes(), slug)
+        img = load_sheet(rgbf, slug)
+        if parsed['v'] != 1:
+            print(f'  {slug}: v{parsed["v"]} file, bridge rule fitted on v1')
+        for fi in frames:
+            if fi >= len(parsed['frames']):
+                print(f'  {slug}: no frame {fi}')
+                continue
+            r = _composite(parsed, img, slug, parsed['frames'][fi])
+            if r is None:
+                print(f'  {slug} f{fi}: nothing drawable')
+                continue
+            canvas, ax, ay, drawn, skipped, rotmax = r
+            key = f'{slug}_f{fi}'
+            png = f'{key}.png'
+            canvas.save(out_dir / png)
+            man[key] = {
+                'png': png, 'w': canvas.width, 'h': canvas.height,
+                'anchor': [round(ax, 2), round(ay, 2)], 'pivot': 'bsv3',
+                'variant': f'0{parsed["v"]}03', 'static': 'bsv3-frame',
+                'cell': parsed['cells'][parsed['frames'][fi][0][0]][0]
+                        if parsed['frames'][fi] else None,
+                'blocks': drawn, 'skipped': skipped,
+                'rotmax': round(rotmax, 4),
+            }
+            n += 1
+            print(f'  {key}: {canvas.width}x{canvas.height} '
+                  f'anchor ({ax:.2f}, {ay:.2f}) cell {man[key]["cell"]}')
+    manifest['version'] = 1
+    manifest['generated'] = datetime.date.today().isoformat()
+    manifest['count'] = len(man)
+    manifest_path.write_text(json.dumps(manifest, indent=1))
+    print(f'bridges: {n} frame sprites -> {manifest_path.name} '
+          f'({len(man)} sprites)')
+
+
+def do_sprites_merge():
+    """Fold every city-sprites-shard<N>.json fragment (written by parallel
+    `sprites --shard I --shards N` runs) into city-sprites.json, prune stale
+    season PNGs against the merged reference set, and remove the fragments."""
+    import datetime
+    out_dir = ROOT / 'web' / 'assets' / 'city'
+    manifest_path = out_dir / 'city-sprites.json'
+    manifest = {}
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except ValueError:
+            manifest = {}
+    man = manifest.setdefault('sprites', {})
+    frags = sorted(out_dir.glob('city-sprites-shard*.json'))
+    if not frags:
+        print('sprites-merge: no shard fragments found')
+        return
+    for p in frags:
+        j = json.loads(p.read_text())
+        man.update(j.get('sprites', {}))
+        p.unlink()
+    keep = {v['png'] for e in man.values()
+            for v in (e.get('seasons') or {}).values()}
+    sroot = out_dir / 'seasons'
+    stale = 0
+    if sroot.exists():
+        for p in sroot.glob('*/*.png'):
+            if p.relative_to(out_dir).as_posix() not in keep:
+                p.unlink()
+                stale += 1
+        for d in sroot.iterdir():
+            if d.is_dir() and not any(d.iterdir()):
+                d.rmdir()
+    manifest['version'] = 1
+    manifest['generated'] = datetime.date.today().isoformat()
+    manifest['count'] = len(man)
+    manifest_path.write_text(json.dumps(manifest, indent=1))
+    print(f'sprites-merge: {len(frags)} fragments -> {manifest_path} '
+          f'({len(man)} sprites), {stale} stale season pngs pruned')
+
+
+# Save names whose character ships under a different asset stem (verified
+# against the pack inventories: the .bcell file stem, e.g. abe_idle.bcell).
+CHAR_ALIASES = {
+    'grampa': 'abe',
+    'cbguy': 'comicbookguy',
+    'willy': 'willie',
+}
+
+# Resting-pose role preference: the at-rest loop, then plain idle, then a
+# static pose, then walk (a still walk frame still beats a grey dot).
+CHAR_ROLES = ('idle_standby', 'idle', '', 'walk')
+
+# Idle-loop upgrade candidates: tried as <stem> + suffix, longest
+# animation wins (see do_chars). '<name>_idle' in the core pack is a
+# single pose; the blink/shift loops ship as separate cells.
+CHAR_IDLE_SUFFIXES = ('idleblink', 'idleblinkleft', 'idleblinkright',
+                      'idle', 'idleleft', 'idleright', 'idlestandby',
+                      'standby', 'blink')
+# stems carrying these words are locomotion/one-shot scenes, not in-place
+# idles — they look wrong looping on a standing character
+CHAR_MOTION_WORDS = ('walk', 'run', 'jog', 'dance', 'cheer', 'victory',
+                     'pose')
+
+# Role suffixes recognised when splitting '<stem>_<role>.bcell'.
+CHAR_ROLE_SUFFIXES = ('idle_standby', 'idle', 'walk', 'cheer', 'dance',
+                      'sleep', 'sit', 'work', 'greet', 'special')
+
+
+def _char_norm(s):
+    return ''.join(c for c in s.lower() if c.isalnum())
+
+
+def _char_split_role(stem):
+    """'<name>_<role>' -> (name_stem, role); ('<name>', '') when the
+    stem carries no known role suffix."""
+    low = stem.lower()
+    for r in CHAR_ROLE_SUFFIXES:
+        if low.endswith('_' + r):
+            return stem[: -(len(r) + 1)], r
+    return stem, ''
+
+
+def _char_inventory():
+    """normalized stem -> {'stem': display stem, 'roles': {role: source}},
+    over the pool's .bcell cells (family packs, once the extract workers
+    have run) plus the core game-100 pack's inline cells (stored in the
+    core zip's nested inner zip — entry '1' is itself a zip). Pool entries
+    are added first and win (setdefault). bcell13 cells (4.x event art,
+    frames external in '<stem>_image_N.rgb' companions) are added last so
+    a renderable bcell10 for the same stem+role always shadows them;
+    their companions are harvested on demand at render time
+    (_fetch_companions). bcell11 cells stay skipped (undecoded)."""
+    import io
+    import zipfile
+    inv = {}
+    handles = []
+
+    def add(stem, role, source):
+        key = _char_norm(stem)
+        entry = inv.setdefault(key, {'stem': stem, 'roles': {}})
+        entry['roles'].setdefault(role, source)
+
+    deferred13 = []
+    if POOL.exists():
+        for p in sorted(POOL.glob('*.bcell')):
+            try:
+                with p.open('rb') as fh:
+                    magic = fh.read(7)
+            except OSError:
+                continue
+            if magic == b'bcell10':
+                stem, role = _char_split_role(p.name[: -len('.bcell')])
+                add(stem, role, ('file', p, None))
+            elif magic == b'bcell13':
+                deferred13.append((p, _char_split_role(
+                    p.name[: -len('.bcell')])))
+    if CORE_ZIP.exists():
+        z = zipfile.ZipFile(CORE_ZIP)
+        handles.append(z)
+        inner = zipfile.ZipFile(io.BytesIO(z.read('1')))
+        handles.append(inner)
+        for n in inner.namelist():
+            base = os.path.basename(n)
+            if not base.lower().endswith('.bcell'):
+                continue
+            stem, role = _char_split_role(base[: -len('.bcell')])
+            add(stem, role, ('zip', inner, n))
+    # last so a renderable bcell10 (pool or core) always shadows a
+    # bcell13 for the same stem+role
+    for p, (stem, role) in deferred13:
+        add(stem, role, ('bcell13', p, None))
+    return inv, handles
+
+
+# ------------------------------------------------------- bcell13 companions
+#
+# bcell13 cells reference their frames as external '<stem>_image_N.rgb'
+# files in the same pack. The full 4.x companion set is ~165k distinct
+# files (several GB) — far too much for the tmpfs pool — so the frames a
+# chosen cell actually needs are harvested ON DEMAND, batched per family
+# pack (one 7z + unzip per family), and persisted into the pool so later
+# runs read them straight off disk.
+
+_BCELL_INDEX = None          # bcell stem -> (fam, pack), lazily built
+
+
+def _bcell_index():
+    """bcell stem -> (fam, pack) for the copy the pool harvest kept.
+    Reads the workers' index_*.tsv keep lines ('bcell<TAB>base<TAB>fam
+    <TAB>pack'); the first line for a stem is the pack that won."""
+    global _BCELL_INDEX
+    if _BCELL_INDEX is None:
+        _BCELL_INDEX = {}
+        for log in sorted(POOL.glob('index_*.tsv')):
+            try:
+                for line in open(log):
+                    parts = line.rstrip('\n').split('\t')
+                    if len(parts) == 4 and parts[0] == 'bcell':
+                        stem = parts[1]
+                        if stem.endswith('.bcell'):
+                            stem = stem[: -len('.bcell')]
+                        _BCELL_INDEX.setdefault(stem.lower(),
+                                                (parts[2], parts[3]))
+            except OSError:
+                pass
+    return _BCELL_INDEX
+
+
+def _fetch_companions(need_by_fam):
+    """Fetch '<stem>_image_N.rgb' companion files into the pool.
+    need_by_fam: family -> set of companion basenames. Returns the number
+    of files newly written (0 when everything already lives in the pool
+    or no family resolves)."""
+    import zipfile
+    fams = load_families()
+    got = 0
+    for fam, names in sorted(need_by_fam.items()):
+        ent = fams.get(fam)
+        if ent is None:
+            continue
+        work = WORK_BASE / 'lazy' / re.sub(r'[^A-Za-z0-9_.-]', '_', fam)
+        shutil.rmtree(work, ignore_errors=True)
+        try:
+            zpath = open_inner_zip(work, ent[0], ent[1])
+            if zpath is None:
+                continue
+            z = zipfile.ZipFile(zpath)
+            want = {}
+            for n in z.namelist():
+                base = os.path.basename(n).lower()
+                if base.endswith('.rgb') and base not in want:
+                    want[base] = n
+            for name in sorted(names):
+                if (POOL / name).exists():
+                    continue
+                zn = want.get(name)
+                if zn is None:
+                    continue
+                tmp = POOL / (name + '.part')
+                tmp.write_bytes(z.read(zn))
+                tmp.rename(POOL / name)
+                got += 1
+            z.close()
+        except (OSError, zipfile.BadZipFile):
+            pass
+        shutil.rmtree(work, ignore_errors=True)
+    return got
+
+
+def _dedup_built(built):
+    """collapse frames that render identically (2026-10-23): the packs
+    repeat the same image over several ticks, and blink loops' eyes-open
+    ticks are byte-for-byte copies of frame 0 — those shipped to disk as
+    duplicate '<slug>_1/_2.png' files faking a motion that never changed.
+    Repeats merge into the kept frame with their delay added; a trailing
+    repeat of frame 0 merges into the LEADING frame, since the player
+    cycles the loop and the wall-clock hold is the same."""
+    if len(built) < 2:
+        return built
+    out = []                                # [(delay, x, y, im, sig)]
+    for (delay, x, y, im) in built:
+        sig = hashlib.md5(im.tobytes()).hexdigest()
+        if out and sig == out[-1][4] and (x, y) == (out[-1][1], out[-1][2]):
+            prev = out[-1]
+            out[-1] = (prev[0] + delay, prev[1], prev[2], prev[3], prev[4])
+            continue
+        out.append((delay, x, y, im, sig))
+    if len(out) > 1 and out[0][4] == out[-1][4] and \
+            (out[0][1], out[0][2]) == (out[-1][1], out[-1][2]):
+        first = out[0]
+        out[0] = (first[0] + out[-1][0],) + tuple(first[1:])
+        out.pop()
+    return [(d, x, y, _im) for (d, x, y, _im, _s) in out]
+
+
+def do_chars():
+    """Character idle sprites for every distinct character the save
+    instantiates, from .bcell animation cells. Each '<name>_<role>.bcell'
+    holds frames as records (delay, x_off, y_off, block) placed relative
+    to the character anchor (0,0 = feet on the ground line), so the
+    canvas is the union bbox of the frames and the anchor is
+    (-min_x, -min_y) in canvas pixels.
+
+    Save names (data/character_ids.json) are matched to asset stems by
+    exact, then unique-prefix, then unique-contains normalized matching,
+    plus CHAR_ALIASES for assets shipped under a different name (Grampa
+    -> abe, CBGuy -> comicbookguy, Willy -> willie). Characters with no
+    asset in any scanned pack stay grey dots in City View.
+
+    Idle-loop upgrade (2026-10-23): the core pack's '<name>_idle' bcell
+    is a single 666 ms pose — the real animated idle lives in separate
+    '<name>idleblink'-style cells (pool only). A matched base whose frames
+    are static is therefore upgraded to an animated variant: first the
+    stem + a known idle suffix, then any stem containing the save name
+    AND 'idle'/'blink' (no walk/run/dance words — in-place loops only).
+    'Static' and 'most frames' are judged by PIXEL content
+    (pix_distinct): many bcell13 cells repeat one image across their
+    ticks, and counting frame references called that an animation —
+    43 assets shipped byte-identical PNGs and never moved on the map.
+    Duplicate ticks are also collapsed at render time (_dedup_built),
+    so a cell that only repeats one pose ships ONE png instead of three
+    copies of it; the blink loops' eyes-open tick merges into frame 0.
+
+    Family-pack cells come from the pool, so run the extract workers
+    first for full coverage (they keep *.bcell alongside the required
+    building assets); without a pool this degrades to the core pack set.
+    Writes web/assets/characters/<slug>*.png + characters.json:
+    assets keyed by asset stem, characters keyed by save id (the M3
+    defID lookup), unmatched names listed for triage."""
+    import datetime
+    from extract_assets import parse_bcell, parse_bcell13, _unpremul4444
+
+    inv, handles = _char_inventory()
+    out_dir = ROOT / 'web' / 'assets' / 'characters'
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    def find(norm):
+        norm = CHAR_ALIASES.get(norm, norm)
+        if norm in inv:
+            return norm
+
+        def pick_tied(cands):
+            # longest-first; ties (happylittleelf02../03..,
+            # traincarriagecarriage105/255) prefer the cell whose pixels
+            # the pool can actually hydrate — an unshipped bcell13 twin
+            # scores 0 and would lose the character to a dot — then
+            # lexicographic max so runs stay deterministic
+            top = max(len(p) for p in cands)
+            return max(sorted(p for p in cands if len(p) == top),
+                       key=lambda p: (
+                           1 if pix_distinct(frames_of(inv[p])[1]) else 0,
+                           p))
+        if len(norm) >= 4:
+            cands = {p for p in inv
+                     if p.startswith(norm) or norm.startswith(p)}
+            if cands:
+                return pick_tied(cands)
+        if len(norm) >= 5:
+            cands = {p for p in inv
+                     if len(p) >= 4 and (norm in p or p in norm)}
+            if cands:
+                return pick_tied(cands)
+        return None
+
+    def frames_of(entry):
+        """(role, frames) for one inventory entry. Frames are unified
+        tuples (delay, x, y, scale, src): bcell10 inline blocks carry
+        src=('px', w, h, bytes) with scale 1.0; bcell13 records carry
+        src=('rgb', companion-basename) with the frame's stored i16
+        (x_off, y_off) placement at scale 1.0 (its layer floats are
+        SHADOW/POSITION/INDICATOR overlay transforms only — see
+        extract_assets.parse_bcell13). The bcell13 geometry comes from
+        the cell alone, so choose() (frame counting) never touches
+        companion pixels — those hydrate at render time via
+        frame_pil()."""
+        for role in CHAR_ROLES:
+            src = entry['roles'].get(role)
+            if src is None:
+                continue
+            kind, a, b = src
+            try:
+                blob = a.read_bytes() if kind in ('file', 'bcell13') \
+                    else a.read(b)
+            except Exception:
+                continue
+            if kind == 'bcell13':
+                try:
+                    recs = parse_bcell13(blob, str(a))
+                except Exception:
+                    continue
+                frames = []
+                for (delay, x, y, name) in recs:
+                    if not math.isfinite(delay) or delay < 0:
+                        delay = 0.0
+                    frames.append((delay, float(x), float(y), 1.0,
+                                   ('rgb', name.lower())))
+                if frames:
+                    return role, frames
+                continue
+            try:
+                r10, blocks = parse_bcell(blob, str(b or a))
+            except Exception:
+                continue
+            frames = []
+            for delay, xoff, yoff, bi in r10:
+                if not (0 <= bi < len(blocks)):
+                    continue
+                w, h, px = blocks[bi]
+                if w < 1 or h < 1 or w * h > 4_000_000:
+                    continue
+                frames.append((delay if (delay and math.isfinite(delay))
+                               else 0.0,
+                               float(xoff), float(yoff), 1.0,
+                               ('px', w, h, px)))
+            if frames:
+                return role, frames
+        return None, []
+
+    cids = load_json('character_ids.json')
+    assets = {}
+    chars = {}
+    unmatched = set()
+    cache = {}
+
+    rgb_hash = {}                         # companion basename -> content hash
+
+    def pix_distinct(frames):
+        """distinct actually-rendered frames: the number of distinct
+        (image content, scale) pairs that are present to render. Counting
+        frame SOURCES lied — a bcell13 cell may repeat the same
+        '_image_N.rgb' across several ticks (AdvisorFrink_Idle's three
+        ticks are all image_1) or ship the identical image under different
+        companion names, and both looked 'animating'. A companion the
+        prefetch could not harvest can never hydrate either (frame_pil
+        drops it), so an absent file contributes NO frame rather than a
+        distinct one — an unrenderable cell scores 0 and loses the pick
+        to a cell the map can actually show."""
+        keys = set()
+        for _d, _x, _y, scale, src in frames:
+            if src[0] == 'px':
+                keys.add(('px', src[1], src[2],
+                          hashlib.md5(src[3]).hexdigest(), round(scale, 3)))
+            else:
+                if src[1] in rgb_hash:
+                    h = rgb_hash[src[1]]
+                    if h is None:
+                        continue            # never harvested (cached miss)
+                else:
+                    try:
+                        h = hashlib.md5((POOL / src[1]).read_bytes()).hexdigest()
+                    except OSError:
+                        rgb_hash[src[1]] = None
+                        continue            # companion never harvested
+                    rgb_hash[src[1]] = h
+                keys.add(('rgb', h, round(scale, 3)))
+        return len(keys)
+
+    def candidates(hit, nm):
+        """(base|None, suffix_candidates, contains_candidates) for a
+        matched base stem — the cells choose() competes; frames are read
+        but companion pixels need not exist yet (see pass 1)."""
+        role, frames = frames_of(inv[hit])
+
+        def harvest(cands):
+            got = []
+            for k in cands:
+                if k not in inv:
+                    continue
+                r2, f2 = frames_of(inv[k])
+                if f2:
+                    got.append((k, r2, f2))
+            return got
+
+        sfx_cands = [hit + s for s in CHAR_IDLE_SUFFIXES]
+        if len(nm) >= 4 and nm != hit:
+            sfx_cands += [nm + s for s in CHAR_IDLE_SUFFIXES]
+        # NO cap on the contains list: 'zombie''s best art sits past the
+        # 12th sorted candidate and the truncation cost real assets
+        cont_cands = (sorted(k for k in inv
+                             if (nm in k or k in nm)
+                             and ('idle' in k or 'blink' in k))
+                      if len(nm) >= 4 else [])
+        return ([(hit, role, frames)] if frames else [],
+                harvest(sfx_cands), harvest(cont_cands))
+
+    def choose(hit, nm, base, sfx, cont):
+        """(stem, role, frames) to render for a matched base stem: the
+        base itself, upgraded to an animated idle variant when possible
+        (see do_chars docstring). Priority: a dedicated <stem/name>+idle
+        suffix cell (>=2 PIXEL-distinct frames) > the base when it
+        already animates in place > any idle/blink cell referencing the
+        name > the base. 'animating' means pix_distinct() >= 2: cells
+        that repeat one image over several ticks no longer qualify, so
+        they stop shadowing a real blink variant — and pass 3 collapses
+        their duplicate PNGs to a single honest pose."""
+
+        def ok(k):
+            return k != hit and not any(w in k for w in CHAR_MOTION_WORDS)
+
+        def best_of(group):
+            best = None
+            for k, r2, f2 in group:
+                if not ok(k):
+                    continue
+                n2 = pix_distinct(f2)
+                bn = pix_distinct(best[2]) if best else 0
+                if (n2 >= 2 and (best is None or n2 > bn
+                                 or (n2 == bn and len(k) < len(best[0])))):
+                    best = (k, r2, f2)
+            return best
+
+        def renderable_once(group):
+            # nothing animates anywhere: a still variant whose pixels the
+            # pool actually has beats a base whose bcell13 companions
+            # never shipped — that one renders as no asset at all and the
+            # character stays a dot on the map
+            for k, r2, f2 in group:
+                if ok(k) and pix_distinct(f2) >= 1:
+                    return (k, r2, f2)
+            return None
+
+        if not base:
+            return (best_of(sfx) or best_of(cont)
+                    or renderable_once(sfx + cont))
+        stem, role, frames = base[0]
+        if role in ('idle', 'idle_standby') and pix_distinct(frames) > 1:
+            return base[0]
+        return (best_of(sfx)
+                or (base[0] if pix_distinct(frames) > 1 and ok(stem) else None)
+                or best_of(cont)
+                or renderable_once(sfx + cont)
+                or base[0])
+
+    # Pass 1 — list each save character's candidate cells and harvest the
+    # bcell13 companions ANY candidate references. The pixel-distinct
+    # frame count that decides the pick reads companion images, so the
+    # fetch must precede the choice — otherwise the same image shipped
+    # under repeat tick names masquerades as an animation. Files already
+    # in the pool cost nothing; the index is keyed by the pool cell's raw
+    # stem (candidates work in normalized keys).
+    need = {}
+    idx = _bcell_index()
+
+    def collect(cand):
+        stem, role, frames = cand
+        src = inv[stem]['roles'].get(role)
+        if not src or src[0] != 'bcell13':
+            return
+        ent = idx.get(src[1].name[: -len('.bcell')].lower())
+        if ent is None:
+            return
+        for f in frames:
+            if f[4][0] == 'rgb' and not (POOL / f[4][1]).exists():
+                need.setdefault(ent[0], set()).add(f[4][1])
+
+    order = []
+    pending = []
+    for cid in sorted(cids, key=int):
+        name = cids[cid]
+        hit = find(_char_norm(name))
+        if hit is None:
+            unmatched.add(name)
+            continue
+        if hit not in cache:
+            cache[hit] = candidates(hit, _char_norm(name))
+            for group in cache[hit]:
+                for c in group:
+                    collect(c)
+        pending.append((cid, name, hit))
+    fetched = _fetch_companions(need)
+
+    # Pass 2 — the companion bytes are in the pool: finalise the pick per
+    # base stem (cache entries become the (stem, role, kind, frames)
+    # tuple pass 3 renders; characters sharing a base resolve once).
+    for cid, name, hit in pending:
+        sel = cache[hit]
+        if sel is None:
+            unmatched.add(name)
+            continue
+        if len(sel) == 4:                   # already finalised (shared hit)
+            order.append((cid, name, hit))
+            continue
+        got = choose(hit, _char_norm(name), *sel)
+        if not got or not got[2]:
+            cache[hit] = None
+            unmatched.add(name)
+            continue
+        stem, role, frames = got
+        kind = inv[stem]['roles'][role][0]
+        cache[hit] = (stem, role, kind, frames)
+        order.append((cid, name, hit))
+
+    # Pass 3 — render each chosen cell: hydrate frames, float union bbox
+    # over the placed frames, anchor = the cell's engine origin (0, 0)
+    # — the same feet-on-ground convention the bcell10 path uses.
+    img_cache = {}
+
+    def frame_pil(src, scale):
+        if src[0] == 'px':
+            _, w, h, px = src
+            try:
+                im = Image.frombytes('RGBA', (w, h), _unpremul4444(px))
+            except Exception:
+                return None
+        else:
+            im = img_cache.get(src[1])
+            if im is None:
+                try:
+                    rw, rh, _bpp, rgba, _pm = rgb_to_rgba(
+                        (POOL / src[1]).read_bytes(), src[1])
+                    im = Image.frombytes('RGBA', (rw, rh), rgba)
+                except Exception:
+                    im = False
+                img_cache[src[1]] = im
+                # families hydrate ~10x the cells of a pick-only run: the
+                # companion images must not all pile up in RAM at once
+                if len(img_cache) > 3000:
+                    img_cache.clear()
+            if im is False:
+                return None
+        if scale != 1.0:
+            im = im.resize((max(1, round(im.width * scale)),
+                            max(1, round(im.height * scale))),
+                           Image.LANCZOS)
+        return im
+
+    rendered = {}
+    for cid, name, hit in order:
+        stem, role, kind, frames = cache[hit]
+        if stem in rendered:
+            asset = rendered[stem]
+        else:
+            built = []
+            for (delay, x, y, scale, src) in frames:
+                im = frame_pil(src, scale)
+                if im is not None:
+                    built.append((delay, x, y, im))
+            built = _dedup_built(built)
+            if built:
+                min_x = min(b[1] for b in built)
+                min_y = min(b[2] for b in built)
+                max_x = max(b[1] + b[3].width for b in built)
+                max_y = max(b[2] + b[3].height for b in built)
+                cw = max(1, math.ceil(max_x - min_x))
+                ch = max(1, math.ceil(max_y - min_y))
+                out_frames = []
+                for i, (delay, x, y, im) in enumerate(built):
+                    canvas = Image.new('RGBA', (cw, ch))
+                    canvas.paste(im, (round(x - min_x), round(y - min_y)))
+                    fname = (f'{stem}.png' if i == 0
+                             else f'{stem}_{i}.png')
+                    canvas.save(out_dir / fname)
+                    out_frames.append({'file': fname, 'delay': delay})
+                asset = {
+                    'png': f'{stem}.png', 'w': cw, 'h': ch,
+                    'anchor': [round(-min_x, 2), round(-min_y, 2)],
+                    'role': role, 'frames': out_frames,
+                }
+            else:
+                asset = None
+            rendered[stem] = asset
+        if asset is None:
+            unmatched.add(name)
+            continue
+        assets[stem] = asset
+        chars[cid] = {'name': name, 'slug': stem}
+
+    # Pass 4 — families (2026-10-27): ship EVERY pool cell of a mapped
+    # character (walks, taps/actions, outfits), not just the map idle.
+    # Each inventory cell is owned by the LONGEST catalog name (or
+    # CHAR_ALIASES target — the asset stem a save name ships under) its
+    # normalized stem starts with. A character's card shows its own cells
+    # PLUS every cell owned by a catalog name that extends its own
+    # ('homer' also gets 'homerlizard…' cells), so outfits surface under
+    # the base character while cataloged twins keep their own complete
+    # card too. 3-letter prefixes own only where the map actually has art
+    # (a bare 'lou' must not swallow 'louie…'). Cells nobody owns are
+    # listed in the manifest for triage. Frames share the flat PNG
+    # namespace in out_dir; per-character sidecars under families/ keep
+    # the boot manifest lean (the viewer fetches one when a card opens).
+    fam_dir = out_dir / 'families'
+    fam_dir.mkdir(exist_ok=True)
+
+    FAM_DIRS = ('left', 'right', 'front', 'back')
+    FAM_KIND_WORDS = (
+        ('idle', 'idle'), ('blink', 'idle'), ('standby', 'idle'),
+        ('walk', 'walk'), ('run', 'walk'), ('trot', 'walk'),
+        ('jog', 'walk'),
+        ('cheer', 'action'), ('dance', 'action'), ('victory', 'action'),
+        ('pose', 'action'), ('active', 'action'))
+    FAM_TRIM_TAIL = ('idle', 'blink', 'idleblink', 'standby', 'walk',
+                     'run', 'cheer', 'dance', 'active', 'special', 'greet',
+                     'work', 'sit', 'sleep', 'victory', 'pose')
+
+    def cell_kind(key, distinct):
+        for w, kind in FAM_KIND_WORDS:
+            if w in key:
+                return 'standby' if distinct <= 1 else kind
+        if distinct >= 2:
+            return 'action'
+        return 'standby' if distinct == 1 else 'misc'
+
+    def cell_dir(key):
+        for d in FAM_DIRS:
+            if key.endswith(d):
+                return d
+        return ''
+
+    def outfit_words(disp, key, nm):
+        """Costume/action label: the cell's words minus the character's
+        name and minus trailing role/direction words — e.g.
+        bart_beelzebart_idle_blink -> 'beelzebart',
+        homerlizardidleblink (nm='homer') -> 'lizard'. Underscored
+        display stems keep their word breaks; glued stems return the
+        trimmed remainder as one word."""
+        toks = [t for t in disp.lower().replace(' ', '_').split('_') if t]
+        if len(toks) > 1:
+            acc = ''
+            while len(toks) > 1:
+                t = _char_norm(toks[0])
+                if not t or not key.startswith(acc + t):
+                    break
+                acc += t
+                toks.pop(0)
+            while toks and (_char_norm(toks[-1]) in FAM_TRIM_TAIL or
+                            _char_norm(toks[-1]) in FAM_DIRS or
+                            _char_norm(toks[-1]).isdigit()):
+                toks.pop()
+            return ' '.join(t for t in (_char_norm(x) for x in toks) if t)
+        rest = key[len(nm):] if key.startswith(nm) else key
+        while rest:
+            for w in ('idleblink', 'standby', 'left', 'right', 'front',
+                      'back', 'idle', 'blink', 'walk', 'run', 'cheer',
+                      'dance', 'victory', 'pose'):
+                if rest.endswith(w):
+                    rest = rest[:-len(w)]
+                    break
+            else:
+                if rest and rest[-1].isdigit():
+                    rest = rest[:-1]
+                    continue
+                break
+        return rest
+
+    # ownership: prefixes the save cast can claim (name + alias target)
+    cid_prefixes = {}                # cid -> usable prefix set
+    for cid, name in cids.items():
+        nm = _char_norm(name)
+        pre = {nm} if nm else set()
+        al = CHAR_ALIASES.get(nm)
+        if al:
+            pre.add(al)
+        pre = {p for p in pre if p and len(p) >= 3 and
+               (len(p) > 3 or cid in chars)}
+        if pre:
+            cid_prefixes[cid] = pre
+    owner_of = {}                    # prefix -> owning cid (lowest id wins)
+    for cid in sorted(cid_prefixes, key=int):
+        for p in cid_prefixes[cid]:
+            owner_of.setdefault(p, cid)
+    usable = sorted(owner_of, key=lambda s: (-len(s), s))
+    owners = {}                      # inv key -> owning prefix
+    loose = []
+    for key in inv:
+        for p in usable:
+            if key.startswith(p):
+                owners[key] = p
+                break
+        else:
+            loose.append(key)
+
+    # prefetch the bcell13 companions EVERY owned cell references (the
+    # pass-1 fetch only covered the chosen map idles), thinning absurdly
+    # long cells evenly to 64 frames first (endpoints kept)
+    fam_frames = {}                  # key -> (role, frames)
+    need_f = {}
+    for key in owners:
+        role, frames = frames_of(inv[key])
+        if len(frames) > 64:
+            frames = [frames[i] for i in _sample_range(0, len(frames) - 1, 64)]
+        if not frames:
+            continue
+        fam_frames[key] = (role, frames)
+        src = inv[key]['roles'].get(role)
+        if src and src[0] == 'bcell13':
+            ent = idx.get(src[1].name[: -len('.bcell')].lower())
+            if ent is not None:
+                for f in frames:
+                    if f[4][0] == 'rgb' and not (POOL / f[4][1]).exists():
+                        need_f.setdefault(ent[0], set()).add(f[4][1])
+    fetched_f = _fetch_companions(need_f)
+
+    # render every owned cell once (pass 3's pick reuses via `rendered`)
+    fam_cell = {}                    # key -> metadata entry (no outfit)
+    fam_rendered = 0
+    for key in sorted(owners):
+        disp = inv[key]['stem']
+        role, frames = fam_frames.get(key, ('', []))
+        entry = {'key': key, 'stem': disp, 'role': role,
+                 'dir': cell_dir(key)}
+        if key in rendered and rendered[key] is not None:
+            a = rendered[key]
+        elif frames:
+            built = []
+            for (delay, x, y, scale, src) in frames:
+                im = frame_pil(src, scale)
+                if im is not None:
+                    built.append((delay, x, y, im))
+            built = _dedup_built(built)
+            if built:
+                min_x = min(b[1] for b in built)
+                min_y = min(b[2] for b in built)
+                max_x = max(b[1] + b[3].width for b in built)
+                max_y = max(b[2] + b[3].height for b in built)
+                cw = max(1, math.ceil(max_x - min_x))
+                ch = max(1, math.ceil(max_y - min_y))
+                out_frames = []
+                for i, (delay, x, y, im) in enumerate(built):
+                    canvas = Image.new('RGBA', (cw, ch))
+                    canvas.paste(im, (round(x - min_x), round(y - min_y)))
+                    fname = (f'{key}.png' if i == 0 else f'{key}_{i}.png')
+                    canvas.save(out_dir / fname)
+                    out_frames.append({'file': fname, 'delay': delay})
+                a = {'png': f'{key}.png', 'w': cw, 'h': ch,
+                     'anchor': [round(-min_x, 2), round(-min_y, 2)],
+                     'frames': out_frames}
+            else:
+                a = None
+            rendered[key] = a        # shared across characters AND reruns
+        else:
+            a = None
+        if a:
+            fam_rendered += 1
+            entry['png'] = a['png']
+            entry['w'] = a['w']
+            entry['h'] = a['h']
+            entry['anchor'] = a['anchor']
+            entry['frames'] = a['frames']
+            entry['ms'] = round(sum(fr['delay'] or 100
+                                    for fr in a['frames']), 1)
+        else:
+            entry['frames'] = []
+            entry['reason'] = 'no-frames' if not frames else 'no-pixels'
+        entry['kind'] = cell_kind(
+            key, pix_distinct(frames) if frames else 0)
+        fam_cell[key] = entry
+
+    # one sidecar per save character: own cells + the cells of every
+    # catalog prefix that extends one of its prefixes (outfits/actions)
+    fam_keep = set()
+    fam_written = set()
+    for cid in sorted(cids, key=int):
+        if cid not in chars:
+            continue
+        my = sorted(cid_prefixes.get(cid, ()), key=len, reverse=True)
+        mine = [k for k, p in owners.items()
+                if any(p == px or p.startswith(px) for px in my)]
+        cells = []
+        for k in sorted(mine):
+            e = fam_cell[k]
+            px = next((p for p in my if k.startswith(p)), my[0] if my else '')
+            entry = dict(e)
+            entry['outfit'] = outfit_words(e['stem'], k, px)
+            cells.append(entry)
+            if e.get('png'):
+                fam_keep.add(e['png'])
+                fam_keep.update(fr['file'] for fr in e['frames'])
+        side = {'cid': cid, 'name': cids[cid], 'cells': cells}
+        sp = fam_dir / (cid + '.json')
+        sp.write_text(json.dumps(side))
+        fam_written.add(sp.name)
+    for p in fam_dir.glob('*.json'):
+        if p.name not in fam_written:
+            p.unlink()
+
+    for h in handles:
+        try:
+            h.close()
+        except Exception:
+            pass
+
+    manifest = {
+        'version': 4,
+        'generated': datetime.date.today().isoformat(),
+        'assets': dict(sorted(assets.items())),
+        'characters': chars,
+        'unmatched': sorted(unmatched),
+        'count': len(chars),
+        'familyCells': len(owners),
+        'familyRendered': fam_rendered,
+        'unmatchedCells': sorted(loose),
+    }
+    manifest_path = out_dir / 'characters.json'
+    manifest_path.write_text(json.dumps(manifest, indent=1))
+    # drop PNGs no manifest entry references any more: dedup retired the
+    # byte-identical '_1/_2' copies, and re-runs change the picks — the
+    # directory should only hold what the map actually loads
+    keep = {a['png'] for a in assets.values()}
+    keep.update(fr['file'] for a in assets.values() for fr in a['frames'])
+    keep |= fam_keep                 # family sidecar frames stay on disk too
+    stale = sum(1 for p in out_dir.glob('*.png') if p.name not in keep)
+    for p in out_dir.glob('*.png'):
+        if p.name not in keep:
+            p.unlink()
+    print(f'chars: {len(chars)}/{len(cids)} save characters -> '
+          f'{len(assets)} rendered assets '
+          f'({len(unmatched)} names unmatched, {stale} stale pngs pruned)')
+    print(f'  families: {fam_rendered}/{len(owners)} owned cells rendered, '
+          f'{len(loose)} loose cells, {len(fam_written)} sidecars')
+    if fetched or need:
+        print(f'  companions: {fetched} bcell13 frame images fetched '
+              f'from {len(need)} family packs')
+    if fetched_f or need_f:
+        print(f'  family companions: {fetched_f} fetched from '
+              f'{len(need_f)} family packs')
+    print(f'  output: {out_dir}')
+    print(f'  manifest: {manifest_path}')
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    sub = ap.add_subparsers(dest='cmd', required=True)
+    ex = sub.add_parser('extract')
+    ex.add_argument('--worker', type=int, default=0)
+    ex.add_argument('--workers', type=int, default=1)
+    ex.add_argument('--core', action='store_true')
+    bf = sub.add_parser('backfill')
+    bf.add_argument('--worker', type=int, default=0)
+    bf.add_argument('--workers', type=int, default=1)
+    bf.add_argument('--only', default=None,
+                    help='comma-separated family-name substrings: scan only '
+                         'those candidate rows (e.g. takedown)')
+    sub.add_parser('resolve', help='promote archived base art over seasonal '
+                                   'race winners in the pool')
+    sub.add_parser('report')
+    sp = sub.add_parser('sprites')
+    sp.add_argument('--slug', default=None)
+    sp.add_argument('--parse-only', action='store_true')
+    sp.add_argument('--shard', type=int, default=None,
+                    help='render only slug list[i::N] into a private '
+                         'city-sprites-shardI.json (run N in parallel, then '
+                         'sprites-merge)')
+    sp.add_argument('--shards', type=int, default=1)
+    sub.add_parser('sprites-merge')
+    sub.add_parser('bridges', help='bake the engine-composited road-bridge '
+                                   'deck/strut frames (notes/09 §10)')
+    sub.add_parser('chars')
+    sub.add_parser('reanchor')
+    an = sub.add_parser('anims')
+    an.add_argument('--slug', default=None)
+    an.add_argument('--cap', type=int, default=ANIM_MAX_FRAMES)
+    an.add_argument('--placed', action='store_true',
+                    help='only slugs the save actually places')
+    bh = sub.add_parser('behavior')
+    bh.add_argument('--refresh', action='store_true',
+                    help='re-scan the gamescripts packs (cached otherwise)')
+    bh.add_argument('--write-map', action='store_true',
+                    help="rewrite city-anims.json's behavior gate from the "
+                         'current manifest (no atlas work)')
+    a = ap.parse_args()
+    if a.cmd == 'extract':
+        if a.core:
+            do_core()
+        else:
+            worker(a.worker, a.workers)
+    elif a.cmd == 'backfill':
+        backfill(a.worker, a.workers, only=a.only)
+    elif a.cmd == 'resolve':
+        resolve_seasons()
+    elif a.cmd == 'report':
+        do_report()
+    elif a.cmd == 'sprites':
+        do_sprites(slug=a.slug, parse_only=a.parse_only,
+                   shard=a.shard, shards=a.shards)
+    elif a.cmd == 'sprites-merge':
+        do_sprites_merge()
+    elif a.cmd == 'bridges':
+        do_bridges()
+    elif a.cmd == 'anims':
+        do_anims(slug=a.slug, cap=a.cap, placed=a.placed)
+    elif a.cmd == 'behavior':
+        by_name = load_behaviors(refresh=a.refresh)
+        orders = load_layer_orders(refresh=a.refresh)
+        n_tap = sum(1 for v in by_name.values() if v.get('tapVerb'))
+        print(f'behavior: {len(by_name)} buildings with an engine idle/tap '
+              f'signal ({n_tap} with a tap anim), {len(orders)} with an '
+              f'AnimationLayerOrder -> {BEHAVIORS}')
+        if a.write_map:
+            do_behavior_map()
+    elif a.cmd == 'chars':
+        do_chars()
+    elif a.cmd == 'reanchor':
+        do_reanchor()
+
+
+if __name__ == '__main__':
+    main()
