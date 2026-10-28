@@ -2430,7 +2430,7 @@
     /* ============================ render ===================================== */
     var DIAG = {
         mode: 'Pixi', ms: 0, fps: 0, maxMs: 0, anims: 0, charAnims: 0,
-        pool: 0, ver: '2026-10-28.2'
+        pool: 0, ver: '2026-10-28.3'
     };
     window.__CV_DIAG = DIAG;
     window.__CV_VER = DIAG.ver;                    // console sanity check
@@ -4052,7 +4052,11 @@
 
     /* ---- HUD (legend panels) --------------------------------------------------- */
     function togglePanel(el, head, items, isOff, setVis) {
-        var rows = ['<span class="head">' + head + '</span>'];
+        var rows = ['<span class="headbar"><span class="head">' + head + '</span>' +
+            '<button type="button" class="mini" data-all="1" ' +
+            'data-tip="show every layer in this panel">show all</button>' +
+            '<button type="button" class="mini" data-all="0" ' +
+            'data-tip="hide every layer in this panel">hide all</button></span>'];
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
             rows.push('<button type="button" class="row" data-type="' + it.key +
@@ -4062,7 +4066,7 @@
                 '</button>');
         }
         el.innerHTML = rows.join('');
-        var btns = el.querySelectorAll('button.row');
+        var btns = el.querySelectorAll('button.row');   // same order as items
         for (var j = 0; j < btns.length; j++) {
             (function (btn) {
                 btn.addEventListener('click', function () {
@@ -4074,6 +4078,18 @@
                     markDirty();
                 });
             })(btns[j]);
+        }
+        var minis = el.querySelectorAll('button.mini');
+        for (var k = 0; k < minis.length; k++) {
+            minis[k].addEventListener('click', function () {
+                var on = this.getAttribute('data-all') === '1';
+                for (var n = 0; n < items.length; n++) {
+                    setVis(items[n].key, on);
+                    btns[n].setAttribute('aria-pressed', on ? 'true' : 'false');
+                    btns[n].classList.toggle('off', !on);
+                }
+                markDirty();
+            });
         }
     }
     function buildLegend() {

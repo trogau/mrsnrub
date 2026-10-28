@@ -285,6 +285,32 @@ main { display: flex; flex: 1; min-height: 0; }
 }
 .legend .row { white-space: nowrap; }
 .legend .head { grid-column: 1 / 3; color: var(--text); font-weight: bold; }
+/* head row with the show-all / hide-all shortcuts (js/city-view-pixi.js
+   togglePanel): head text left, mini buttons pushed to the right edge */
+.legend .headbar {
+    grid-column: 1 / 3;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+.legend .headbar .head { color: var(--text); font-weight: bold; }
+.legend button.mini {
+    /* strip button chrome like button.row; anchor for the [data-tip] bubble */
+    all: unset;
+    position: relative;
+    margin-left: auto;
+    cursor: pointer;
+    pointer-events: auto;
+    font: inherit;
+    font-weight: normal;
+    color: var(--text-dim);
+    border: 1px solid #2c3a52;
+    border-radius: 4px;
+    padding: 0 6px;
+}
+.legend button.mini + button.mini { margin-left: 4px; }
+.legend button.mini:hover { color: var(--text); }
+.legend button.mini:focus-visible { outline: 1px solid var(--text-dim); outline-offset: 1px; }
 
 /* ---- tile-marker textarea (js/markers.js, city-view.js buildObjLegend) ------
    Sits under the object toggles in the bottom-right legend: paste "(x,y)"

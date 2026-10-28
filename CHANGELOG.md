@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-28.3
+
+- **Added: show-all / hide-all shortcuts on the City View overlay panels.**
+  Both map-overlay toggle panels built by `togglePanel` in
+  `web/viewer/city-view-pixi.js` — the ground/terrain legend (bottom-left)
+  and the objects legend (bottom-right) — now carry a "show all" and a
+  "hide all" mini-button next to their head text. Each click runs every
+  layer row's own `setVis` path (so flat-ground rebuilds, tile-sprite
+  visibility, selection cleanup and the dirty-mark all behave exactly as
+  when toggling rows one by one) and syncs each row's `aria-pressed` /
+  `.off` styling. The extra non-category rows (speckle filter, walk paths)
+  keep their own state and are not touched by the shortcuts. New shared
+  `.legend .headbar` / `.legend button.mini` rules in
+  `web/css/city-view.css` style the shortcuts (tooltip via `data-tip`,
+  per the shared tooltip rule). Viewer `v=47`, `city-view.css v=13`,
+  `DIAG.ver 2026-10-28.3`.
+
 ## 2026-10-28.2
 
 - **Fixed: character-card tile players blink at the original's cadence
