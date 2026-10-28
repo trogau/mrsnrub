@@ -188,17 +188,36 @@
             ctx.imageSmoothingEnabled = s < 1;
             ctx.drawImage(im, 0, 0, cv.width, cv.height);
         }
+        /* playback model — same as the map (charFrameFile) and the original
+           client (IdleAnimation / timeBetweenAnimsMin/Max, notes/01): the
+           cell's delays are ONE play, then the player HOLDS frame 0
+           (standby) through a randomised gap. Modulo-looping a 208 ms blink
+           cell played it ~5x/second. */
+        var cum = [], loopMs = 0, q;
+        for (q = 0; q < c.frames.length; q++) {
+            var d = c.frames[q].delay || 100;
+            cum.push(d);
+            loopMs += d;
+        }
+        if (!loopMs) loopMs = c.ms || 100;
+        var kh = 0;
+        for (q = 0; q < c.key.length; q++) kh = (kh * 31 + c.key.charCodeAt(q)) | 0;
+        kh = Math.abs(kh);
+        var gap = 2000 + (kh >>> 4) % 5000 + (loopMs > 1200 ? loopMs : 0);
+        var cyc = loopMs + gap;
         function advance(now) {
             if (!p.playing) { p.last = now; return; }
             if (!p.last) p.last = now;
             p.t += (now - p.last) * p.rate;
             p.last = now;
-            var guard = 0;
-            while (p.t >= (c.frames[p.i].delay || 100) && guard++ < 240) {
-                p.t -= (c.frames[p.i].delay || 100);
-                p.i = (p.i + 1) % c.frames.length;
-                draw();
-            }
+            var pos = p.t % cyc, i2 = 0;
+            if (pos < loopMs) {
+                for (q = 0; q < cum.length; q++) {
+                    pos -= cum[q];
+                    if (pos < 0) { i2 = q; break; }
+                }
+            }                                        // else: standby hold
+            if (i2 !== p.i || !p.drawn) { p.i = i2; p.drawn = 1; draw(); }
         }
         imgAt(0);
         draw();

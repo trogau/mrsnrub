@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-10-28.2
+
+- **Fixed: character-card tile players blink at the original's cadence
+  (same one-play + standby-hold model as the map).** The sidebar players
+  in `char-variants-pixi.js` still modulo-looped a cell's frame delays,
+  so a 2-frame `idleblink` tile (~208 ms) flickered ~5x/second — the bug
+  the map idles got fixed for on 2026-10-27.7. Each tile now plays its
+  frames **once** on their delays, holds frame 0 (standby) through a
+  per-cell randomised gap (2–7 s, + one loop-length for loops >1.2 s so
+  "active" idles don't replay back-to-back) and repeats — matching
+  `charFrameFile` and the client's `timeBetweenAnimsMin/Max` idle
+  triggers. Timing is verified by a headless sim (Bart's blink tile:
+  13 canvas draws in 30 s, one 208 ms blink every ~5 s; the old loop was
+  ~144 flips). Viewer `v=46`, `char-variants-pixi.js v=2`,
+  `DIAG.ver 2026-10-28.2`.
+
 ## 2026-10-28.1
 
 - **Boardwalk and pier tiles are now on the map — the whole Squidport deck,
