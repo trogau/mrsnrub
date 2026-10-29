@@ -1,5 +1,576 @@
 # Changelog
 
+## 2026-10-29.12
+
+- **Task board: clickable rows open a detail modal + the plain-language
+  detail standard; board page is now PHP** — clicking a task row opens a
+  simple modal (Esc / backdrop / × closes) showing the ticket's full
+  detail — what the work is, what it is for, and the outcome it should
+  land — editable and saved straight back to `progress.sqlite`. Board
+  standard (written into `notes/07`): every ticket must carry that
+  plain-language detail in its `notes`; rows without one are flagged
+  (dotted amber title + tooltip nudge). The `notes` field grew 1000 →
+  4000 chars; row tooltips now show a capped first-line preview. All 15
+  M5 rows were backfilled to the standard (What / Why / Outcome / Tech /
+  Source); legacy rows keep their old notes and surface flagged until
+  filled in the modal. Per the user, `tasks/index.html` became
+  **`tasks/index.php`**: the page renders the initial board server-side
+  from SQLite (markup mirrors the JS renderer; both documented as
+  keep-in-sync) and computes the CSS/JS cache-busters from file mtimes —
+  no more manual `?v=` bumps on this page (hub + dashboard links
+  updated). Also reconciled the board with today's shipped work: M5.1a +
+  M5.1b set `done` citing CHANGELOG 2026-10-29.10/.11, M5.1c unblocked
+  to `todo` (M5 header now 2/15). Harnesses: `smoke-progress.py` green;
+  `smoke-progress-dom.cjs` extended (document key listener + 9 new modal
+  checks: open, textarea, save POSTs, close, Esc, backdrop, no-detail
+  flag).
+
+## 2026-10-29.11
+
+- **Boot explorer: the per-DLC splash screens joined the contact sheet, with
+  a source button per DLC pack** — the boot set was missing the full-screen
+  splash art the DLC packs ship: the event unlock panels
+  (`bse_<event>_minieventpanel_intro/outro.png` in the 89 `<Event>Menu`
+  pack families) and the Krustyland unlock splash (`fullscreen.png` in the
+  `KrustylandSplashes-<os>-<tier>-r<rev>` packs).
+  `tools/extract_boot_assets.py` now catalogues those 840 files from the
+  already-extracted `web/assets/dlc/` corpus (catalogued, never re-extracted)
+  as `group='dlc'` entries with a `dlc` source name (pack family minus
+  `Menu`/`_LTD`/`_Patch` suffixes, so LTD/patch packs share one name) —
+  the boot manifest is now 1356 files. The page gains a **DLC Splash** tab,
+  a fourth source chip, and (when that chip is active) a row of one source
+  button per DLC pack (93) plus *All packs*, so the art can be filtered by
+  DLC name; DLC tiles carry a blue `DLC` tag and the detail pane names the
+  DLC source. Also: cache-buster bumped (`?v=2`), both boot smoke harnesses
+  extended (dlc fixtures incl. LTD-merge, foreign-`fullscreen` skip,
+  missing-thumb fallback; DOM checks for the tab/chip/source buttons), and
+  evidence crops copied to `mapdump/registration/m5-1-dlc-*`.
+
+## 2026-10-29.10
+
+- **M5.1a+b: boot-screen art extracted from the CDN bundles, with a contact
+  sheet to pick it** — new pipeline tool `tools/extract_boot_assets.py`
+  streams the boot/loading UI out of the local `cdn/` .7z bundles — the
+  `SplashScreens-<tier>-r157326` packs in
+  `4_12_XMAS2014_Takedown_Alt_3CAW93BIJU9G.7z` (splash strip, Homer panel,
+  signature plate, per-language splash titles, error scene + anchor
+  sidecars) and the `loading_donut` / `donutbunch_*` / `dailybonustitleart_*`
+  members of the 20 core `menu-<tier>-r<rev>` packs in `3_0_30.7z` — decoding
+  only the boot members via the verified `extract_assets.py` decoders
+  (imported, never modified) into the pipeline-owned `web/assets/boot/`
+  (images/thumbs/data + `boot-manifest.json`, 516 files with full
+  bundle → pack → origin provenance). The APK-side boot set is catalogued
+  from disk alongside it (`group=apk`, sources per `extract_assets.py`'s
+  naming rules) rather than re-extracted. New page
+  `web/boot-explorer.html` (+ `js/boot-explorer.js`, `css/boot-explorer.css`)
+  is the M5.1b contact sheet: tiles grouped per boot slot, Splash/Loading/
+  Error/Menu-extras/Audio/Anchors tabs, APK-vs-CDN source chips, search,
+  and a detail pane showing provenance + all copies of a slot, so the art
+  for the M5.1c boot sequence can be picked tile by tile; data is inlined
+  via `tools/gen_boot_explorer.py` → `js/boot-explorer-data.js` so the page
+  works from `file://` like the game itself. Also: hub card in
+  `web/index.html`, headless harnesses `tools/smoke-boot-assets.py` (fixture
+  7z bundles + assets tree, provenance/decode/decoy assertions) and
+  `tools/smoke-boot-explorer-dom.cjs` (DOM shim over the real page), and
+  evidence crops copied to `mapdump/registration/m5-1-*`.
+
+## 2026-10-29.9
+
+- **Ocean objects: the two halves of a split ship now bob on the engine's
+  clock** — two reports from the same family, both fixed. **A hull that bobs
+  under a frozen top half** (`BoatloadOfDonuts`): generation only forced the
+  engine's part loops when the asset had *no* idle of its own, so an asset
+  whose idle resolved to one part kept that one strip and the longest-4 cut
+  silently dropped its mate — the top half shipped baked into the body PNG
+  while the hull looped. `do_anims` now asks the same authority the behaviour
+  map uses (`_part_layers`, which still refuses directional-face twins, so the
+  `GeriatricParkGate`'s South/East loops stay alternative placements rather
+  than being glued into one stack) and forces whatever else draws with the
+  idle; `BoatloadOfDonuts_Top` and `Neutral_Top` (`StormyIsland`) ship
+  alongside their bases. **Two parts animating out of step**
+  (`GreenpeaceBoat`): each strip wrapped on its *own* deduped cell count, and
+  the two halves of one 20-tick loop kept 10 and 8 cells, so the hull and the
+  superstructure drifted apart. The generator now records the loop's tick map
+  per strip — `rp[k]` = the engine tick cell *k* stands for, `lt` = the loop's
+  tick count — on both the sparse-packer and grid-atlas paths (a new
+  `_anim_clock` helper), and both page scripts advance every layer through
+  that map on one shared clock (`tickCount`/`tickCell`/`cellAt`/`animIdx` in
+  `web/viewer/city-view-pixi.js`, mirrored in the deprecated
+  `web/js/city-view.js`, which reads the same manifest). A strip with no
+  `rp`/`lt` is the identity case, so the ~5100 unregenerated strips play
+  exactly as before. 49 part-stack assets regenerated (164 atlases); a
+  pixel-free tick audit (`47` stacks scored) puts **45 closer to the game, 2
+  already correct, 0 worse** — mean per-tick error 8.52 → 1.35 ticks. Round
+  13's occluder erase is unchanged for every regenerated loop (31 recomputed,
+  0 moved). The batch also thinned 15 stack atlases under the viewer's 16 Mpx
+  decode gate, so strips that previously never animated at all now do.
+  New console/harness probe `__CV_ANIM_cell(slug, b, i, nowMs)` reports the
+  cell a given layer shows at a given time; `tools/smoke-city-view-dom.cjs`
+  gains three checks (each part follows `rp`/`lt` instead of its own cell
+  count, the two page scripts share one clock implementation, no idle blit
+  path wraps on `% a.frames`) — all verified to fail against a mutant.
+  Evidence: `mapdump/registration/m4-ocean-round14-{greenpeaceboat,
+  boatloadofdonuts}-sync.png` (BEFORE vs AFTER rows against the game's
+  flatten). Versions: `ASSET_V`/`MANIFEST_V` `?v=20261029.4`,
+  `__CV_VER`/`DIAG.ver` `2026-10-29.9`, `city-view-pixi.js?v=61`,
+  `js/city-view.js?v=32`, `map-explorer-data.js?v=20` (regenerated — the
+  refreshed atlases changed its cell counts). Harnesses pass:
+  `smoke-city-view-dom`, `smoke-map-explorer-dom`, `smoke-camera`,
+  `smoke-pier-tiles`, `check-bridges`, `smoke-road-lab`, `smoke-explorer`,
+  `smoke-calib`.
+
+## 2026-10-29.8
+
+- **Tasks: M5.1 split into boot-asset subtasks on the board** — per the
+  user, the M5.1 boot-sequence stage is now three rows on the task board
+  (all under the *M5 — Integration & game UI* group, sorted right behind
+  M5.1): **M5.1a** extract the boot-screen assets from the `cdn/` bundles
+  (boot/loading UI art in the `menu-*` and related packs, pack provenance
+  per file, on top of the APK-side `web/assets/images` set); **M5.1b** a
+  simple web-page tool to view all extracted boot assets (contact-sheet
+  browser for picking the art); **M5.1c** the general wiring of
+  splash/donut/error into the Pixi viewer — `blocked` on M5.1a+b and
+  expected to break down further once the asset set is chosen. The
+  parent M5.1 row's notes and `planning/phase-2-m5-integration.md` (§M5.1)
+  now record the split.
+
+## 2026-10-29.7
+
+- **Fixed: task board milestone headers were jarringly light** — the group
+  name used the bright gold (`--gold-bright`, `#f4d03f`), which reads near
+  white on the dark panel; it now uses the muted `--gold` (`#c8a04c`) like
+  the header rules. Cache-busters aligned: `progress.css?v=5` on all three
+  consumers (`tasks/index.html`, `web/progress.html`, `web/index.html`) —
+  the latter two were still pinned at `?v=3`, which is why unstyled
+  (cream-white) headers could appear from the stale cached copy.
+
+## 2026-10-29.6
+
+- **Task board: milestone grouping + the M5 stages queued** — the task &
+  decision board (`tasks/index.html`) now groups rows by a new `milestone`
+  tag: each milestone renders under a header with a done/total progress
+  bar (named groups first, Ungrouped last; inside a group the milestone
+  row leads, then decisions, then tasks). `web/api/progress.sqlite` gains
+  a `tasks.milestone` column (added in place by `progress.php` on first
+  request, older DB files migrate automatically); `task-add`/`task-update`
+  accept `milestone`, the add form has a milestone box (with
+  autocomplete), and every row carries a clickable group tag to
+  assign/re-group/clear. Seeded with the new plan
+  (`planning/phase-2-m5-integration.md`, CHANGELOG 2026-10-29.5): the M5
+  milestone row, stages **M5.0–M5.5** as `todo` (M5.6 store skin
+  `deferred`/stretch) and the four open questions as `decision` /
+  `pending-approval` — the M5 header therefore starts at 0/12. Cache
+  busters: `tasks.js?v=2`, `progress.css?v=4`. Guide updated
+  (`notes/07` §Entry conventions + API notes). Harnesses pass:
+  `smoke-progress.py`, `smoke-progress-dom.cjs`. No server/nginx config
+  needed beyond the existing PHP mount.
+
+## 2026-10-29.5
+
+- **Planning: M5 rewritten — the Pixi viewer is the game** — per the user's
+  decision today, `web/viewer/index.html` becomes the game's entry point
+  and the only front-end: the Canvas shell (`web/original.html` +
+  `js/boot.js`/`scenes.js`/`ui.js`/`splashlayout.js`) is abandoned as a
+  front-end and kept only as the porting reference for the splash/donut
+  loader, audio mixer, i18n strings and error scene. The M5 bullet in
+  `planning/phase-2-camera-view.md` (promote-into-shell / link-both) is
+  superseded by a staged plan in the new
+  `planning/phase-2-m5-integration.md`: **M5.0** housekeeping (deprecate the
+  shell, flip the project hub's entry point), **M5.1** splash → tap →
+  donut boot sequence ported into the viewer with *real* loading progress
+  over a declared boot set (audio gated on first tap; workbench chrome
+  behind a toggle), **M5.2** promote the `*Menu*`-pack chrome into
+  `web/assets/ui/` with a curated manifest (absorbs the Phase-3 "menu asset
+  pipeline" candidate), **M5.3** game HUD chrome (currency bar, task book,
+  settings) as a DOM overlay, **M5.4** dialogue-box popups on the `.btp`
+  strings — including the About text finally telling the truth about the
+  playable city, **M5.5** world-space status indicators + job badges,
+  **M5.6** (stretch) store/build-menu skin. Economy/jobs/quests stay Phase
+  3; no server, no MTX, no `.bsv3` menu-scene playback.
+  `planning/README.md` gains the 2b row; the Phase-3 stub's UI candidates
+  1–5 are marked as moved under the M5 doc. Docs only — no code or data
+  changes; four open questions (canonical pack revision, tier, workbench
+  escape hatch, preset strip) await the user's call.
+
+## 2026-10-29.4
+
+- **Fixed: ocean loops re-exposing art the body hides (the DonutBoat's water
+  across the donut pile).** The streak that survived the `*Input` fix is a
+  generation bug, not a viewer one. `boatloadofdonuts`'s neutral frame — what
+  the body PNG is baked from — lists **11** blocks, its idle loop only **9**:
+  `C_BoatLoadOfDonutsTop` (the donut pile) and `C_BoatLoadOL` (the funnel) are
+  global-pool cells the animator never redraws, and they are listed *first*,
+  so `_composite` paints them **above** everything. The game therefore hides
+  the bow wake behind the pile (its own flattened `boatloadofdonuts_transimage.rgb`
+  shows a clean deck, and our static matches it to 0.4% inside that block).
+  The viewer composites a strip cell *over* the body, and the cell has no pile
+  to hide behind — so the wake landed on the deck on every beat but the one
+  whose stray wave the `*Input` rule already drops ("still there on all but
+  one frame"). `tools/gen_city_sprites.py` now punches those blocks'
+  silhouette out of every cell at generation time, which is exactly what the
+  engine's paint order does with them: `_loop_occluder()` builds the occluder
+  and `_erase_occluded()` applies it in `do_anims`' `render()`.
+- **The erase is gated five ways** so ordinary animator parts (a tail that
+  appears in some frames, a swapped sign variant) are untouched: the block
+  must be missing from *every* frame of the loop, must not have a different
+  cell drawn in its own position slot, must be listed above every block the
+  loop does draw, the loop must redraw at least one of the static's own
+  blocks, and the body must back at least 20% of the occluder. A frame block
+  the static does not carry inherits its depth from the nearest static *slot*
+  (`LOOP_SLOT_TOL = 32` engine units, and clearly nearer than any other slot)
+  because loop parts drift 0–25 units around their slots — the DonutBoat's
+  `C_Wave_09…11` take the `C_Wave_08` slots. Art any frame paints *over* the
+  omitted blocks is never erased.
+- **Measured, not assumed.** Deck band (anchor x 300..560, y −420..−200) is
+  now **0.00% colour mismatch on all 20 frames** against the game's flatten
+  (was 10.69% whole-silhouette, 8.85% now). The gate ran over all 2542 anim
+  assets: **110 assets / 179 loops** change, dominated by the ocean objects
+  (`*BoatTop`, islands, rigs). Of the 60 with a flattened reference, 45 move
+  clearly closer (squidport 10.9→0.9%, beachsuite 20.7→2.6%,
+  stonecuttertunnelentry 24.0→3.7%, redstarbarge 5.7→1.8%), 14 unchanged, and
+  the one that got worse (`captainmordecaiboat`, +0.2%) is excluded by the
+  shared-block gate — its loop draws 7 hull cells while its static is 3
+  top/flag cells, i.e. not that loop's base pose. Visual verdicts in
+  `mapdump/registration/m4-ocean-round13-donut-erased-20.png`,
+  `…-stonecuttertunnelentry-east.png` (shipped draws a stray second tunnel
+  arch over the sign; erased matches the game), `…-escalator-band.png` and
+  `…-escalatortonowhere-stairs.png` (erase is a no-op: the body already paints
+  that art), `…-mordecai-occluder.png`.
+- **Regenerated / versions:** the 110 hit assets (324 atlases) via
+  `tools/gen_city_sprites.py anims`; `do_anims()` now also accepts a slug
+  *list* so a batch parses the manifests once. Ships with art/manifest
+  `?v=20261029.3`, viewer `city-view-pixi.js?v=60`, `__CV_VER`
+  `2026-10-29.4`, `map-explorer-data.js?v=19` (regenerated). Harnesses pass:
+  `smoke-city-view-dom`, `smoke-map-explorer-dom`, `smoke-camera`,
+  `smoke-pier-tiles`, `check-bridges`, `smoke-road-lab`.
+
+## 2026-10-29.3
+
+- **Fixed: DonutBoat's stray water sprite — generator now skips engine-internal
+  `*Input` cells.** The boat kept showing a flat blue water patch sliding
+  horizontally across the stern (east end), over the donut pile. It is not a
+  compositing bug: the bsv3's bow-splash slot runs the `(N, N+8)` wave family
+  at one fixed rotation for the whole idle loop — `C_Wave_00`, `C_Wave_02`,
+  `C_Wave_03` at `m=(0.626,0.778,-0.653,0.755)` — but on every 4th beat it
+  references **`C_WaveInput`** instead: identity-placed, ~65 px below the
+  series, and cropped on the *opposite* diagonal (the hull-side family
+  `C_Wave_08…11`'s orientation, not the bow family's) — a stray hull-side wave
+  left in the bow slot. A pool audit of all 3618 bsv3 files found this is the
+  only `*Input` cell anywhere in the pool, drawn by that one asset in 12 frame
+  slots, so `_composite` (`tools/gen_city_sprites.py`) now drops such cells and
+  nothing else re-renders. The body PNG drawn under the strip still supplies
+  the rotated bow splash, so the loop keeps its splash on every beat with no
+  blink, matching the game's own flattened `boatloadofdonuts_transimage.rgb`
+  (which our neutral sprite already matches to ~400 px of 160 k). Evidence in
+  `mapdump/registration/m4-ocean-round12-donut-input-beforeafter.png` and
+  `…-input-stern.png` (plus `…-wave-cells.png`, the wave-family crop sheet).
+  Re-rendered: the three DonutBoat `*_Base` strips (neutral sprite and the
+  `Top` strips hash-identical; strip anchors unchanged at 277/409). Ships with
+  art/manifest `?v=20261029.2`, viewer `city-view-pixi.js?v=59`, `__CV_VER`
+  `2026-10-29.3`. `map-explorer-data.js` regenerated byte-identical.
+
+## 2026-10-29.2
+
+- **Added: per-object hide toggle on the City View building card (occlusion
+  debugging).** Objects drawn in front of others claimed both their pixels
+  and their clicks, so an occluded neighbour could not be selected or
+  eye-tested. The RHS details card for any building now carries a
+  "hide object" button (also the **h** key while one is selected): the
+  instance stops drawing (scene blit, orbit-LOD atlas, wire overlay,
+  search-match outlines), stops claiming clicks/taps (`hitTest`,
+  `blockAtTile`), and keeps its yellow selection outline as a ghost box.
+  Hidden instances persist in localStorage (`mrsnrub.cityview.hiddenobjs`,
+  keyed catalog-id + ground-pivot tile) across reloads; since they release
+  clicks, the recovery path is the "hidden objects" bar that appears under
+  the details card — per-row select+centre and unhide, plus unhide all —
+  or a name search (a hidden object still outlines in search matches).
+  Console: `__CV_HIDE(mi[, on])`. New files: none; `city-view.css` gains
+  the `#details .hidebtn/.hidebar` rules. Re-shipped with viewer
+  `city-view-pixi.js?v=58`, `city-view.css?v=14`, `__CV_VER`
+  `2026-10-29.2`.
+
+## 2026-10-29
+
+- **Fixed: the same mirrored-rotated-art bug cleaned up on four more ocean
+  assets — AircraftCarrier, DonutBoat, GreenpeaceBoat, SunsetCruiseBoat.**
+  Following the RedstarBarge fix below, a per-asset scan with the
+  reflection predicate (`rot and (a<0) != (-d<0)`) confirmed rotated-
+  reflection blocks in all of them (pool-wide counts: aircraftcarrier
+  20/34, boatloadofdonuts 11, greenpeaceboat 0/64, sunsetcruiseboat
+  0/32 for the twin pairs), so all seven pool files (including the three
+  flipped twins; DonutBoat has no flipped variant) were re-rendered with
+  the signed-matrix `_composite`. Mirror diffs (flipped vs mirrored
+  unflipped, anchor-aligned, alpha>60): AircraftCarrier Base strips
+  7477/5931 → 1747/1683 asymmetric px, GreenpeaceBoat sprite 2789/3557 →
+  1843/1836 and Base strip 1566/2254 → 630/625, SunsetCruiseBoat sprite
+  6632/8455 → 2876/4610 (canvas-crop counts; the full-cell direct diff is
+  a symmetric 565 AA-noise px). Before/after evidence diff images and the
+  clean re-rendered sprites are in `mapdump/registration/` as
+  `m4-ocean-round10-*`. SunsetCruiseBoat's Neutral strip also picked up
+  the round-8 frame-thinning (23 → 16 frames). Re-shipped with
+  `ASSET_V`/`MANIFEST_V` → `?v=20261029.1`, viewer `?v=57`, `__CV_VER`
+  `2026-10-29.1`; `map-explorer-data.js` → `?v=18/18/7`. The remaining
+  ~1134 reflection-carrying assets still await a full regeneration.
+
+## 2026-10-28.12
+
+- **Fixed: wake/water streaks cutting "almost sideways" across the
+  RedstarBarge (flipped) bow — the sprite renderer mirrored rotated art
+  the wrong way.** `tools/gen_city_sprites.py::_composite` decoded every
+  rotated block as `abs(a)/abs(d)` with the crop pre-mirrored when the
+  matrix diagonal was negative. That is only equivalent to the engine for
+  pure rotations (both diagonals negative = a 180° pre-rotation); when
+  exactly ONE diagonal is negative the stored matrix is a REFLECTION
+  (`det < 0`), and the abs+pre-mirror rule redraws the crop at a
+  mirror-inconsistent angle. The barge's flipped twin stores its animated
+  wake crops (`C_Wave_12_*`) exactly that way — as the pixel mirror of
+  the (verified-clean) unflipped twin, `x' = -(x+w')`, `M' = F·M` — so
+  those crops landed across the bow instead of trailing the waterline.
+  Rotated blocks now blit with the signed matrix (b/c still transposed);
+  `b=c=0` blocks keep the flip+abs path (identical there, so the mirror-
+  pair audit 5907:10 and the redstarhelicopter rotor evidence stand).
+  Proof: per-block mirror diff of the flipped twin vs the mirrored
+  unflipped twin 4997/7489 asymmetric px → 973/969 AA noise; the shipped
+  strip frames went from 8.3k/10.5k asymmetric to symmetric. This is a
+  renderer-semantics fix with a wide tail: a pool scan finds **1141 of
+  3476 bsv3 assets** carry rotated-reflection blocks (the flipped twins
+  of diagonally-decorated buildings — houseboat, pirateshippool,
+  duffblimp, sleigh rides, skating rinks…); only the RedstarBarge pair
+  has been re-rendered so far, and the rest are queued for a full
+  `sprites`+`anims` regeneration. `redstarbargee`/`redstarbargeflipped`
+  re-shipped (`ASSET_V`/`MANIFEST_V` → `?v=20261028.12`, viewer
+  `?v=56`, `__CV_VER` `2026-10-28.12`); `map-explorer-data.js`
+  regenerated (`?v=17/17/6`). Evidence:
+  `mapdump/registration/m4-ocean-round9-*` (per-block mirror diffs,
+  before/after viewer-equivalent bow composites).
+
+## 2026-10-28.11
+
+- **Fixed: the repacked art never reached the browser — the city asset
+  busters were frozen.** `city-view-pixi.js` pins every `assets/city/**`
+  URL with `ASSET_V` and both JSON manifests with `MANIFEST_V`; both still
+  read their round-4 values (`?v=20261025.8` / `?v=20261028.4`) while the
+  filmstrip atlases and `city-anims.json` had been re-written underneath
+  them — so the viewer kept drawing the CACHED pre-fix shelf (or stale
+  rects against a fresh atlas: sparse water blitted from wrong shelf
+  positions, i.e. "water attached incorrectly"). Both bumped to
+  `?v=20261028.11` (viewer `?v=55`, `__CV_VER` `2026-10-28.11`); the stale
+  "PNGs unchanged" comment replaced with one naming this failure mode.
+- **Fixed: doubled/mis-attached wake water on the sparse boat bases**
+  (Lobster Island's base worst, also Cursed Ship, Pirateship, Paziffic
+  Princess, Shipwreck…). The cluster-rect packer in
+  `tools/gen_city_sprites.py::_pack_sparse` had two pixel bugs, found by
+  scanning every shipped sparse strip: (1) a cluster's crop was the
+  rectangle bbox of its opaque blocks, so where bboxes overlapped it also
+  copied the NEIGHBOUR cluster's pixels — the viewer blits both rects and
+  the shared water pixels drew twice (too-dark doubled wake streaks);
+  crops are now masked to their own cluster's blocks. (2) the block scan
+  floored `h/6`/`w/6`, silently dropping any content in the trailing
+  partial-block band — the boats' waterline row lost ~150 px of foam
+  every frame (and right-edge slivers); the scan now pads to whole
+  blocks. All 22 sparse strips re-packed (self-checked, see below) and
+  `map-explorer-data.js` regenerated (`?v=16/16/5`). A permanent guard
+  ships with the fix: `_pack_sparse` now re-blits every packed frame from
+  the finished atlas and diffs its alpha against the source frame,
+  aborting the run (`SPARSE-CHECK … px lost/extra`, state kept in
+  `_SPARSE_FAIL` for debugging) if anything mispacks — the class of bug
+  can't ship silently again. `escalatortonowhereflipped`'s one flagged
+  overlap is two same-sprite riders stacked (double-draw idempotent —
+  verified identical pixels), not a defect. Evidence composites:
+  `mapdump/registration/m4-ocean-round6-<slug>-<anim>.png` (13 sheets).
+
+## 2026-10-28.10
+
+- **Fixed: the real cause of the panel's flickering/chaotic anim tiles —
+  `MAP_DATA.variants` was stale after the round-4 re-pack, and the card
+  player never supported sparse strips.** `js/map-explorer-data.js` is
+  written by `tools/gen_map_explorer.py`, which was not re-run after
+  `gen_city_sprites.py` thinned and sparse-packed the ocean fleet — 40
+  variant rows (every re-generated slug: carrier, cursedship, duffpartyliner,
+  eliteyachtclub, futuristicmonorailstation, …) still described the
+  pre-thin sheets (e.g. carrier `frames:20 cols:5` for what is now a
+  12-frame 4-col PNG), so the sidebar cycled cells that no longer exist:
+  sprite one frame, garbage/blank the next. The .9 `ImageBitmap` experiment
+  treated a wrong theory and added jank; it is reverted (the tiles draw
+  from the `<img>` again, the HEAD-based size line from .9 is kept). Fix:
+  `gen_map_explorer.py` now also copies `sub` (the sparse per-frame rect
+  lists) into anim rows and `map-explorer-data.js` was regenerated — 40
+  stale rows -> 0 (verified against `city-anims.json`). Both copies of
+  `asset-variants.js` gained the sparse draw path the map viewer already
+  had: a `sub` row blits its `{sx,sy,w,h}` rects from the packed shelf to
+  cell coords `(ox+ax, oy+ay)` instead of the uniform-grid cell.
+  Data busters `map-explorer-data.js?v=15/4`, panel `v=5/15/6`, viewer
+  `?v=54`.
+
+## 2026-10-28.9
+
+- **Fixed: the AircraftCarrier's variant tiles flickered on and off in the
+  right-side panel.** The sidebar filmstrip players blitted each frame
+  straight from a detached full-size `<img>` — 12–14 Mpx per carrier sheet,
+  on top of the map's own decoded copies. Browsers recycle the decoded
+  bitmap of a detached image under memory pressure, so the canvas blitted
+  a blank frame one tick and the sprite the next. Both copies of
+  `asset-variants.js` now bake one `ImageBitmap` per tile — the whole sheet
+  downscaled once to display size (~100x less memory, immune to the decode
+  cache) — and blit cells from that, closing it when the panel re-renders;
+  the raw `<img>` remains only as the pre-bake/unsupported fallback and is
+  released on stop. The size line also switched to a `HEAD` request (with a
+  GET fallback): printing "14.3 MB" no longer downloads the 14 MB PNG.
+
+## 2026-10-28.8
+
+- **Fixed: ocean sprites animated briefly then froze until clicked.** Not
+  intentional — a starvation deadlock in the decode pools. The big-tier
+  budget (strips over 6 Mpx, where the thinned fleet now lives) never
+  released a slot: once eight strips had been decoded that session, a
+  visible ship evicted from the 40-entry LRU texture cache could never
+  re-request its atlas, so it drew static. Worse, the parked strip drove
+  `animLive` to 0, and the render loop gates its 90 ms anim tick on that
+  counter — so the whole animation clock stopped until a click forced a
+  render. `freeSlot(tier)` in `web/viewer/city-view-pixi.js` now recycles
+  the least-recently-touched entry of either pool (big or oversize) that
+  no building is mid-animation on — visible strips re-touch the LRU tail
+  every frame, so the head is always an off-screen strip — and a new
+  `animPending` flag keeps the tick alive whenever a wanted strip failed
+  to draw, so it starts moving the instant its atlas decodes or a slot
+  frees. Also fixes the same live-set blind spot for layered list taps.
+- **Added: sprite file size in the variants panel.** Each tile in the
+  right-side "Sprite variants" panel (static thumbnails and playing anim
+  tiles alike) now shows the PNG's on-disk size under the resolution
+  line — KB below 1 MB, else MB — in both copies of `asset-variants.js`
+  (viewer and shared). The lookup piggybacks on the tile's own cached
+  image fetch and memoises per asset.
+
+## 2026-10-28.7
+
+- **Fixed: the sea fleet now actually animates on the map, and layered
+  assets play their Active one-shot on click.** Two gates kept the ships
+  frozen: their part filmstrips exceeded the viewer's 16 Mpx decode cap
+  (24–170 Mpx each), and the click path could only play a SINGLE strip —
+  a base+top pair had nothing to fire. In `tools/gen_city_sprites.py`:
+  `_pack_sparse()` gained cross-frame dedupe (byte-hashed crops pack
+  once and every frame blits the shared rect, replacing the fat-blob
+  bail), and any strip still over the cap after cluster-packing is
+  frame-thinned to the most frames whose grid atlas fits — Aircraft
+  Carrier's hull/wake loop ships at 12 frames (14.3 Mpx) and its deck
+  at 6 (12.7 Mpx) instead of never. Thinned strips record `lf` (the
+  pre-thin loop length) and `upx` (the pre-sparse uniform size, so the
+  round-3 baked statics stay baked for Anim-off); the viewer maps its
+  shared clock through `lf` (`animIdx()`) so stack-mates thinned to
+  different frame counts stay in step instead of the deck bobbing at
+  double the hull's rate. The gate gained `tapLayers`: for every layered
+  slug whose parts each have exactly one `Active*` twin (`_active_pairs`
+  — tail word must match, ambiguity rejects, e.g. the DonutBoat's
+  Active_In/Out_Base), recorded as the layered click one-shot; `do_anims`
+  forces those pairs' strips to exist. In `web/viewer/city-view-pixi.js`
+  `tapBuilding()` starts `b._tap.list` (per-layer cell override, clamped
+  frames, body underneath, `base:1`), `animOf()` plays the whole pair or
+  nothing, a lone `tap` on a layered slug now keeps the body visible
+  mid-tap, and the big-tier decode budget (`animBigLive`) releases slots
+  on LRU eviction — with the thinned fleet moving into the 6–16 Mpx
+  tier, the old never-released 8-slot pool would starve whoever panned
+  in second. 26 slugs gained tapLayers; console probes
+  `__CV_ANIM_tapLayers(slug)` and `__CV_TOG_strip(mi)` report the pair.
+  Manifest cache-buster `?v=20261028.4`, viewer `?v=51`, evidence montages
+  in `mapdump/registration/m4-ocean-round4-*`.
+
+## 2026-10-28.6
+
+- **Fixed: AircraftCarrier drew as a deck floating on the ocean — the
+  static fallback for over-cap part stacks now bakes in the parts that
+  only the filmstrips paint.** Investigation (console probes + a
+  pixel-diff of body vs body+strips) showed the carrier's extracted body
+  PNG genuinely lacks the hull sides and wake: those ~170k px exist only
+  in its `Neutral_Base` filmstrip, which at 24 Mpx (and `Neutral_Top` at
+  42 Mpx) is over the map player's 16 Mpx filmstrip cap — the part stack
+  draws whole or not at all, so the map fell back to the incomplete body
+  with no animation to complete it. (My earlier "the static body is
+  complete" check had a sign error in the cell offset; the corrected
+  composite revealed the gap.) `tools/gen_city_sprites.py` gained
+  `_stack_statics()`: for every layered slug with an over-cap strip it
+  composes body + each layer's cell 0 into
+  `web/assets/city/stacks/<slug>.png` (canvas grown and anchor shifted
+  to fit overhanging cells — the carrier's hull reaches 37 px below the
+  body's bottom edge) and attaches it to the `city-sprites.json` entry
+  as `stack {png,w,h,anchor}`; a delta gate skips near-no-ops
+  (`luxuryyacht`, `pazifficprincess`) and `_STACK_SKIP` excludes
+  click/traffic machines whose loop content must not freeze mid-frame
+  (the monorail train, the Itchy & Scratchy gate doors). The Pixi
+  viewer's `emitBuilding()` static fallback now draws `stack` in place
+  of the body when present (the animating path is untouched — strips
+  that DO fit the cap still composite live over the plain body). 13
+  slugs baked: `aircraftcarrier(+flipped)`, `cursedship`,
+  `eliteyachtclub`, `lobsterisland`, `pazifficprincessflipped`,
+  `pirateship(+flipped)`, `shipwreck`, `skullisland`,
+  `themayflower(+flipped)`, `whale` — evidence in
+  `mapdump/registration/m4-ocean-round3-*`. Manifest cache-buster
+  `?v=20261028.3` (city-sprites.json changed), viewer `?v=50`.
+
+## 2026-10-28.5
+
+- **Fixed: round 2 of the ocean-object gate — Houseboat lost its cabin,
+  DonutBoat its donut pile, and eight more ships/islands drew hull-only**.
+  Three gaps left after the first pass, all in
+  `tools/gen_city_sprites.py`'s part matching: (1) `Houseboat_Top`'s
+  controller anim is named `HouseBoatTopController` — the trailing
+  `Controller` is engine naming (like `NoLoop`), so `_match_anim_verb()`
+  now strips it and retries; the Houseboat gate became a real two-part
+  stack (`HouseBoatBase` + `HouseBoatTop` over the body). (2) Some
+  top siblings loop a verb whose strip never shipped (`DonutBoatTop`
+  plays `BoatloadOfDonuts_Top`, but the bsv3 only carries
+  `Active_*_Top`): the top half lives in the body PNG, so `_part_layers()`
+  now converts on a base-only match when a top-like want went unmatched —
+  the base strip composites OVER the body instead of replacing it.
+  Affected: `boatloadofdonuts`, `aquaworldmodular01/02`,
+  `candyappleisland`, `earlslighthouse`, `krustyburgeroilrig`,
+  `mulberryisland`, `stormyisland`, `whale` (+flipped twins); stripping
+  `Controller` also gave `chiliblasters` its `EatChili` idle and
+  `geriatricparkgate` its `GeriatricParkGateSouth` loop. (3) The Pixi
+  viewer's `loadAnims()` now resolves `layers` BEFORE the single-idle
+  record, so a stale or hand-edited gate can never draw a lone part
+  strip over (and replacing) the body. The `AircraftCarrier` deck/hull
+  strips are 24–42 Mpx each — beyond the map's 16 Mpx filmstrip cap —
+  so it correctly stays the static full-body PNG (evidence composites:
+  `mapdump/registration/m4-ocean-round2-composite-*.png`). Gate
+  regenerated with `behavior --write-map` (18 slugs changed: idle
+  651→641, layered 51→65); manifest cache-buster `?v=20261028.2`,
+  viewer `?v=49`.
+
+## 2026-10-28.4
+
+- **Fixed: ocean ships, islands and platforms drew half missing in the
+  City View main display** (the whole sea fleet — `LuxuryYacht`,
+  `TheMayflower`, `AquaWorldFishingPlatform`, `AircraftCarrier`,
+  `PirateShip`, `CursedShip`, `PaZIFFicPrincess`, `Knightboat`,
+  `GreenpeaceBoat`, `Live4EverBoat`, `DuffPartyLiner`, `USSTomClancy`,
+  `RedstarBarge`, `Shipwreck`, the large/medium icebergs and the
+  skull/lobster/tropical islands, plus their flipped twins). These assets
+  are multi-part: `building_ids.json` maps a base *and* a `_Top` catalog
+  sibling to one slug, and each sibling owns one controller loop of the
+  shared bsv3 (`LuxuryYacht` loops `YachtBase`, `LuxuryYacht_Top` loops
+  `YachtTop`) — two engine instances at one spot. The save only ever
+  places the base instance, and the behavior gate resolved the slug's
+  idle to that single part loop, whose cell *replaces* the body PNG
+  (`{cells:[strip], base:0}`): the map drew only the hull/waterline strip
+  and the whole superstructure, rigging and platform were missing, while
+  the right-side preview (which shows the full body PNG) looked correct.
+  `tools/gen_city_sprites.py` gained `_part_layers()`: when a slug's
+  resolved idle is one strip of a Base/Bottom + Top sibling pair, the
+  gate now emits a `layers` record — the viewer already composites those
+  (static body PNG under every part cell, `base:1`, the path
+  `OldEnglishStation` uses) — degrading to the static full-body PNG when
+  a strip can't decode. Directional siblings (South/East sign faces) are
+  alternatives, not stacked parts, and are excluded by a last-word check
+  (which also keeps `…Base` from reading as the SE face). The gate was
+  rewritten with `python3 tools/gen_city_sprites.py behavior
+  --write-map` (34 slugs re-gated; idle 685→651, layered 17→51). The
+  Pixi viewer fetches `city-anims.json` through the manifest buster
+  (`MANIFEST_V ?v=20261028.1`) so returning visitors get the new gate,
+  and the deprecation-frozen Canvas page picks it up automatically from
+  the shared manifest. Viewer `v=48`, `DIAG.ver 2026-10-28.4`. All smoke
+  suites (`smoke-city-view-dom`, `smoke-camera`, `smoke-pier-tiles`,
+  `smoke-road-lab`, `check-bridges`, `verify-riv-slab`) pass.
+
 ## 2026-10-28.3
 
 - **Added: show-all / hide-all shortcuts on the City View overlay panels.**

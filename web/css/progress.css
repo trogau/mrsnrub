@@ -170,6 +170,71 @@ main { padding: 14px 16px 40px; max-width: 1280px; margin: 0 auto; }
 .task .t-del { background: none; border: 0; color: var(--err); cursor: pointer;
                font-size: 14px; padding: 0 4px; }
 
+/* milestone grouping (2026-10-29): header per milestone tag + per-row tag
+   button. Rows sharing a milestone render under one header with a bar
+   showing done/total. Ungrouped rows sit last with no header. */
+.tgroup { display: flex; align-items: center; gap: 10px;
+          margin: 16px 0 2px; padding: 3px 0;
+          border-bottom: 2px solid var(--gold); }
+.tgroup:first-child { margin-top: 0; }
+.tgroup .tgroup-name { font-weight: bold; color: var(--gold);
+                       font-size: 12px; text-transform: uppercase;
+                       letter-spacing: .6px; }
+.tgroup .tgroup-bar { flex: 0 0 140px; height: 8px; border-radius: 4px;
+                      background: var(--panel2); overflow: hidden; }
+.tgroup .tgroup-bar i { display: block; height: 100%; background: var(--ok); }
+.tgroup .tgroup-stat { color: var(--text-dim); font-size: 12px; }
+.task .t-ms { background: none; cursor: pointer; font-size: 10px;
+              color: var(--info); border: 1px solid #2a3548;
+              border-radius: 8px; padding: 1px 7px; white-space: nowrap; }
+.task .t-ms:hover { border-color: var(--info); }
+.task .t-ms.unset { color: var(--text-dim); }
+form #taskmilestone { flex: 0 0 170px; }
+
+/* rows are clickable (detail modal, 2026-10-29); rows missing the
+   plain-language detail get a warning underline on the title */
+.task .t-title { cursor: pointer; }
+.task.no-detail .t-title { border-bottom: 1px dotted var(--warn); }
+
+/* ---- task detail modal (click a row; Esc / backdrop / × closes) --------- */
+.tmodal { position: fixed; inset: 0; z-index: 50; display: flex;
+          align-items: center; justify-content: center;
+          background: rgba(5, 8, 14, 0.72); }
+.tmodal.hidden { display: none; }
+.tm-panel { width: min(680px, 92vw); max-height: 82vh; overflow: auto;
+            background: var(--panel); border: 1px solid var(--gold);
+            border-radius: 10px; padding: 16px 18px;
+            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6); }
+.tm-head { display: flex; align-items: baseline; gap: 10px;
+           border-bottom: 1px solid var(--panel2);
+           padding-bottom: 8px; margin-bottom: 8px; }
+.tm-kind { font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
+           padding: 1px 6px; border-radius: 8px; background: var(--panel2);
+           color: var(--text-dim); white-space: nowrap; }
+.tm-kind.k-decision { color: var(--warn); }
+.tm-kind.k-milestone { color: var(--info); }
+.tm-title { flex: 1; font-weight: bold; font-size: 16px; }
+.tm-close { background: none; border: 0; color: var(--text-dim);
+            font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.tm-close:hover { color: var(--err); }
+.tm-meta { display: flex; flex-wrap: wrap; gap: 4px 14px;
+           color: var(--text-dim); font-size: 12px; margin-bottom: 6px; }
+.tm-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
+            color: var(--gold); margin: 10px 0 4px; }
+.tm-notes { display: block; width: 100%; min-height: 240px;
+            background: var(--panel2); color: var(--text);
+            border: 1px solid #2a3548; border-radius: 6px; padding: 8px;
+            font: 13px/1.55 'HelveticaNeue', 'Helvetica Neue', Helvetica,
+                  Arial, sans-serif; resize: vertical; }
+.tm-notes:focus { outline: 1px solid var(--gold); }
+.tm-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.tm-foot button { background: var(--wood); color: var(--gold-bright);
+                  border: 1px solid var(--gold); border-radius: 4px;
+                  padding: 5px 14px; cursor: pointer; font-size: 13px; }
+.tm-foot button:hover { background: var(--wood2); }
+.tm-foot .tm-cancel { background: var(--panel2); color: var(--text-dim);
+                      border-color: #2a3548; }
+
 form { display: flex; gap: 8px; margin-top: 10px; }
 form input[type=text] {
     flex: 1; background: var(--panel2); border: 1px solid #2a3548;

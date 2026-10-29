@@ -9,7 +9,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Springfield &mdash; Project hub</title>
 <link rel="icon" type="image/png" href="assets/images/icon.png">
-<link rel="stylesheet" href="css/progress.css?v=3">
+<link rel="stylesheet" href="css/progress.css?v=5">
 </head>
 <body>
 <header>
@@ -73,6 +73,9 @@
           registry, bundle trees).</li>
         <li><a href="assets-explorer.html"><strong>Asset Explorer</strong></a> —
           browses the extracted manifest: images, thumbs, audio, fonts, i18n.</li>
+        <li><a href="boot-explorer.html"><strong>Boot Screen Assets</strong></a> —
+          contact sheet of the boot/loading art (cdn/ bundles + APK side),
+          grouped per boot slot for picking.</li>
         <li><a href="pb-layout.html"><strong>Byte Map</strong></a> — byte
           allocation of the decoded <code>Data.LandMessage</code> .pb, coloured
           by RE status.</li>
@@ -85,7 +88,7 @@
           (<em>PHP</em>) — completeness meters with snapshot deltas + sparklines
           across six sections, bundle coverage grid, session journal.
           Scanned by <code>tools/progress_scan.py</code>.</li>
-        <li><a href="../tasks/index.html"><strong>Task &amp; decision board</strong></a>
+        <li><a href="../tasks/index.php"><strong>Task &amp; decision board</strong></a>
           (<em>PHP</em>) — the live queue of pending tasks, user decisions and
           milestones, split out of the dashboard into <code>tasks/</code>.
           Guide: <code>notes/07-progress-board.md</code>.</li>

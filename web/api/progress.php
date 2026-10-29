@@ -5,10 +5,13 @@
    next to this file, and persists the hand-maintained layers: the task
    board (tasks) and the free-form journal (snap_log). The page
    (js/progress.js) fetches GET with no args and POSTs JSON:
-     {action:"task-add",    title, kind?, notes?}          kind task|milestone|decision
-     {action:"task-update", id, status?, title?, notes?}   status in TASK_STATUSES
-     {action:"task-delete", id}
-     {action:"log",         message}
+      {action:"task-add",    title, kind?, notes?, milestone?}
+        kind task|milestone|decision, milestone groups rows on the board;
+        notes = the plain-language detail (what/why/outcome, <=4000 chars)
+      {action:"task-update", id, status?, title?, notes?, kind?, milestone?}
+        status in TASK_STATUSES
+      {action:"task-delete", id}
+      {action:"log",         message}
    Scan data (snapshots/metrics/coverage) is READ-ONLY here by design —
    only the scanner writes it, so the browser can never fake progress.
    CLI (tools/smoke-progress.py + manual checks) has no request stream:
@@ -50,6 +53,17 @@ try {
 }
 $pdo->exec('PRAGMA journal_mode=WAL');
 
+/* 2026-10-29: milestone grouping on the task board — older DB files get
+   the column added in place (idempotent, like the schema's own defaults). */
+$taskCols = [];
+foreach ($pdo->query('PRAGMA table_info(tasks)') as $c) {
+    $taskCols[$c['name']] = true;
+}
+if (!isset($taskCols['milestone'])) {
+    $pdo->exec("ALTER TABLE tasks ADD COLUMN milestone"
+        . " TEXT NOT NULL DEFAULT ''");
+}
+
 /* CLI (smoke tests) has no request stream: a non-empty PROGRESS_TEST_BODY
    is treated as a POST, mirroring the body-source trick below. */
 $method = $_SERVER['REQUEST_METHOD']
@@ -74,12 +88,13 @@ if ($method === 'POST') {
             ? ($body['kind'] ?? 'task') : 'task';
         $status = in_array($body['status'] ?? 'todo', STATUSES, true)
             ? ($body['status'] ?? 'todo') : 'todo';
-        $notes = clip(trim((string)($body['notes'] ?? '')), 1000);
+        $notes = clip(trim((string)($body['notes'] ?? '')), 4000);
+        $milestone = clip(trim((string)($body['milestone'] ?? '')), 40);
         $ord = (int)$pdo->query('SELECT COALESCE(MAX(ord)+1,0) FROM tasks')
             ->fetchColumn();
-        $pdo->prepare('INSERT INTO tasks(title,kind,status,source,notes,ord)'
-            . " VALUES (?,?,?,'user',?,?)")
-            ->execute([$title, $kind, $status, $notes, $ord]);
+        $pdo->prepare('INSERT INTO tasks(title,kind,status,source,notes,ord,milestone)'
+            . " VALUES (?,?,?,'user',?,?,?)")
+            ->execute([$title, $kind, $status, $notes, $ord, $milestone]);
         out(['ok' => true, 'id' => (int)$pdo->lastInsertId()]);
     }
 
@@ -110,7 +125,11 @@ if ($method === 'POST') {
         }
         if (array_key_exists('notes', $body)) {
             $sets[] = 'notes=?';
-            $args[] = clip(trim((string)$body['notes']), 1000);
+            $args[] = clip(trim((string)$body['notes']), 4000);
+        }
+        if (array_key_exists('milestone', $body)) {
+            $sets[] = 'milestone=?';
+            $args[] = clip(trim((string)$body['milestone']), 40);
         }
         if (!$sets) {
             out(['error' => 'nothing to update'], 400);
@@ -214,8 +233,16 @@ if ($histSnapIds) {
 
 $coverage = $pdo->query('SELECT bundle,downloaded,indexed,unpacked,packs,season'
     . ' FROM coverage ORDER BY season DESC,bundle')->fetchAll();
-$tasks = $pdo->query('SELECT id,title,kind,status,source,notes,ord FROM tasks'
-    . ' ORDER BY ord,id')->fetchAll();
+$tasks = $pdo->query('SELECT id,title,kind,status,source,notes,ord,milestone,updated'
+    . ' FROM tasks ORDER BY ord,id')->fetchAll();
+/* Distinct non-empty milestone tags, natural order, for grouping/autocomplete. */
+$milestones = [];
+foreach ($tasks as $r) {
+    if ($r['milestone'] !== '' && !in_array($r['milestone'], $milestones, true)) {
+        $milestones[] = $r['milestone'];
+    }
+}
+sort($milestones, SORT_NATURAL | SORT_FLAG_CASE);
 $log = $pdo->query('SELECT id,ts,message FROM snap_log ORDER BY id DESC'
     . ' LIMIT 50')->fetchAll();
 
@@ -229,4 +256,5 @@ out([
     'log' => $log,
     'statuses' => STATUSES,
     'kinds' => KINDS,
+    'milestones' => $milestones,
 ]);
