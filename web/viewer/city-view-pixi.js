@@ -44,7 +44,7 @@
     // and stack sheets all load through cityUrl(), and a stale cached PNG
     // against fresh city-anims.json sub-rects draws sparse water from wrong
     // shelf spots (the "water attached incorrectly" report, round 6).
-    var MANIFEST_V = '?v=20261030.1';           // city-sprites/-anims.json
+    var MANIFEST_V = '?v=20261030.3';           // city-sprites/-anims.json
     function cityUrl(p) { return B + 'assets/city/' + p + ASSET_V; }
 
     var stage = $('stage');
@@ -1162,6 +1162,54 @@
     /* Is any of this cell's art inside the viewport? Asked BEFORE the atlas is
        requested: a cell that cannot be seen must not spend a cache slot (nor
        veto a part stack). Same bounds the blit itself culls by. */
+    /* Would any pixel of this instance's art land in the window? The instance
+       cull works in TILE space with a +-6 tile ring (a tall sprite whose lot
+       sits just off camera does paint in), which is right for drawing but was
+       also what asked for the FILE — so the ring requested, and decoded, art
+       that could not be seen. Checked before texFor/imgFor, with the same
+       bounds the blits themselves cull by; a filmstrip counts as well, since
+       its cells can overhang the body it sits on.
+       A band AROUND the window counts as inside: art about to scroll in is
+       asked for one quarter-viewport early, so a pan does not pop sprites in
+       after their decode latency. It is a band, not the tile ring — the whole
+       map is never inside it (knob: __CV_ART_prefetch(0) for the strict
+       case, which is also how the harness measures). */
+    var ART_PREFETCH = 0.25;
+    function artMargin() {
+        return Math.round(Math.min(VW, VH) * ART_PREFETCH) + 4;
+    }
+    function quadIn(x, y, w, h) {
+        var m = artMargin();
+        return !(x + w < -m || x > VW + m || y + h < -m || y > VH + m);
+    }
+    function artReachable(sp, px, py, bl, k, key) {
+        if (quadIn(bl, py - sp.anchor[1] * k, sp.w * k, sp.h * k)) return true;
+        if (sp.stack) {                         // the baked stack (the sea
+            var s2 = sp.stack;                  // fleet) can be larger than
+            if (quadIn(px - Math.max(sp.anchor[0], s2.anchor[0]) * k,
+                       py - Math.max(sp.anchor[1], s2.anchor[1]) * k,   // the body
+                       Math.max(sp.w, s2.w) * k,                        // it replaces
+                       Math.max(sp.h, s2.h) * k)) return true;
+        }
+        var an = (typeof anims !== 'undefined' && anims) ? anims[key] : null;
+        var list = an && an.cells ? an.cells : null;      // the registry is a
+        for (var ci = 0; list && ci < list.length; ci++) {  // side-effect-free
+            var st = list[ci].a || list[ci];                 // read of the strips
+            var cw = st.cellw || st.w, ch = st.cellh || st.h;
+            if (st.sub) {                 // sparse strip: any rect of any cell
+                for (var fi in st.sub) {
+                    var rs = st.sub[fi] || [];
+                    for (var j = 0; j < rs.length; j++)
+                        if (quadIn(px + rs[j].ox * k, py + rs[j].oy * k,
+                                   rs[j].w * k, rs[j].h * k)) return true;
+                }
+                continue;
+            }
+            if (cw && ch && quadIn(px - (st.ax || 0) * k, py - (st.ay || 0) * k,
+                                   cw * k, ch * k)) return true;
+        }
+        return false;
+    }
     function cellOnScreen(a, fi, px, py, k) {
         if (a.sub) {                        // sparse strip: any rect of the cell
             var rs = a.sub[fi] || [];
@@ -1531,33 +1579,57 @@
        Answers the question the pill cannot: the pill counts files ever asked
        for, which correctly rises as you zoom out and more of the map is on
        screen. What must NOT happen is asking for art the player cannot see.
-       So: rebuild the set of art the CURRENT viewport legitimately owns
-       (every building/character whose lot projects onto the screen, plus the
-       filmstrips registered for those slugs) and classify each art file ever
-       requested against it. offScreen counts should stay near zero — they are
-       an un-gated request path, the thing this check exists to catch. */
+       So: rebuild the set of art the CURRENT viewport legitimately owns and
+       classify each art file requested against it. offScreen counts should
+       stay at zero — a non-zero one is an un-gated request path. */
+    /* Does any of this instance's art reach the window? The LOT alone is not
+       enough: a tall sprite is drawn from its anchor and paints far outside
+       its footprint, and a filmstrip cell has its own bounds again. Test all
+       three with the same maths the blits use, so the audit blames a request
+       only when nothing of it could have been seen. */
+    function artOwnedByWindow(b, A, mgn) {
+        var x0 = A.a * b.x0 + A.b * b.y0 + A.c, y0 = A.d * b.x0 + A.e * b.y0 + A.f;
+        var x1 = A.a * b.x1 + A.b * b.y1 + A.c, y1 = A.d * b.x1 + A.e * b.y1 + A.f;
+        if (!(Math.max(x0, x1) < -mgn || Math.min(x0, x1) > VW + mgn ||
+              Math.max(y0, y1) < -mgn || Math.min(y0, y1) > VH + mgn)) return true;
+        var key = (animKey(b) || b.slug || '').toLowerCase();
+        if (!key) return false;
+        var k = CAM.scale(cam) / ART.S;
+        var sp = (typeof spriteEntry === 'function' && spriteEntry(key)) ||
+                 (citySprites && citySprites[key]);
+        var an = (typeof anims !== 'undefined' && anims) ? anims[key] : null;
+        if (!sp && !an) return false;
+        var gx = ART.ref === 'origin' ? b.x0 : b.px,
+            gy = ART.ref === 'origin' ? b.y0 : b.py;
+        var w = CAM.tileToWorld(gx + ART.ax, gy + ART.ay);
+        var p = CAM.worldToScreen(cam, w.x, w.y, VW, VH);
+        // the SAME test the request gate uses, plus the margin: whatever the
+        // page is allowed to ask for, the audit must accept
+        return artReachable(sp || { w: 0, h: 0, anchor: [1e9, 1e9] },
+                            p.x, p.y, p.x - (sp ? sp.anchor[0] : 0) * k, k, key);
+    }
     function artAudit(urls, recentN) {
         var A = CAM.tileAffine(cam, VW, VH);
         var mgn = 40;                       // generous: tall sprites overhang
-        var visSlug = {}, visChar = {}, i, j, b, key, n = 0;
+        var visSlug = {}, visChar = {}, i, b, key, n = 0;
         for (i = 0; i < buildings.length; i++) {
             b = buildings[i];
             if (objHidden[b.cat]) continue;
-            var x0 = A.a * b.x0 + A.b * b.y0 + A.c, y0 = A.d * b.x0 + A.e * b.y0 + A.f;
-            var x1 = A.a * b.x1 + A.b * b.y1 + A.c, y1 = A.d * b.x1 + A.e * b.y1 + A.f;
-            if (Math.max(x0, x1) < -mgn || Math.min(x0, x1) > VW + mgn ||
-                Math.max(y0, y1) < -mgn || Math.min(y0, y1) > VH + mgn) continue;
+            if (!artOwnedByWindow(b, A, mgn)) continue;
             n++;
             key = (animKey(b) || b.slug || '').toLowerCase();
             if (key) visSlug[key] = 1;
         }
-        var ch = M.chars;
+        var ch = M.chars, kc = CAM.scale(cam) / ART.S;
         for (i = 0; i < ch.length; i++) {
             var c = ch[i];
-            if (A.a * c[1] + A.b * c[2] + A.c < -mgn ||
-                A.a * c[1] + A.b * c[2] + A.c > VW + mgn ||
-                A.d * c[1] + A.e * c[2] + A.f < -mgn ||
-                A.d * c[1] + A.e * c[2] + A.f > VH + mgn) continue;
+            var cx = A.a * c[1] + A.b * c[2] + A.c, cy = A.d * c[1] + A.e * c[2] + A.f;
+            var as2 = (charMan && charMan.characters && charMan.characters[c[0]] &&
+                       charMan.assets[charMan.characters[c[0]].slug]) || null;
+            var mx = mgn + (as2 ? Math.max(as2.anchor[0], as2.w - as2.anchor[0]) * kc : 0);
+            var my = mgn + (as2 ? Math.max(as2.anchor[1], as2.h - as2.anchor[1]) * kc : 0);
+            if (cx + mx < -mx || cx - mx > VW + mx ||   // its sheet can paint in
+                cy + my < -my || cy - my > VH + my) continue;
             var rec = charMan && charMan.characters[c[0]];
             if (rec && rec.slug) visChar[String(rec.slug).toLowerCase()] = 1;
         }
@@ -1597,6 +1669,7 @@
                  buildingsOnScreen: n, charsOnScreen: Object.keys(visChar).length,
                  artEverAsked: urls.length, askedChecked: asked,
                  offScreen: offN, byKind: cat, offSamples: off,
+                 margin: mgn + artMargin(), prefetch: ART_PREFETCH,
                  req: ALOAD.req, artGot: ALOAD.artGot, artKnown: ALOAD.artKnown };
     }
     window.__CV_ART_audit = function (opt) {   // console/harness: the above
@@ -1605,6 +1678,10 @@
     };
     window.__CV_ART_audit_urls = function (urls, n) {   // harness: explicit list
         return artAudit(urls || [], n || 600);
+    };
+    window.__CV_ART_prefetch = function (f) {  // console/harness: the band as
+        if (f !== undefined) ART_PREFETCH = Math.max(0, +f || 0);   // a fraction
+        return ART_PREFETCH;                   // of the shorter viewport side
     };
     window.__CV_ART_requests = function () {   // console: the log itself
         return ALOAD.hist.slice();
@@ -2863,7 +2940,7 @@
     /* ============================ render ===================================== */
     var DIAG = {
         mode: 'Pixi', ms: 0, fps: 0, maxMs: 0, anims: 0, charAnims: 0,
-        pool: 0, ver: '2026-10-29.14'
+        pool: 0, ver: '2026-10-30.4'
     };
     window.__CV_DIAG = DIAG;
     window.__CV_VER = DIAG.ver;                    // console sanity check
@@ -3357,15 +3434,18 @@
         var sp = spriteEntry(key);
         if (!sp) return false;
         if (sp.w * k < 12 && sp.h * k < 12) return false;   // readability gate
-        var url = cityUrl(sp.png);
-        var baseTex = texFor(url);
-        if (!baseTex) return false;
         var gx = ART.ref === 'origin' ? b.x0 : b.px;
         var gy = ART.ref === 'origin' ? b.y0 : b.py;
         var wx = gx + ART.ax, wy = gy + ART.ay;
         var px = A.a * wx + A.b * wy + A.c;
         var py = A.d * wx + A.e * wy + A.f;
         var bl = px - (mir ? sp.w - sp.anchor[0] : sp.anchor[0]) * k;
+        /* ask the window before the file (see artReachable): the tile ring
+           that got us here is drawn for painting, not for requesting */
+        if (!artReachable(sp, px, py, bl, k, key)) return true;
+        var url = cityUrl(sp.png);
+        var baseTex = texFor(url);
+        if (!baseTex) return false;
         var an = animOf(b, k);            // filmstrip cells instead of the PNG?
         if (an) {
             var drew = 0, i, j, ok = 1, vis = 0;

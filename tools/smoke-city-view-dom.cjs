@@ -323,7 +323,9 @@ if (GLMODE) {
             const atlasPx = a.cols * a.cellw * Math.ceil(a.frames / a.cols) * a.cellh;
             if (!(minD >= 80 && minD <= 1200 && atlasPx > 6e6 && atlasPx <= 16e6)) continue;
             const d = Math.max(Math.abs(b[6] - ABs0.px), Math.abs(b[7] - ABs0.py));
-            if (d < 10 || d > 120 || d >= bestD) continue;
+            if (d < 2 || d > 40 || d >= bestD) continue;   // close enough that
+                                                            // one viewport holds
+                                                            // both cells
             const AS = global.__ANIM_SEED;
             if (AS && Math.max(Math.abs(b[6] - AS.px), Math.abs(b[7] - AS.py)) < 150)
                 continue;
@@ -565,6 +567,46 @@ if (GLMODE) {
                 { slug: sg, kind: 'active', mi: M0.buildings.indexOf(b),
                   px: b[6], py: b[7], gate: fake, byName: byName };
             break;
+        }
+    }
+    /* ---- zoom-out request census: the stage ---------------------------------
+       The user's symptom is the art pill climbing "like it's loading the whole
+       map" once the camera is zoomed out. The headless page otherwise only has
+       a handful of sprites, so a zoomed-out camera would ask for almost nothing
+       and the census below would pass vacuously. Alias a sprite over every
+       placed building in ONE dense region far from every other camera, and the
+       census can then ask the real question: does the page request only the art
+       whose lot is inside the window? */
+    {
+        const cams = [global.__ANIM_SEED, global.__ANIM_BIG_SEED,
+                      global.__ANIM_RIVAL_SEED, global.__ANIM_GIANT_SEED,
+                      global.__ANIM_LAY_SEED, global.__ANIM_TOG_SEED]
+            .filter(Boolean).map(S => [S.px, S.py]);
+        const RD = M0.downtown[0];
+        cams.push([(RD[0] + RD[1]) / 2, (RD[2] + RD[3]) / 2]);
+        const clear = (x, y) => !cams.some(q =>
+            Math.max(Math.abs(x - q[0]), Math.abs(y - q[1])) < 220);
+        let best = null, bestN = 0;
+        for (const c of M0.buildings) {
+            if (!clear(c[6], c[7])) continue;
+            let n = 0;
+            for (const b of M0.buildings)
+                if (Math.max(Math.abs(b[6] - c[6]), Math.abs(b[7] - c[7])) < 150) n++;
+            if (n > bestN) { bestN = n; best = { cx: c[6], cy: c[7] }; }
+        }
+        if (best) {
+            let n = 0;
+            for (const b of M0.buildings) {
+                const e = M0.binfo[b[0]];
+                const sg = ((b[8] || (e && e[2]) || '') + '').toLowerCase();
+                if (!sg || global.__ART_SEED.city.sprites[sg]) continue;
+                if (Math.max(Math.abs(b[6] - best.cx),
+                             Math.abs(b[7] - best.cy)) > 150) continue;
+                global.__ART_SEED.city.sprites[sg] =
+                    { png: sg + '.png', w: 900, h: 700, anchor: [450, 660] };
+                n++;
+            }
+            global.__ART_REGION = { cx: best.cx, cy: best.cy, n: n };
         }
     }
     global.__ANIM_MAN = animMan;                      // real manifest, for the
@@ -1257,11 +1299,16 @@ async function glChecks() {
        it every frame, forever, counting each re-decode as new art. */
     const RV = global.__ANIM_RIVAL_SEED;
     if (AB && RV) {
-        const wb = global.CAM.tileToWorld(AB.px, AB.py);
+        /* Center the viewport BETWEEN the two strips: with the cell gate in
+           place a strip only asks for its atlas when some part of the cell it
+           is blitting lands in the window, so a rival 100 tiles off camera
+           would simply never be wanted and the check would pass vacuously. */
+        const wa = global.CAM.tileToWorld(AB.px, AB.py);
+        const wr = global.CAM.tileToWorld(RV.px, RV.py);
         const cap0 = global.__CV_ANIM_cache();
         const big0 = global.__CV_ANIM_bigmax();
         named['btn-rest'].dispatch('click', {});
-        global.__CV_cam.x = wb.x; global.__CV_cam.y = wb.y;
+        global.__CV_cam.x = (wa.x + wr.x) / 2; global.__CV_cam.y = (wa.y + wr.y) / 2;
         global.__CV_cam.zoom = global.CAM.ZOOM.rest;
         for (const tierTest of [
             { name: 'one-slot cache', cache: 1, big: 2 },      // the LRU bound
@@ -1407,7 +1454,137 @@ async function glChecks() {
             /animNow \* a\.fps \/ 1000\) \+ ph\) % a\.frames/.test(src[k]));
         check('no idle blit path wraps a strip on its own cell count',
             wrapped.length === 0, wrapped.join(','));
+        /* ---- art requests must be viewport-gated in BOTH pages -------------
+           The pill climbing "like it's loading the whole map" is only wrong if
+           art is asked for off screen, so pin the gates: the building pass has
+           to cull instances by lot before any PNG is requested, the anim pass
+           has to ask whether a cell can be seen before its atlas is requested,
+           and both pages have to carry the audit the console reads. */
+        const gates = {
+            'the building pass culls instances by lot before asking for a PNG':
+                s => /\.x1 < T\.x0 - mgn \|\| \.x0 > T\.x1 \+ mgn|b\.x1 < T\.x0 - mgn/.test(s),
+            'the body PNG is only asked for once its drawn quad reaches the window':
+                s => /function artReachable\(/.test(s) &&
+                     /if \(!artReachable\(sp,/.test(s),
+            'the filmstrip pass asks if a cell can be seen before requesting it':
+                s => /function cellOnScreen\(/.test(s) &&
+                     /if \(!cellOnScreen\(st, c0\.fi, (px|p\.x), (py|p\.y), k\)\) continue/.test(s),
+            'the crowd pass culls characters before asking for a sheet':
+                s => /c\[1\] < T\.x0 - 1 \|\| c\[1\] > T\.x1 \+ 1/.test(s),
+            'the request audit ships in both pages (console __CV_ART_audit)':
+                s => /window\.__CV_ART_audit = /.test(s) &&
+                     /function artAudit\(urls, recentN\)/.test(s)
+        };
+        for (const [what, need] of Object.entries(gates)) {
+            const okk = Object.keys(src).every(k => need(src[k]));
+            const bad = Object.keys(src).filter(k => !need(src[k]));
+            check(what, okk, bad.join(','));
+        }
     })();
+    /* the audit classifier itself, run against the live page: an on-screen
+       building's own PNG must read as seen, an instance parked 2,000 tiles
+       away must read as off screen. This is the check behind the console's
+       __CV_ART_audit(): the pill rising while you zoom out is fine (more of
+       the map IS on screen) — off-screen requests are the bug. */
+    {
+        /* Park the camera on the seed first: the earlier blocks leave it on a
+           preset, and an audit run against an unrelated viewport would classify
+           every PNG as off screen. */
+        const B = global.MAP_DATA.buildings, BI = global.MAP_DATA.binfo;
+        const near = global.__ANIM_SEED || global.__ANIM_BIG_SEED;
+        let hit = null, miss = null, vw = 0, vh = 0;
+        if (near) {
+            const wb = global.CAM.tileToWorld(near.px, near.py);
+            named['btn-rest'].dispatch('click', {});
+            global.__CV_cam.x = wb.x; global.__CV_cam.y = wb.y;
+            global.__CV_cam.zoom = global.CAM.ZOOM.rest;
+            await tick(20); flushRaf();
+            const base = global.__CV_ART_audit_urls([]);
+            vw = base.vw; vh = base.vh;
+            for (let mi = 0; mi < B.length; mi++) {
+                const b = B[mi], e = BI[b[0]];
+                const sg = ((b[8] || (e && e[2]) || '') + '').toLowerCase();
+                if (!sg) continue;
+                if (!hit && Math.max(Math.abs(b[6] - near.px),
+                                     Math.abs(b[7] - near.py)) < 40) {
+                    const p = global.__CV_TILE_screen(b[6], b[7]);
+                    if (p && p.x > -20 && p.x < vw + 20 && p.y > -20 && p.y < vh + 20)
+                        hit = { sg, mi };
+                }
+                if (!miss) {                       // a long way out of the
+                    const q = global.__CV_TILE_screen(b[6], b[7]);   // window
+                    if (q && (q.x < -2000 || q.x > vw + 2000 ||
+                              q.y < -2000 || q.y > vh + 2000))
+                        miss = { sg, mi };
+                }
+                if (hit && miss) break;
+            }
+        }
+        const urls = hit && miss ? [
+            'assets/city/' + hit.sg + '.png',
+            'assets/city/' + miss.sg + '.png',
+            'assets/city/anims/' + miss.sg + '__Idle.png',
+            'assets/city/seasons/winter/' + miss.sg + '.png',
+            'assets/characters/' + miss.sg + '_0.png'
+        ] : [];
+        const a = urls.length ? global.__CV_ART_audit_urls(urls) : null;
+        check('an on-screen sprite PNG reads as seen, an off-screen one as not',
+            !!hit && !!miss && !!a &&
+            a.byKind.body === 2 && a.byKind.season === 1 && a.byKind.char === 1 &&
+            a.byKind.film === 1 && a.byKind.other === 0 && a.offScreen === 4 &&
+            a.offSamples.body.indexOf(hit.sg + '.png') < 0 &&   // the visible
+            a.offSamples.body.indexOf(miss.sg + '.png') > -1,   // one is not flagged
+            JSON.stringify({ hit: hit && hit.sg, miss: miss && miss.sg,
+                             vw: vw, vh: vh, a: a }));
+        /* ---- the zoom-out request census --------------------------------------
+           The pill climbing while you zoom out is correct: more of the map IS on
+           screen. What must never happen is asking for art the window cannot
+           show. So at each zoom: trace every art request the page makes while
+           the view settles, then classify them against that camera's own
+           viewport. offScreen must stay 0, and the count must track the
+           buildings ON screen, never the size of the map. */
+        const RG = global.__ART_REGION;
+        check('a far, dense region carries aliased sprites for the census to measure',
+            !!RG && RG.n >= 40, RG && JSON.stringify(RG));
+        if (RG) {
+            const wr = global.CAM.tileToWorld(RG.cx, RG.cy);
+            named['btn-rest'].dispatch('click', {});
+            global.__CV_cam.x = wr.x; global.__CV_cam.y = wr.y;
+            const rows = [];
+            const pref0 = global.__CV_ART_prefetch();        // the pan band
+            for (const pf of [0, pref0]) {           // strict window, then the
+                global.__CV_ART_prefetch(pf);        // shipped prefetch band
+                for (const z of [1.0, 0.5, 0.25, 0.12, 0.06]) {
+                    global.__CV_cam.zoom = z;
+                    await tick(30); flushRaf(); flushRaf();  // let it settle
+                    global.__CV_ART_trace(1);
+                    await tick(40); flushRaf(); flushRaf();  // ... then watch
+                    const a = global.__CV_ART_audit_urls(global.__ASSETS.tr, 8000);
+                    global.__CV_ART_trace(0);
+                    rows.push({ pf: pf, z: z, on: a.buildingsOnScreen,
+                                asked: a.askedChecked, off: a.offScreen,
+                                kinds: a.byKind, margin: a.margin,
+                                bad: a.offSamples });
+                }
+            }
+            global.__CV_ART_prefetch(pref0);
+            const bad = rows.filter(r => r.off > 0);
+            check('zooming out only ever asks for art inside the window ' +
+                '(offScreen 0 at every zoom)', bad.length === 0,
+                JSON.stringify(bad.length ? bad[0] : rows));
+            const fat = rows.filter(r =>
+                r.asked > (r.on + 4) * 4 + 24);      // body/season/film + crowd
+            check('the requests track the buildings ON screen, not the map ' +
+                '(one region is ' + (RG && RG.n) + ' sprites)', fat.length === 0,
+                JSON.stringify(fat.length ? fat[0] : rows));
+            const first = rows[0];
+            check('the census actually measured requests (it is not a vacuous 0)',
+                first.asked > 0 && first.on > 0, JSON.stringify(first));
+        }
+        check('the audit names the off-screen files it found (offSamples)',
+            !!a && Object.keys(a.offSamples).some(k => a.offSamples[k].length > 0),
+            a && JSON.stringify(a.offSamples));
+    }
     /* engine-builtin toggle class (the helicopter): sits static at Neutral
        until clicked; the first click plays the Active_In one-shot and the
        building then loops Active (oversize atlases included — the click

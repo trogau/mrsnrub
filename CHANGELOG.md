@@ -1,5 +1,98 @@
 # Changelog
 
+## 2026-10-30.4
+
+- **Zoomed-out art is requested by the drawn quad, not the tile ring** — the
+  art pill raced upward once the camera was pulled back. The instance cull works
+  in TILE space with a ±6 tile ring, which is right for painting (a tall sprite
+  whose lot sits just off camera does paint in) but it was also what asked for
+  the FILE, so the ring fetched and decoded art that could not be seen — about
+  2.5x the visible set at rest zoom, and more the further out the camera went.
+  Both City View pages now ask the window first: `artReachable()` measures the
+  sprite's drawn quad, its registered filmstrip cells and the baked stack with
+  the same bounds the blits use, and the body PNG is not requested until some
+  pixel of it can land in the viewport. A screen-space prefetch band
+  (`ART_PREFETCH`, a quarter of the shorter viewport side; knob
+  `__CV_ART_prefetch(f)`) keeps a pan from popping sprites in after their
+  decode latency. `__CV_VER` → `2026-10-30.4`, `city-view.js?v=34`,
+  `city-view-pixi.js?v=65`.
+- **Art-request audit (console)** — `__CV_ART_audit()` in both pages rebuilds
+  the art the CURRENT viewport owns and classifies every file the page has asked
+  for as body / season / char / film / other: `offScreen > 0` names the
+  un-gated path in `offSamples`, which is how a genuine leak is told apart from
+  the pill correctly rising as more of the map comes into view. Companions:
+  `__CV_ART_audit_urls(urls, n)`, `__CV_ART_requests()` (the request log), and
+  `__CV_ART_trace(1)`, which records EVERY request call — the pill counts a file
+  once, so a settled camera otherwise logs nothing.
+- **Harness: the zoom-out request census** — `tools/smoke-city-view-dom.cjs`
+  aliases sprites over a far 431-building region, then at five zooms with the
+  prefetch band on and off traces the page's own requests and asserts none come
+  from outside the window and that the count tracks the buildings ON screen,
+  never the size of the map. Added source gates (lot cull, filmstrip cell gate,
+  the new quad gate, crowd cull, audit shipped in both pages) and a live
+  classifier check. Mutation-tested: deleting the request gate FAILs the census
+  with 11 off-screen PNGs at rest zoom.
+- **Both pages carry one filmstrip request policy** — ported `cellOnScreen`,
+  `animDecoding` and `animPending` into the deprecated Canvas page, which had
+  been requesting a part loop's atlas for cells outside the window (and letting
+  an invisible cell veto the whole part stack).
+
+## 2026-10-30.3
+
+- **Private island: the top animates and the rocks stay put** — after the top
+  strip arrived it still looked frozen, and static rocks at the waterline
+  jittered on their own while the waves ran. Three fixes in
+  `tools/gen_city_sprites.py`:
+  - **Phase-spread thinning**: when a grid atlas must be thinned to fit the
+    player's decode gate, the sampler picked an endpoints linspace — at
+    2 cells that is frames 0 and 95 of a 96-tick LOOP, i.e. temporally
+    ADJACENT poses, so `PrivateIslandTop` shipped `rp: [0, 95]` and the
+    player held one pose for 95 ticks of every 96. The sampler now spreads
+    wrap-around phases (`(i * len) // fit`), so the strip ships
+    `rp: [0, 49]` — half a loop apart, visibly animating.
+  - **Frame-stable block placement** (`_composite`): block paste positions
+    were rounded against the *frame's* content bbox, whose top edge is an
+    animating water block — every static block's canvas position therefore
+    wobbled +-1 px frame to frame, and the sparse packer turned that into
+    the rocks' +-2 px `oy` bob and 78<->84 px bbox breathing. Blocks are
+    now snapped to integer pixels in absolute space before the origin is
+    subtracted, so a block's placement depends only on its own data.
+  - **Anchor-aligned cluster grid** (`_pack_sparse`): the 6 px cluster
+    grid snapped in canvas space, which drifts with the water; it now
+    snaps on a grid line through the building anchor, so a static block
+    yields the identical rect (and `ox`/`oy`) on every frame — verified:
+    the rock rects are now byte-identical placements across all 48 cells
+    (only the engine's own foam ring at the rock's base changes, matching
+    the raw frames pixel-for-pixel). The jet ski's 2 px bob is engine
+    data (`C_Jetski_base` moves), not a regression.
+  - Viewer: `MANIFEST_V` → `?v=20261030.3`. Evidence (in
+    `mapdump/registration/`): `m4-evidence-privateisland05-topframes.png`
+    (the two shipped top cells — gull/flag/swimmer/rotor differ),
+    `m4-evidence-privateisland05-mapsim.png` (map draw at ticks 10/60/90),
+    `m4-evidence-privateisland05-rockf0/3.png` (engine foam-ring truth).
+
+## 2026-10-30.2
+
+- **Islands and piers: a part loop can no longer replace the whole sprite** —
+  `PrivateIsland_Complete` drew without its upper half (palms/villa gone): the
+  gate looped only `PrivateIslandBase`, and the player draws a plain idle strip
+  *instead of* the body PNG, so everything above the waterline vanished. The
+  asset's `PrivateIslandTop` loop (90 motion frames) sits in the manifest with
+  nothing wanting it — the `…_Top` proxy siblings ship without any controller
+  declaration. Two gate rules in `tools/gen_city_sprites.py`:
+  - `_layer_wants` gained `_sibling_top_anim`: when a base-like loop is already
+    wanted and a controller-less top-named sibling renders from the slug, the
+    asset's lone unclaimed top-like strip (`'…Top'`, never an `Active_*`) joins
+    the composite — `privateisland05` now ships `layers:
+    ['PrivateIslandBase', 'PrivateIslandTop']` (body + waves + palms), and
+    `tailgate`/`tailgateflipped` (same proxy shape) gained their `TailgateTop`.
+  - `_behavior_map` refuses to gate a **part-named** idle (`…Base`/`…Bottom`)
+    as a lone idle: it becomes a layer over the body instead. That repairs
+    `ornatepier`, `squidport` (arches, whose top loops are 1-frame holds) and
+    `smallisland02` (islet) the same way.
+  - Viewer: `MANIFEST_V` → `?v=20261030.2`. Evidence:
+    `mapdump/registration/m4-anims-privateisland05-top.png`.
+
 ## 2026-10-30.1
 
 - **Prison: the maximum-security base animates on the map** — building
