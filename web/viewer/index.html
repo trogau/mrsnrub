@@ -16,8 +16,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Springfield &mdash; City View (PixiJS)</title>
 <link rel="icon" type="image/png" href="../assets/images/icon.png">
-<link rel="stylesheet" href="../css/city-view.css?v=13">
-<link rel="stylesheet" href="../css/asset-variants.css?v=13">
+<link rel="stylesheet" href="../css/city-view.css?v=14">
+<link rel="stylesheet" href="../css/asset-variants.css?v=14">
 </head>
 <body>
 <header>
@@ -58,6 +58,8 @@
   <span class="hint">drag to pan &middot; wheel to zoom &middot; double-click to step zoom
     (double-click a yellow mark to centre it) &middot;
     click a block, dot or ground tile to inspect it &middot;
+    <b>h</b> hides/shows the selected object (occlusion debug; recovery list
+    sits under the details card) &middot;
     &larr;/&rarr;/&uarr;/&darr; nudge, Esc deselects</span>
   <span id="zoomread"></span>
   <span id="assets" class="off" data-tip="remote asset loading: the two boot textures + two art manifests count down the assets bar, then the sprite PNGs the Art layer streams in as you pan (loaded/known, in-flight, dead = degrading to blocks/dots)"></span>
@@ -87,14 +89,14 @@
   Academic port for study &mdash; The Simpsons: Tapped Out &copy; EA.
 </footer>
 <script src="vendor/pixi.min.js?v=1"></script>
-<script src="../js/map-explorer-data.js?v=14"></script>
+<script src="../js/map-explorer-data.js?v=21"></script>
 <script src="../js/camera.js?v=12"></script>
 <script src="../js/terrain.js?v=15"></script>
 <script src="../js/objects.js?v=13"></script>
 <script src="../js/walks.js?v=13"></script>
 <script src="../js/markers.js?v=12"></script>
-<script src="asset-variants-pixi.js?v=2"></script>
+<script src="asset-variants-pixi.js?v=5"></script>
 <script src="char-variants-pixi.js?v=2"></script>
-<script src="city-view-pixi.js?v=47"></script>
+<script src="city-view-pixi.js?v=63"></script>
 </body>
 </html>

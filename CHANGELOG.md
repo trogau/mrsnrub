@@ -1,5 +1,82 @@
 # Changelog
 
+## 2026-10-29.14
+
+- **Ocean objects: the art pill settles, and a strip on screen is never
+  evicted again** — the pill read `art 16,274/7,844` and kept climbing unless
+  you were zoomed all the way in. Two separate bugs, both in the filmstrip
+  cache: the counter incremented on **every image load**, so a strip that was
+  evicted and re-decoded counted as new art each time; and the eviction rules
+  only protected strips a click had started (`ANIM_CACHE_MAX` 40 / `ANIM_BIG_MAX`
+  8 slots against up to 96 blits a frame), so with the whole ocean fleet in
+  view the cache dropped a visible multi-megapixel strip and asked for it back
+  on the very next frame — forever. Now:
+  - `__ASSETS` counts **art files, not HTTP hits**: a `seen` map settles each
+    url once, so `artGot + artDead` equals the number of distinct files ever
+    asked for and can never exceed `artKnown`; the 3,029 registered filmstrips
+    and the pier sheets are part of `artKnown` (they were missing, which is how
+    the denominator stayed at 7,844 while loads blew straight past it).
+  - Every render frame stamps the urls it asked for (`animUse`); an eviction
+    may only touch a strip unasked-for on **this frame and the last** (the
+    previous frame matters — buildings drawn later in the same frame have not
+    stamped yet). When the cache is entirely on screen the arrival is
+    **refused** and draws its static PNG, instead of evicting something the
+    player is looking at; click-driven one-shots get slack to `cache + huge`.
+  - A refused arrival is owed exactly **one retry** (2 s window, re-armed only
+    when a slot actually frees), and an atlas is only requested for a cell that
+    can be seen (`cellOnScreen`), so neither can pin the 90 ms repaint loop
+    running — the "always loading" pill from the outside.
+  - Telemetry + knobs for console and harness: `__CV_ANIM_stats()` gained
+    `wanted`/`refused`/`reloads`/`drops`, plus `__CV_ANIM_cache(n)`,
+    `__CV_ANIM_bigmax(n)` and `__CV_ANIM_clear()`.
+  The same policy is mirrored into the deprecated Canvas page (which the
+  harness boots) so the behaviour is asserted, not assumed:
+  `tools/smoke-city-view-dom.cjs` seeds a second 6–16 Mpx strip next to the big
+  seed and, under a one-slot LRU and a one-slot big tier, asserts the visible
+  strip stays (`drops`/`reloads` flat, `lru ≤ lruMax`), the other is refused,
+  and both still tick — removing the in-use guard from `freeCacheSlot` makes
+  exactly those two checks fail with churn (`drops` 1 → 5, `reloads` 2 → 6).
+  Versions: `__CV_VER`/`DIAG.ver` `2026-10-29.14`, `city-view-pixi.js?v=63`,
+  `city-view.js?v=33`. All eight harnesses pass.
+
+## 2026-10-29.13
+
+- **Ocean objects: every loop in the corpus now plays on the engine's clock** —
+  finishing the round-14 tick map across all generated art. A strip is only
+  already correct when cell *k* stands for tick *k* and its loop has exactly
+  that many ticks; a scan of the shipped manifest found just **56 of 2542
+  assets** met that, because generation samples long loops and drops runs of
+  identical frames. Regenerating them put **5022 strips** on the recorded
+  `rp`/`lt` map (0 dropped, 0 manifest problems), so a thinned loop plays at
+  the game's rate instead of its own cell count and the parts of a stack can no
+  longer drift apart. Two byproducts the full regen surfaced and measured
+  rather than assumed:
+  - **Rounds 11–12's decode-gate fixes had never reached most assets** (they
+    shipped before it existed): **1719 strips** whose uniform atlas is over the
+    viewer's 16 Mpx gate — frozen on the map until now — were thinned to the
+    frames that fit and animate for the first time. 1350 kept 9+ cells, 315 got
+    6, 49 got 4 and **5 are left with 2** (`thetoothchipper`, `privateisland05`,
+    `raygunkodos`, `sergeantthugscommandpost`); a coverage audit of all 369
+    strips thinned to ≤6 cells finds **1** whose best surviving cell holds
+    under 60% of the loop's fattest frame (`missilebunker/Active_Out`).
+    Evidence: `mapdump/registration/m4-ocean-round14-thin-*.png` (frozen body |
+    each shipped cell | the game's flatten).
+  - **The round-13 occluder now fires on loops it was never scored against**:
+    229 punched loops, of which **21 are new** — all tiny (≤2.7% of the loop's
+    own art) and 50 of the 67 comparable ones closer to the game's flatten, 17
+    unchanged, 1 noise-level (+0.4%). The 6 punches that delete >50% of a
+    loop's art are all ones round 13 chose on evidence, and re-measuring round
+    13's own 47 scored loops with its exact metric gives **47 identical, 0
+    changed**.
+  Also fixes `tools/smoke-city-view-dom.cjs` for the new timing: the tap and
+  toggle checks waited for `frames` cells and the one-shot now runs one loop of
+  the *engine's* ticks, and the giant-atlas seed no longer picks cluster-packed
+  strips (the player decodes the packed atlas and correctly animates them).
+  `web/js/map-explorer-data.js` regenerated (atlas cell counts moved).
+  Versions: `ASSET_V`/`MANIFEST_V` `?v=20261029.5`, `__CV_VER`/`DIAG.ver`
+  `2026-10-29.13`, `city-view-pixi.js?v=62`, `map-explorer-data.js?v=21`.
+  All eight harnesses pass.
+
 ## 2026-10-29.12
 
 - **Task board: clickable rows open a detail modal + the plain-language

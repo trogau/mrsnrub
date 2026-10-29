@@ -393,11 +393,16 @@ for bid, e in bids.items():
     # bsv3 named-anim filmstrips (tools/gen_city_sprites.py anims): played
     # in-place by the details card, so no manifest deep link is offered
     for a in _anims_meta.get(slug) or []:
-        rows.append({'path': 'city/' + a['png'], 'kind': 'anim',
-                     'name': a['anim'], 'frames': a['frames'],
-                     'cols': a['cols'], 'cellw': a['cellw'],
-                     'cellh': a['cellh'], 'fps': a['fps'],
-                     'ax': a.get('ax'), 'ay': a.get('ay')})
+        row = {'path': 'city/' + a['png'], 'kind': 'anim',
+               'name': a['anim'], 'frames': a['frames'],
+               'cols': a['cols'], 'cellw': a['cellw'],
+               'cellh': a['cellh'], 'fps': a['fps'],
+               'ax': a.get('ax'), 'ay': a.get('ay')}
+        if a.get('sparse') and a.get('sub'):
+            # sparse shelf: the card player blits per-frame rects from the
+            # packed atlas (see the 'sub' handler in asset-variants.js)
+            row['sub'] = a['sub']
+        rows.append(row)
     if rows:
         variants[slug] = rows
 print(f'variants: {len(variants)} assets with extra sprites '
@@ -453,6 +458,8 @@ data = {
     # relative to web/assets/, so asset pages open it as assets/<path>.
     # kind 'anim' rows instead carry {path, kind, name, frames, cols,
     # cellw, cellh, fps} — a bsv3 filmstrip atlas played in place by the
+    # card player — plus 'sub' (per-frame rect lists) when the strip is
+    # sparse-packed (tools/gen_city_sprites.py _pack_sparse).
     # details card. Consumed by web/js/asset-variants.js (Map Explorer +
     # City View details cards).
     'variants': variants,

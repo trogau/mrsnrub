@@ -39,12 +39,12 @@
        ?v= of this script in index.html) whenever the pipeline regenerates
        them — otherwise the browser keeps the previous render (e.g. a
        building's old snowy art) whatever the pool says */
-    var ASSET_V = '?v=20261025.8';
-    /* Manifest-only buster: the bridge frame entries (bridgetop_f0/f5,
-       bridgebottom_f0/f1) landed after ASSET_V's last bump, and the four new
-       PNGs are new filenames. Bumping ASSET_V instead would re-download all
-       12k city sprites to pick up four entries. */
-    var MANIFEST_V = '?v=20261026.1';
+    var ASSET_V = '?v=20261029.5';
+    // Bump whenever city/*.png art changes — the sprites, filmstrip atlases
+    // and stack sheets all load through cityUrl(), and a stale cached PNG
+    // against fresh city-anims.json sub-rects draws sparse water from wrong
+    // shelf spots (the "water attached incorrectly" report, round 6).
+    var MANIFEST_V = '?v=20261029.5';           // city-sprites/-anims.json
     function cityUrl(p) { return B + 'assets/city/' + p + ASSET_V; }
 
     var stage = $('stage');
@@ -77,9 +77,22 @@
        Art layer's on-demand sprite PNGs stream through the same pill.
        Failed assets count as settled — every one of them has a degrade
        path (flat grass / flat roads / blocks / dots). window.__ASSETS
-       exposes the counters for console + harness. */
-    var ALOAD = { boot: 4, bootDone: 0, pend: 0, artGot: 0, artKnown: 0, artDead: 0 };
+       exposes the counters for console + harness.
+
+       The counters count ART FILES, not HTTP hits. A filmstrip the LRU
+       dropped and the player panned back to is the same file, so it must not
+       move the number a second time — seen[] is what keeps "got" from
+       outrunning "known". The known total is every file the viewer can ask
+       for: body PNGs, season variants, character sheets, pier sheets and the
+       filmstrips it registered from city-anims.json. */
+    var ALOAD = { boot: 4, bootDone: 0, pend: 0, artGot: 0, artKnown: 0,
+                  artDead: 0, strips: 0, seen: {} };
     window.__ASSETS = ALOAD;
+    function artCounted(url) {              // true once per art file
+        if (ALOAD.seen[url]) return false;
+        ALOAD.seen[url] = 1;
+        return true;
+    }
     function aPaint() {
         var el = $('assets');
         if (!el) return;
@@ -121,14 +134,20 @@
             ALOAD.pend++; aPaintSoon();     // streams through the asset pill
             r = texs[url] = { st: 0, tex: null, subs: {} };
             var im = new Image();
+            if (ALOAD.seen[url]) animReloads++;     // evicted, now asked for again
             im.onload = function () {
+                var dead = 0;
                 try { r.tex = PIXI.Texture.from(im); r.st = 1; }
-                catch (e) { r.st = -1; ALOAD.artDead++; }
-                ALOAD.pend--; ALOAD.artGot++; markDirty(); aPaintSoon();
+                catch (e) { r.st = -1; dead = 1; }
+                ALOAD.pend--;
+                if (artCounted(url)) { if (dead) ALOAD.artDead++; else ALOAD.artGot++; }
+                markDirty(); aPaintSoon();
             };
             im.onerror = function () {      // degrade to block/dot
                 r.st = -1;
-                ALOAD.pend--; ALOAD.artDead++; markDirty(); aPaintSoon();
+                ALOAD.pend--;
+                if (artCounted(url)) ALOAD.artDead++;
+                markDirty(); aPaintSoon();
             };
             im.src = url;
         }
@@ -152,9 +171,14 @@
         }
         return t;
     }
-    function dropTex(url) {                 // anim LRU eviction: free the decode
+    /* free the decode behind a url. counted=1 from the eviction paths (the
+       telemetry the console reads: a resident strip that comes back is a
+       re-decode, so drops and reloads must be countable). */
+    function dropTex(url, counted) {
         var r = texs[url];
+        if (animBig[url]) { delete animBig[url]; animBigLive--; }
         if (!r) return;
+        if (counted) animDrops++;           // telemetry: decodes freed by eviction
         for (var k in r.subs) delete r.subs[k];
         if (r.tex) { try { r.tex.destroy(true); } catch (e) { /* GC */ } }
         delete texs[url];
@@ -614,7 +638,14 @@
             .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
             .then(function (j) {
                 PIER = j;
-                for (var k in j.assets) texFor(B + j.assets[k].sheet);
+                var shSeen = {}, sh;
+                for (var k in j.assets) {
+                    sh = j.assets[k].sheet;
+                    if (!shSeen[sh]) {
+                        shSeen[sh] = 1; ALOAD.artKnown++; ALOAD.strips++;
+                    }
+                    texFor(B + sh);
+                }
                 /* texFor only STARTS the sheet loads: rebuild once they have
                    decoded (or died), else the brush cells keep the flat
                    fills until some unrelated rebuild happens along */
@@ -856,10 +887,21 @@
     var animOn = true;
     var anims = null;                     // slug -> {cells:[strip…], base:0|1}
     var taps = {};                        // slug -> one-shot tap filmstrip
+    var tapsL = {};                       // slug -> [strip…] layered one-shot
+                                          // (behavior tapLayers: the Active
+                                          // pair of a part stack, played
+                                          // together over the body)
     var togglers = {};                    // slug -> engine click-state-machine
     var behav = null;                     // slug -> {idle, tap} (v2 manifest)
     var animNow = 0;                      // ms, one clock per rendered frame
     var animLive = 0;                     // animated sprites in the last frame
+    var animPending = 0;                  // anims wanted but not drawable
+                                          // (atlas decoding / big pool spent):
+                                          // keeps the 90 ms anim tick alive so
+                                          // the strip draws the moment it can
+                                          // — without this the loop parked
+                                          // with a half-loaded ship frozen
+                                          // static until the next click
     var charAnimLive = 0;                 // animating character sprites
     var charPreview = null;               // {cid, cell} — card-driven preview
                                           // (CharVariants tile click)
@@ -876,15 +918,40 @@
     var ANIM_BIG_MAX = 8;
     var ANIM_CACHE_MAX = 40;
     var animBigLive = 0;
+    var animBig = {};                     // big-tier resident urls (the
+                                          // budget releases on LRU eviction:
+                                          // with the over-cap fleet thinned
+                                          // into this tier, a never-released
+                                          // 8-slot budget starved whoever
+                                          // panned in second)
     var ANIM_HUGE_MAX = 4;
     var animHuge = {};                    // oversize filmstrip url -> strip png
     var animLru = [];                     // filmstrip urls, most-recent last
+    /* the pill's "known" total must cover the filmstrips too, not just the
+       body PNGs: they are art files the viewer asks for by the hundred and
+       leaving them out is how the readout could read "art 16,274/7,844" */
+    var artStripKnown = {};
+    function artKnownStrip(e) {
+        if (!e) return;
+        var u = cityUrl(e.png);
+        if (artStripKnown[u]) return;
+        artStripKnown[u] = 1;
+        ALOAD.artKnown++;
+        ALOAD.strips++;                 // harness: the filmstrip share of known
+    }
+    function artKnownTog(t) {
+        if (!t) return;
+        artKnownStrip(t['in']);
+        artKnownStrip(t.out);
+        artKnownStrip(t.loop);
+        for (var i = 0; t.poses && i < t.poses.length; i++) artKnownStrip(t.poses[i]);
+    }
     (function loadAnims() {
-        fetch(cityUrl('city-anims.json')).then(function (r) {
+        fetch(B + 'assets/city/city-anims.json' + MANIFEST_V).then(function (r) {
             return r.ok ? r.json() : null;
         }).then(function (j) {
             if (!j || !j.anims) return;
-            anims = {}; taps = {}; togglers = {};
+            anims = {}; taps = {}; tapsL = {}; togglers = {};
             behav = j.behavior || null;
             for (var s in j.anims) {
                 var list = j.anims[s];     // generator sorts loops longest-first
@@ -893,18 +960,49 @@
                                  : list[0];
                 var tap = behav ? pickAnim(list, behav[s] && behav[s].tap)
                                 : null;
-                if (loop && loop.frames > 1) anims[s] = { cells: [loop], base: 0 };
-                else if (behav && behav[s] && behav[s].layers) {
+                /* layers first: a part stack always owns the idle slot,
+                   even if the gate also carries an idle (a lone part strip
+                   would REPLACE the body and blank the object's other half) */
+                if (behav && behav[s] && behav[s].layers) {
                     var cs = [], seen = [], li;
                     for (li = 0; li < behav[s].layers.length; li++) {
                         var e = pickAnim(list, behav[s].layers[li]);
                         if (e && e.frames >= 1 && seen.indexOf(e.anim) < 0) {
-                            seen.push(e.anim); cs.push(e);
+                            seen.push(e.anim); cs.push(e); artKnownStrip(e);
                         }
                     }
                     if (cs.length) anims[s] = { cells: cs, base: 1 };
                 }
-                if (tap && tap.frames > 1 && tap !== loop) taps[s] = tap;
+                if (!anims[s] && loop && loop.frames > 1) {
+                    anims[s] = { cells: [loop], base: 0 };
+                    artKnownStrip(loop);
+                }
+                if (tap && tap.frames > 1 && tap !== loop) {
+                    taps[s] = tap;
+                    artKnownStrip(tap);
+                }
+                if (behav && behav[s] && behav[s].layers &&
+                        behav[s].tapLayers) {
+                    // layered click one-shot: every part's Active strip
+                    // must resolve, or the pair is not a pair — fall back
+                    // to the plain tap (or none) rather than play half
+                    var tls = [], tlseen = [], ti;
+                    for (ti = 0; ti < behav[s].tapLayers.length; ti++) {
+                        var te = pickAnim(list, behav[s].tapLayers[ti]);
+                        if (!te || te.frames < 2 ||
+                                tlseen.indexOf(te.anim) >= 0) {
+                            tls = null;
+                            break;
+                        }
+                        tlseen.push(te.anim);
+                        tls.push(te);
+                    }
+                    if (tls && tls.length > 1) {
+                        tapsL[s] = tls;
+                        for (var tj2 = 0; tj2 < tls.length; tj2++)
+                            artKnownStrip(tls[tj2]);
+                    }
+                }
                 var tg = behav && behav[s] && behav[s].toggle;
                 if (tg) {
                     var kind = tg.kind || 'inout', a2, i2, rec2 = null;
@@ -926,7 +1024,7 @@
                         for (i2 = 1; i2 < ps.length; i2++)
                             if (ps[i2] && ps[i2].frames > 1) rec2 = { kind: 'cycle', poses: ps };
                     }
-                    if (rec2) togglers[s] = rec2;
+                    if (rec2) { togglers[s] = rec2; artKnownTog(rec2); }
                 }
             }
             window.__CV_ANIM = anims;
@@ -987,17 +1085,31 @@
         var tp = b._tap;              // a tapped building plays its one-shot
         if (tp) {
             var tfi = Math.floor((animNow - tp.t0) * tp.a.fps / 1000);
-            if (tfi >= tp.a.frames) {
-                b._tap = null;
+            if (tfi >= (tp.n || tickCount(tp.a))) {   // one loop of the
+                b._tap = null;                        // ENGINE's ticks, not
                 if (tp.then !== undefined) b._tog = tp.then;
             }
             else {
                 // taps skip the blit budget; every one-shot is click-driven,
                 // so like the toggle transitions it is exempt from the
                 // huge-atlas cap — the big rotor strips of the police/
-                // attack/burns helis are plain taps
-                var r = animCell(tp.a, k, tfi, true);
-                if (r) { r.tap = 1; return { cells: [r], base: 0, tap: 1 }; }
+                // attack/burns helis are plain taps. A layered one-shot
+                // (tapsL) blits every part's cell at the same frame (short
+                // strips hold their last cell), the body underneath them
+                var tls = tp.list || [tp.a], trs = [], tj;
+                for (tj = 0; tj < tls.length; tj++) {
+                    var ta = tls[tj], tn = tickCount(ta);
+                    var tr = animCell(ta, k, cellAt(ta, Math.min(tfi, tn - 1)),
+                                      true);
+                    if (!tr) {
+                        if (tp.base) trs = null;   // stack draws whole, or
+                        break;                     // not at all: idle answers
+                    }
+                    tr.tap = 1;
+                    trs.push(tr);
+                }
+                if (trs && trs.length)
+                    return { cells: trs, base: tp.base || 0, tap: 1 };
                 // gated (under the readability floor): the one-shot can't
                 // draw — let the idle path answer instead
             }
@@ -1016,8 +1128,7 @@
             }
             if (a) {
                 var c = animCell(a, k, hold ? a.frames - 1
-                    : (Math.floor(animNow * a.fps / 1000) + ph) % a.frames,
-                    true);
+                    : animIdx(a, animNow, ph), true);
                 return c ? { cells: [c], base: 0 } : null;
             }
         }
@@ -1026,7 +1137,7 @@
         var cells = null;
         for (var i = 0; i < rec.cells.length; i++) {
             var a2 = rec.cells[i];
-            var c2 = animCell(a2, k, (Math.floor(animNow * a2.fps / 1000) + ph) % a2.frames);
+            var c2 = animCell(a2, k, animIdx(a2, animNow, ph));
             if (!c2) {
                 if (rec.base) return null;    // a layered stack composites whole
                 continue;
@@ -1044,6 +1155,35 @@
         if ((a.px > ANIM_MAX_ATLAS_PX && !oversize) ||
             Math.min(a.cellw, a.cellh) * k < ANIM_MIN_PX) return null;
         return { a: a, fi: fi };
+    }
+    /* Is any of this cell's art inside the viewport? Asked BEFORE the atlas is
+       requested: a cell that cannot be seen must not spend a cache slot (nor
+       veto a part stack). Same bounds the blit itself culls by. */
+    function cellOnScreen(a, fi, px, py, k) {
+        if (a.sub) {                        // sparse strip: any rect of the cell
+            var rs = a.sub[fi] || [];
+            for (var j = 0; j < rs.length; j++) {
+                var r = rs[j];
+                if (px + r.ox * k + r.w * k >= -4 && px + r.ox * k <= VW + 4 &&
+                    py + r.oy * k + r.h * k >= -4 && py + r.oy * k <= VH + 4)
+                    return true;
+            }
+            return false;
+        }
+        var ax0 = px - a.ax * k, ay0 = py - a.ay * k;
+        return !(ax0 + a.cellw * k < -4 || ax0 > VW + 4 ||
+                 ay0 + a.cellh * k < -4 || ay0 > VH + 4);
+    }
+    /* keep the 90 ms anim tick alive only while an atlas this building wants is
+       genuinely still decoding: a strip refused for lack of a slot retries on
+       the next natural frame (the fleet around it ticks anyway), so it does not
+       need the whole page repainting forever */
+    function animDecoding(an) {
+        for (var i = 0; i < an.cells.length; i++) {
+            var r = texs[cityUrl(an.cells[i].a.png)];
+            if (r && r.st === 0) return 1;
+        }
+        return 0;
     }
     function ubOf(a) {                    // anchor-relative drawing bounds
         if (!a.sub) {
@@ -1067,17 +1207,50 @@
     }
     function animFrame(a, b, nowMs) {
         var ph = Math.abs(Math.round((b.px || 0) * 3 + (b.py || 0) * 7));
-        return (Math.floor((nowMs === undefined ? animNow : nowMs) *
-                           a.fps / 1000) + ph) % a.frames;
+        return animIdx(a, nowMs === undefined ? animNow : nowMs, ph);
+    }
+    function animIdx(a, clockMs, ph) {   // shared clock -> this strip's cell
+        return cellAt(a, (Math.floor(clockMs * a.fps / 1000) + ph) %
+                         tickCount(a));
+    }
+    function tickCount(a) {              // ticks in the strip's engine loop
+        return a.lt || a.lf || a.frames;
+    }
+    function tickCell(a, t) {            // cell to show on tick t of that loop
+        var rp = a.rp, k = -1, bv = -1, i;
+        // the engine holds each raw frame for a tick and the atlas only keeps
+        // the frames that differ, so tick t shows the newest cell at or before
+        // it — wrapping to the last cell for the ticks before the first
+        for (i = 0; i < rp.length; i++)
+            if (rp[i] <= t && rp[i] > bv) { bv = rp[i]; k = i; }
+        return k < 0 ? rp.length - 1 : k;
+    }
+    function cellAt(a, t) {              // cell to show on engine tick t
+        var n = tickCount(a);
+        if (t >= n) return -1;
+        if (a.rp) return tickCell(a, t);
+        return a.lf && n !== a.frames    // pre-rp thinning: spread the cells
+            ? Math.min(Math.floor(t * a.frames / n), a.frames - 1)
+            : t;                         // evenly over the loop
     }
     window.__CV_ANIM_FI = function (slug, b, nowMs) {   // smoke-test probe
         if (!anims || !anims[slug]) return -1;
         return animFrame(anims[slug].cells[0], b, nowMs);
     };
+    window.__CV_ANIM_cell = function (slug, b, i, nowMs) {  // harness: clock
+        var r = anims && anims[slug];                        // mapping per
+        if (!r || !r.cells[i]) return -1;                    // registered part
+        return animIdx(r.cells[i], nowMs || 0,
+            Math.abs(Math.round((b.px || 0) * 3 + (b.py || 0) * 7)));
+    };
     window.__CV_ANIM_layers = function (slug) {         // smoke-test probe
         var r = anims && anims[slug];
         return r ? { n: r.cells.length, base: r.base,
                      anims: r.cells.map(function (a) { return a.anim; }) } : null;
+    };
+    window.__CV_ANIM_tapLayers = function (slug) {      // smoke-test probe
+        var r = tapsL[slug];
+        return r ? r.map(function (a) { return a.anim; }) : null;
     };
     function tapBuilding(b) {
         if (!b || !anims || !animOn || !artMode) return false;
@@ -1098,16 +1271,31 @@
             markDirty();
             return true;
         }
+        var tl = tapsL[key];
+        if (tl) {
+            if (b._tap) return false;
+            var n = 0, i3;
+            for (i3 = 0; i3 < tl.length; i3++)
+                if (tickCount(tl[i3]) > n) n = tickCount(tl[i3]);
+            b._tap = { a: tl[0], list: tl, n: n, base: 1,
+                       t0: performance.now() };
+            markDirty();
+            return true;
+        }
         var t = taps[key];
         if (!t) return false;
-        b._tap = { a: t, t0: performance.now() };
+        // a single-strip tap on a LAYERED asset (the Active verb never
+        // paired): draw the body under it too, or the object blanks down
+        // to one part for the length of the one-shot
+        b._tap = { a: t, t0: performance.now(),
+                   base: (anims[key] && anims[key].base) ? 1 : 0 };
         markDirty();
         return true;
     }
     function blockAtTile(tx, ty) {
         for (var k = buildings.length - 1; k >= 0; k--) {   // front-to-back
             var b = buildings[k];
-            if (objHidden[b.cat]) continue;
+            if (objHidden[b.cat] || hiddenObjs[b.hkey]) continue;
             if (tx >= b.x0 && tx < b.x1 && ty >= b.y0 && ty < b.y1) return b;
         }
         return null;
@@ -1119,7 +1307,7 @@
         if (!b._tap) return -1;
         var fi = Math.floor((performance.now() - b._tap.t0) *
                             b._tap.a.fps / 1000);
-        return fi < b._tap.a.frames ? fi : -1;
+        return fi < (b._tap.n || tickCount(b._tap.a)) ? fi : -1;
     };
     window.__CV_TAP_at = function (tx, ty, fire) {  // harness: lot rule
         var b = blockAtTile(tx, ty);
@@ -1128,7 +1316,7 @@
         if (!b._tap) return -1;
         var fi = Math.floor((performance.now() - b._tap.t0) *
                             b._tap.a.fps / 1000);
-        return fi < b._tap.a.frames ? fi : -1;
+        return fi < (b._tap.n || tickCount(b._tap.a)) ? fi : -1;
     };
     window.__CV_TOG = function (mi) {
         var b = byMi[mi];
@@ -1142,7 +1330,9 @@
     window.__CV_TOG_strip = function (mi) {
         var b = byMi[mi];
         if (!b) return null;
-        if (b._tap) return b._tap.a.anim;
+        if (b._tap) return b._tap.list
+            ? b._tap.list.map(function (x) { return x.anim; }).join('+')
+            : b._tap.a.anim;
         var k = animKey(b);
         var tg = k && togglers[k];
         if (!tg) return null;
@@ -1163,14 +1353,61 @@
         if (n !== undefined) ANIM_MIN_PX = Math.max(0, n | 0);
         return ANIM_MIN_PX;
     };
-    /* the huge-slot budget is a SESSION cap and click-driven one-shots keep
-       arriving (heli rotor taps): recycle the oldest huge entry that no
-       building is mid-animation on. */
-    function freeHugeSlot() {
+    /* ---- filmstrip atlas cache ------------------------------------------------
+       Three caps bound what the player keeps decoded: the big-atlas tier
+       (ANIM_BIG_MAX strips over ANIM_BIG_ATLAS_PX), the oversize pool
+       (ANIM_HUGE_MAX — only the click-driven paths reach it) and the LRU
+       bound (ANIM_CACHE_MAX decoded filmstrips). A full cap is a REASON TO
+       WAIT, never a licence to drop a strip the player is looking at.
+
+       animUse records the last frame the renderer asked for each url and every
+       eviction path refuses to touch a strip asked for on THIS frame or the
+       last — the last frame matters, because when an arrival needs a slot the
+       buildings drawn later in the same frame have not stamped yet, so a
+       one-frame test would drop them and re-decode them in the same breath.
+       When the whole cache is on screen the arrival is refused instead: it
+       draws its static PNG this frame and asks again on the next tick.
+       Evicting a visible strip frees nothing anyway — the next frame asks for
+       it back — so a wide zoom over the ocean fleet (96 blit budget against 8
+       big-tier and 40 LRU slots) used to churn one multi-megapixel decode per
+       frame, forever, and count each one as new art in the pill. */
+    var animFrameId = 0;                  // bumped once per rendered frame
+    var animUse = {};                     // url -> last frame the renderer drew it
+    var animRefused = 0;                  // arrivals that had to wait for a slot
+    var animReloads = 0;                  // re-decodes of an already-settled file
+    var animDrops = 0;                    // decodes freed by eviction
+    var animRetryT = 0;                   // one-shot retry deadline
+    var animTried = {};                   // url -> asked for a slot once already
+    function animInUse(url) {             // asked for now, or a frame ago
+        var u = animUse[url];
+        return u === animFrameId || u === animFrameId - 1;
+    }
+    /* no slot this frame: draw static and ask again soon. The retry window is
+       armed once per url (animTried) so a strip that can never get in — the
+       whole cache is on screen and nobody moves — does not keep the page
+       repainting forever, which is what the "always loading" pill looked like
+       from the outside. */
+    function animWait(url) {
+        animRefused++;
+        if (!animTried[url]) {
+            animTried[url] = 1;
+            if (animNow >= animRetryT) animRetryT = animNow + 2000;
+        }
+        return null;
+    }
+    /* the tier budgets are SESSION caps and arrivals keep coming (heli rotor
+       taps, the thinned over-cap fleet crowding the big tier): recycle the
+       oldest entry of the tier that nothing on screen wants. */
+    function freeSlot(tier) {
         var i, b, live = {};
         for (i = 0; i < buildings.length; i++) {
             b = buildings[i];
-            if (b._tap) live[b._tap.a.png] = 1;
+            if (b._tap) {
+                if (b._tap.list)            // layered one-shot: every part
+                    for (var q = 0; q < b._tap.list.length; q++)
+                        live[b._tap.list[q].png] = 1;
+                else live[b._tap.a.png] = 1;
+            }
             if (b._tog) {                       // an engaged toggle machine
                 var tgx = togglers[animKey(b)]; // still blits its state strip
                 if (!tgx) continue;
@@ -1182,57 +1419,110 @@
         }
         for (i = 0; i < animLru.length; i++) {
             var old = animLru[i];
-            if (!animHuge[old] || live[animHuge[old]]) continue;
-            delete animHuge[old];               // frees the oversize slot
+            if (!tier[old] || live[tier[old]] || animInUse(old)) continue;
+            delete tier[old];                   // frees the tier slot
             animLru.splice(i, 1);
-            dropTex(old);                       // a still-visible one reloads
+            dropTex(old, 1);
             return true;
         }
         return false;
     }
-    /* filmstrip request point: enforces the big-atlas session budget and
-       the LRU bound. Returns the decoded texture, null = draw the static
-       PNG instead (budget spent / still decoding). */
+    /* one LRU slot for a new arrival; false = every resident strip is on
+       screen right now, so the arrival waits instead of evicting one */
+    function freeCacheSlot(click) {
+        if (animLru.length < ANIM_CACHE_MAX) return true;
+        for (var i = 0; i < animLru.length; i++) {
+            var old = animLru[i];
+            if (animInUse(old)) continue;
+            animLru.splice(i, 1);
+            delete animHuge[old];
+            dropTex(old, 1);
+            if (animNow >= animRetryT) animRetryT = animNow + 2000;
+            return true;                    // a strip just freed: retry soon
+        }
+        /* nothing to spare: a click-driven one-shot still gets in, up to the
+           oversize pool's own slack — it is what the player just asked to see
+           and it is gone in a second, while what it would displace is only an
+           idle loop that would re-decode the moment it came back */
+        return !!click && animLru.length < ANIM_CACHE_MAX + ANIM_HUGE_MAX;
+    }
+    /* filmstrip request point: enforces the big-atlas session budget and the
+       LRU bound. Returns the decoded texture, null = draw the static PNG
+       instead (still decoding / no slot free yet). */
     function animAtlasFor(a, click) {
         var url = cityUrl(a.png);
-        if (!(url in texs)) {                 // first request this session
-            if (a.px > ANIM_MAX_ATLAS_PX ||
-                (click && a.px > ANIM_BIG_ATLAS_PX)) {
-                // oversize: only the click-driven paths (toggle machines
-                // and tap one-shots) ever ask, so it rides the small
-                // oversize session pool — recycled by freeHugeSlot(), not
-                // the big-tier budget (which is for loops the map picked
-                // on its own and is never released: the ziffcorp heli tap
-                // at 15.7M sat just under MAX and starved there)
-                if (!animHuge[url]) {
-                    if (Object.keys(animHuge).length >= ANIM_HUGE_MAX &&
-                        !freeHugeSlot()) return null;
-                    animHuge[url] = a.png;
-                }
-            } else if (a.px > ANIM_BIG_ATLAS_PX) {
-                if (animBigLive >= ANIM_BIG_MAX) return null;
-                animBigLive++;
-            }
-            animLru.push(url);
-            while (animLru.length > ANIM_CACHE_MAX) {
-                var old = animLru.shift();    // oldest touched url dies first
-                delete animHuge[old];
-                dropTex(old);                 // a still-visible one reloads
-            }
-        } else {                              // touch -> most-recently-used
+        animUse[url] = animFrameId;         // the renderer wants it THIS frame
+        if (url in texs) {                  // touch -> most-recently-used
             var i = animLru.indexOf(url);
             if (i < 0) animLru.push(url);
             else if (i < animLru.length - 1) {
                 animLru.splice(i, 1);
                 animLru.push(url);
             }
+            return texFor(url);
         }
+        if (a.px > ANIM_MAX_ATLAS_PX ||
+            (click && a.px > ANIM_BIG_ATLAS_PX)) {
+            // oversize: only the click-driven paths (toggle machines
+            // and tap one-shots) ever ask, so it rides the small
+            // oversize session pool — recycled by freeSlot() on
+            // demand (the ziffcorp heli tap at 15.7M sat just under
+            // the big-tier cap and starved there), while the big tier
+            // is for loops the map picked on its own
+            if (!animHuge[url]) {
+                if (Object.keys(animHuge).length >= ANIM_HUGE_MAX &&
+                    !freeSlot(animHuge)) return animWait(url);
+                animHuge[url] = a.png;
+            }
+        } else if (a.px > ANIM_BIG_ATLAS_PX) {
+            if (!animBig[url]) {
+                // full is not fatal: recycle the big strip nobody is watching
+                // — off-screen ones only, since animUse protects a visible
+                // one. Without this the pool filled once and every later ship
+                // (the thinned fleet!) drew static forever; with this but
+                // without that protection it churned instead.
+                if (animBigLive >= ANIM_BIG_MAX && !freeSlot(animBig))
+                    return animWait(url);
+                animBig[url] = 1;
+                animBigLive++;
+            }
+        }
+        if (!freeCacheSlot(click)) {        // full of visible strips: wait
+            if (animBig[url]) { delete animBig[url]; animBigLive--; }
+            delete animHuge[url];
+            return animWait(url);
+        }
+        animLru.push(url);
         return texFor(url);
+    }
+    function animWanted() {                 // distinct strips drawn last frame
+        var n = 0, u;
+        for (u in animUse) if (animInUse(u)) n++;
+        return n;
     }
     window.__CV_ANIM_stats = function () {    // console/harness telemetry
         return { big: animBigLive, bigMax: ANIM_BIG_MAX,
                  lru: animLru.length, lruMax: ANIM_CACHE_MAX,
-                 capPx: ANIM_MAX_ATLAS_PX, bigPx: ANIM_BIG_ATLAS_PX };
+                 capPx: ANIM_MAX_ATLAS_PX, bigPx: ANIM_BIG_ATLAS_PX,
+                 wanted: animWanted(), refused: animRefused,
+                 reloads: animReloads, drops: animDrops };
+    };
+    window.__CV_ANIM_clear = function () {    // harness: forget every filmstrip
+        var us = animLru.slice();             // decode, so an arrival under a
+        animLru.length = 0;                   // shrunk cap can be re-watched
+        for (var u in animBig) delete animBig[u];
+        for (var u2 in animHuge) delete animHuge[u2];
+        animBigLive = 0;
+        for (var i = 0; i < us.length; i++) dropTex(us[i]);
+        return 0;
+    };
+    window.__CV_ANIM_cache = function (n) {   // harness: shrink the bound and
+        if (n !== undefined) ANIM_CACHE_MAX = Math.max(1, n | 0);
+        return ANIM_CACHE_MAX;                // watch it honour it calmly
+    };
+    window.__CV_ANIM_bigmax = function (n) {  // harness: same for the big tier
+        if (n !== undefined) ANIM_BIG_MAX = Math.max(0, n | 0);
+        return ANIM_BIG_MAX;
     };
 
     /* ---- art tune panel: pin-convention A/B without reloads ------------------
@@ -1520,6 +1810,7 @@
                 cat: CityObjects.classify(info ? info[0] : ''),
                 slug: (b[8] || (info ? (info[2] || '') : '')),
                 flip: b[8] ? 0 : b[5], px: b[6], py: b[7],
+                hkey: b[0] + '@' + Math.round(b[6]) + ',' + Math.round(b[7]),
                 depth: front[0] + front[1],
                 ox1: front[0]
             };
@@ -1686,6 +1977,53 @@
 
     /* per-bucket visibility (object legend); see CityObjects.classify */
     var objHidden = {};
+
+    /* ---- per-instance hide (the building card's toggle) --------------------
+       Occlusion debugging: an object drawn in FRONT of another claims both
+       pixels and clicks, so the back one cannot be inspected. Hiding it here
+       skips its scene blit, its outlines, its tap/hit-test and its wire, but
+       NEVER its selection outline — so a hidden object you selected stays
+       ghost-boxed. Keys are catalog-id + ground-pivot tile, stable across
+       reloads; persisted like the other view prefs. */
+    var OBJHIDE_KEY = 'mrsnrub.cityview.hiddenobjs';
+    var hiddenObjs = {};                  // hkey -> true
+    try {
+        var _ho = JSON.parse(localStorage.getItem(OBJHIDE_KEY));
+        if (_ho && typeof _ho === 'object')
+            for (var _hk in _ho)
+                if (Object.prototype.hasOwnProperty.call(_ho, _hk))
+                    hiddenObjs[_hk] = true;
+    } catch (e) { /* private mode */ }
+    function hiddenCount() {
+        var n = 0;
+        for (var k in hiddenObjs)
+            if (Object.prototype.hasOwnProperty.call(hiddenObjs, k)) n++;
+        return n;
+    }
+    function setHidden(blk, on) {
+        if (on) hiddenObjs[blk.hkey] = true;
+        else delete hiddenObjs[blk.hkey];
+        try {
+            localStorage.setItem(OBJHIDE_KEY, JSON.stringify(hiddenObjs));
+        } catch (e) { /* private mode */ }
+        bAtlas = null;                    // orbit-LOD flat atlas is stale now
+        bFlatDirty = true;
+        markDirty();
+    }
+    function unhideAllObjs() {
+        hiddenObjs = {};
+        try { localStorage.removeItem(OBJHIDE_KEY); } catch (e) { /* private mode */ }
+        bAtlas = null;
+        bFlatDirty = true;
+        markDirty();
+    }
+    window.__CV_HIDE = function (mi, on) {  // console/harness: query/toggle
+        var b = byMi[mi];
+        if (!b) return false;
+        if (on === undefined) return !!hiddenObjs[b.hkey];
+        setHidden(b, !!on);
+        return !!hiddenObjs[b.hkey];
+    };
 
     /* The TYPE_STYLE colours are terrain.js's private table (documented in
        js/terrain.js); the Pixi renderer needs them as tints, and terrain.js
@@ -2392,6 +2730,7 @@
             var byCat = {}, cats = [];
             for (i = 0; i < buildings.length; i++) {    // depth-sorted already
                 b = buildings[i];
+                if (hiddenObjs[b.hkey]) continue;       // per-instance hide
                 var rec = byCat[b.cat];
                 if (!rec) {
                     rec = byCat[b.cat] = document.createElement('canvas');
@@ -2430,7 +2769,7 @@
     /* ============================ render ===================================== */
     var DIAG = {
         mode: 'Pixi', ms: 0, fps: 0, maxMs: 0, anims: 0, charAnims: 0,
-        pool: 0, ver: '2026-10-28.3'
+        pool: 0, ver: '2026-10-29.14'
     };
     window.__CV_DIAG = DIAG;
     window.__CV_VER = DIAG.ver;                    // console sanity check
@@ -2452,7 +2791,9 @@
     function render() {
         var t0 = performance.now();
         animNow = t0;                     // one clock per frame: instances agree
+        animFrameId++;                    // the atlas cache's "is it on screen" tick
         animLive = 0;
+        animPending = 0;
         charAnimLive = 0;
         animBudget = ANIM_MAX_BLITS;
         var s = CAM.scale(cam);
@@ -2550,7 +2891,7 @@
             var mgn = art ? 6 : 2;
             for (i = 0; i < buildings.length; i++) {
                 b = buildings[i];
-                if (objHidden[b.cat]) continue;
+                if (objHidden[b.cat] || hiddenObjs[b.hkey]) continue;
                 if (b.x1 < T.x0 - mgn || b.x0 > T.x1 + mgn ||
                     b.y1 < T.y0 - mgn || b.y0 > T.y1 + mgn) continue;
                 if (art && emitBuilding(b, k, A)) continue;
@@ -2933,25 +3274,31 @@
         var bl = px - (mir ? sp.w - sp.anchor[0] : sp.anchor[0]) * k;
         var an = animOf(b, k);            // filmstrip cells instead of the PNG?
         if (an) {
-            var drew = 0, i, j, ok = 1;
+            var drew = 0, i, j, ok = 1, vis = 0;
             // a layer cell may legitimately be as big as the body it hides
             var cap = an.base ? Math.max(4096, Math.max(sp.w, sp.h) * k) : 2048;
             for (i = 0; i < an.cells.length; i++) {
                 var c0 = an.cells[i], st = c0.a;
+                if (!cellOnScreen(st, c0.fi, px, py, k)) continue;
+                vis = 1;
                 if (!animAtlasFor(st, c0.tap) ||
                     Math.max(st.cellw, st.cellh) * k > cap) {
                     if (an.base) ok = 0;  // stack must draw whole, or not at all
                 }
             }
-            if (ok) {
-                if (an.base) {            // multi-part body: PNG under the cells
+            var bodyVis = !(bl + sp.w * k < -4 || bl > VW + 4 ||
+                            (py - sp.anchor[1] * k) + sp.h * k < -4 ||
+                            (py - sp.anchor[1] * k) > VH + 4);
+            if (ok && (vis || bodyVis)) {
+                if (an.base && bodyVis) {   // multi-part body: PNG under the cells
                     emitSpr(baseTex, bl, py - sp.anchor[1] * k,
                             sp.w * k, sp.h * k, mir);
                     drew = 1;
                 }
                 for (i = 0; i < an.cells.length; i++) {
                     var c = an.cells[i], a = c.a, fi = c.fi;
-                    if (!animAtlasFor(a, c.tap)) continue;   // decoding / budget spent
+                    if (!cellOnScreen(a, fi, px, py, k)) continue;
+                    if (!animAtlasFor(a, c.tap)) continue;   // decoding / no slot
                     if (a.sub) {                      // sparse strip: blit its rects
                         var rs = a.sub[fi] || [];
                         for (j = 0; j < rs.length; j++) {
@@ -2981,10 +3328,28 @@
                 }
             }
             if (drew) { animLive++; if (!an.tap) animBudget--; return true; }
-            // nothing blitted (decoding / off-screen / stack rejected):
-            // fall through to the static PNG
+            // nothing blitted (decoding / off-screen / stack rejected): keep the
+            // anim tick alive while the atlas is still in flight so this retries
+            // the moment it lands (the clock-driven tap expires on its own
+            // meanwhile); a strip refused for lack of a cache slot does not
+            // hold the page rendering, it retries on the next real frame
+            if (vis && animDecoding(an)) animPending = 1;
         }
-        emitSpr(baseTex, bl, py - sp.anchor[1] * k, sp.w * k, sp.h * k, mir);
+        /* Oversized part stacks (the sea fleet above all) can never blit
+           their strips on the map — a 24 Mpx hull filmstrip is over the
+           decode cap, and the stack draws whole or not at all. For those
+           the plain body PNG is NOT the whole object: AircraftCarrier's
+           hull sides and wake live only in its oversized Neutral_Base
+           strip. The generator bakes body + every over-cap layer's cell 0
+           into `stack`; draw it in place of the body once decoded (the
+           normal body until then). Never touches the animating path. */
+        var st = sp, stex = baseTex;
+        if (sp.stack) {
+            var st2 = texFor(cityUrl(sp.stack.png));
+            if (st2) { st = sp.stack; stex = st2; }
+        }
+        emitSpr(stex, px - (mir ? st.w - st.anchor[0] : st.anchor[0]) * k,
+                py - st.anchor[1] * k, st.w * k, st.h * k, mir);
         return true;
     }
 
@@ -3174,7 +3539,7 @@
             function P(x, y) { return [A.a * x + A.b * y + A.c, A.d * x + A.e * y + A.f]; }
             for (var wi = 0; wi < buildings.length; wi++) {
                 var wb = buildings[wi];
-                if (objHidden[wb.cat]) continue;
+                if (objHidden[wb.cat] || hiddenObjs[wb.hkey]) continue;
                 if (wb.x1 < 0 || wb.x0 > 0) { /* cull below via screen box */ }
                 var g0 = P(wb.x0, wb.y0), g1 = P(wb.x1, wb.y0),
                     g2 = P(wb.x1, wb.y1), g3 = P(wb.x0, wb.y1);
@@ -3205,6 +3570,8 @@
             if (m.kind === 'b') {
                 b = byMi[m.i];
                 if (objHidden[b.cat]) continue;
+                // NB: hidden instances DO outline — search is how you find
+                // one again to unhide it (the card's toggle brings it back)
                 strokePts(outG, blockPolys(b).top, 0x6aa9d9, 2, 0.9);
             } else if (!objHidden.people) {
                 var p = charScreen(M.chars[m.i]);
@@ -3252,9 +3619,13 @@
             needsRender = false;
             render();
             app.render();
-        } else if ((animLive || charAnimLive) && artMode && animOn && t >= animNextT) {
+        } else if ((animLive || charAnimLive || animPending ||
+                    (artMode && animOn && animNow >= animRetryT)) &&
+                artMode && animOn && t >= animNextT) {
             // keep the filmstrips and character idle loops moving: last
-            // frame drew animated sprites, so schedule the next cell swap
+            // frame drew animated sprites, is still waiting on one to
+            // decode, or has a strip that was refused a cache slot and is
+            // owed one retry (animRetryT, armed once per arrival)
             animNextT = t + 90;
             markDirty();
         }
@@ -3342,6 +3713,11 @@
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;  // search typing
         var n = 40;
         if (e.key === 'Escape') { setSel(null); }
+        else if ((e.key === 'h' || e.key === 'H') && selected && selected.kind === 'b') {
+            var hb = byMi[selected.i];               // toggle hide on the card object
+            if (hb) { setHidden(hb, !hiddenObjs[hb.hkey]); setSel(selected); }
+            e.preventDefault();
+        }
         else if (e.key === 'ArrowLeft') { CAM.panByScreen(cam, n, 0); markDirty(); e.preventDefault(); }
         else if (e.key === 'ArrowRight') { CAM.panByScreen(cam, -n, 0); markDirty(); e.preventDefault(); }
         else if (e.key === 'ArrowUp') { CAM.panByScreen(cam, 0, n); markDirty(); e.preventDefault(); }
@@ -3394,6 +3770,14 @@
                       : ' · no tap anim') + '</td></tr>'
                  : '') +
             '</table>' +
+            '<button type="button" class="hidebtn" data-act="hideobj"' +
+            ' aria-pressed="' + (hiddenObjs[byMi[i].hkey] ? 'true' : 'false') + '"' +
+            ' data-tip="hide just this instance (key h): it stops drawing and' +
+            ' stops claiming clicks, so what sits under it can be inspected;' +
+            ' survives reloads — find it again by name, or use unhide all">' +
+            (hiddenObjs[byMi[i].hkey] ? '&#128065; show object'
+                                       : '&#128584; hide object') +
+            '</button>' +
             '<div class="pinnote">Selected — Esc or clicking a ground tile deselects.' +
             ' Enter in the search box centers matches.</div>';
     }
@@ -3474,7 +3858,54 @@
         }
         markResultSel();
         markDirty();
+        if (hiddenCount()) details.appendChild(hiddenBar());
     }
+    /* "hidden objects" bar: the recovery path — hidden instances release
+       clicks, so this list (or a name search) is how you find one again */
+    function hiddenBar() {
+        var el = document.createElement('div');
+        el.className = 'hidebar';
+        var rows = [];
+        for (var mi = 0; mi < byMi.length; mi++) {
+            var b = byMi[mi];
+            if (!b || !hiddenObjs[b.hkey]) continue;
+            var info = M.binfo[b.id];
+            rows.push('<div class="hiderow">' +
+                '<button type="button" data-act="gohide" data-mi="' + mi +
+                '" data-tip="select + centre: the yellow box marks where the hidden object sits">' +
+                esc(info ? info[0] : 'object #' + b.id) +
+                ' <b class="n">@' + Math.round(b.px) + ',' + Math.round(b.py) +
+                '</b></button>' +
+                '<button type="button" class="un" data-act="showone" data-mi="' + mi +
+                '" data-tip="unhide just this one">&#10005;</button></div>');
+        }
+        el.innerHTML = '<div class="hhead">hidden objects <b>' + hiddenCount() +
+            '</b><button type="button" class="unall" data-act="unhideall"' +
+            ' data-tip="restore every hidden instance">unhide all</button></div>' +
+            rows.join('');
+        return el;
+    }
+    details.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest && e.target.closest('[data-act]');
+        if (!btn) return;
+        var act = btn.getAttribute('data-act');
+        if (act === 'hideobj') {                     // the card's toggle
+            if (!selected || selected.kind !== 'b') return;
+            var b = byMi[selected.i];
+            if (!b) return;
+            setHidden(b, !hiddenObjs[b.hkey]);
+            setSel(selected);                        // re-label the button
+        } else if (act === 'unhideall') {
+            unhideAllObjs();
+            setSel(selected);
+        } else if (act === 'showone') {
+            var m1 = parseInt(btn.getAttribute('data-mi'), 10);
+            if (byMi[m1]) { setHidden(byMi[m1], false); setSel(selected); }
+        } else if (act === 'gohide') {
+            var m2 = parseInt(btn.getAttribute('data-mi'), 10);
+            if (byMi[m2]) { setSel({ kind: 'b', i: m2 }); centerSel(); }
+        }
+    });
     function centerSel() {
         if (!selected) return;
         if (selected.kind === 'c') {
@@ -3521,7 +3952,7 @@
         }
         for (var k = buildings.length - 1; k >= 0; k--) {   // depth-sorted back-to-front
             var b = buildings[k];
-            if (objHidden[b.cat]) continue;
+            if (objHidden[b.cat] || hiddenObjs[b.hkey]) continue;
             var q = blockPolys(b);
             if (pointInPoly(sx, sy, q.top) || pointInPoly(sx, sy, q.right) ||
                 pointInPoly(sx, sy, q.left))

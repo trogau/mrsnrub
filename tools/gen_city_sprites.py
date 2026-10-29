@@ -99,6 +99,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from PIL import Image  # noqa: E402
+Image.MAX_IMAGE_PIXELS = None   # the filmstrips are our own generated
+                                # output: 100+ Mpx atlases are no bomb
 from extract_assets import rgb_to_rgba  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -1041,9 +1043,11 @@ def _composite(parsed, img, name, blocks):
     Placement (revised 2026-10-24, see the long rule note in the body):
     the block's transformed content AABB starts at (x, y), with content
     spanning (x,y)+(M(u,v)-(rx0,ry0)) where X = a*u + c*v, Y = b*u + d*v
-    ((b,c) are stored transposed); the diagonal signs of (a, dd) mirror
-    the crop in place. Identity blocks paste without resampling; pure
-    diagonal scales resize NEAREST; rotations/shears go through the
+    ((b,c) are stored transposed); rotated blocks (b or c nonzero) blit
+    with the SIGNED matrix — a negative diagonal is a reflection, not an
+    in-place crop mirror; b=c=0 blocks take the diagonal signs of (a, dd)
+    as in-place crop mirrors. Identity blocks paste without resampling;
+    pure diagonal scales resize NEAREST; rotations/shears go through the
     affine path, BILINEAR.
     Evidence: b=c=0 blocks obey the mirror-pair relation x' ~ -(x + w)
     (fresh raw audit 5907:10 over the pool's flipped pairs — identical
@@ -1064,6 +1068,39 @@ def _composite(parsed, img, name, blocks):
             skipped += 1  # global sprite id not in this file
             continue
         _nm, cx, cy, cw, ch = cells[ci]
+        if _nm.endswith('Input'):
+            # Engine-internal source art — never a placed piece (2026-10-29,
+            # boatloadofdonuts / "DonutBoat"). Pool audit (all 3618 bsv3):
+            # exactly ONE asset carries an *Input cell at all, and it is the
+            # only cell of its kind — C_WaveInput, drawn by that one asset in
+            # 12 frame slots, always identity-placed.
+            # It is the DonutBoat's bow-splash slot going off-pattern once per
+            # wave cycle. That slot runs the (N, N+8) wave family with one
+            # fixed rotation across the whole loop:
+            #   beat 0  C_Wave_00  (414.15,-383.72) m=(0.626,0.778,-0.653,0.755)
+            #   beat 1  C_WaveInput(406.25,-324.20) m=IDENTITY      <-- anomaly
+            #   beat 2  C_Wave_02  (399.69,-391.00) m=(0.626,0.778,-0.653,0.755)
+            #   beat 3  C_Wave_03  (395.77,-400.36) m=(0.626,0.778,-0.653,0.755)
+            # x tracks the series (406 vs the ~407 the drift interpolates),
+            # but y sits ~65 px low and the rotation is missing. The crop
+            # settles it: C_Wave_00..03 (the bow family) all run bottom-left
+            # to top-right, while C_WaveInput has the OPPOSITE diagonal, the
+            # one the hull-side family C_Wave_08..11 shares — i.e. a stray
+            # hull-side wave left in the bow slot, unrotated. On screen it
+            # reads as a flat water sprite sliding horizontally across the
+            # stern for 3 of every 20 idle frames.
+            # Dropping it is also what the game's own flattened reference
+            # shows: boatloadofdonuts_transimage.rgb (the Neutral pose) has
+            # the rotated bow splash and no horizontal patch, and the body
+            # PNG drawn under the strip keeps supplying that splash while the
+            # strip skips its off-pattern beat — so the loop stays whole.
+            skipped += 1
+            if not parsed.get('_input_warned'):
+                parsed['_input_warned'] = True
+                parsed['warnings'].append(
+                    f'{name}: skipped {len([1 for c in cells if c[0].endswith("Input")])} '
+                    f'engine-internal *Input cell(s)')
+            continue
         if not (0 <= cx and 0 <= cy and cx + cw <= img.width
                 and cy + ch <= img.height):
             skipped += 1
@@ -1080,13 +1117,31 @@ def _composite(parsed, img, name, blocks):
         # (See docstring + the placement note below for the full evidence
         # chain: mirror-pair audit pins the b=c=0 case; the rotation fan
         # and limb chaining pin the rotated case.)
-        flip_h, flip_v = a < 0, dd < 0
         # (b, c) are stored transposed relative to [X;Y]=[a b;c d][u;v]:
         # X = a*u + c*v, Y = b*u + d*v. Evidence 2026-10-19: the GiantRobot
         # 54-deg upperarm only chains toward its forearm/hand this way
         # (elbow gaps 300->83, 110->48 px), with the per-asset joint vote
         # 21:17.
-        ma, mb, mc, md = abs(a), c, b, abs(dd)
+        if abs(b) > 1e-3 or abs(c) > 1e-3:
+            # Rotated block: blit with the stored matrix INCLUDING SIGNS
+            # (2026-10-28, redstarbarge). The engine draws src(u,v) at
+            # M(u,v); a mirrored authoring pass (the *flipped twins)
+            # records a REFLECTION (det<0: M' = F·M) plus the exact
+            # mirror placement x' = -(x+w'), y' = y. The old abs()+
+            # pre-mirror rule forced det>0, so the flipped twin's rotated
+            # crops landed at mirror-inconsistent angles — the barge's
+            # C_Wave_12 wake streaks cut across the bow "almost
+            # sideways". Signed draws the flipped twin as the pixel
+            # mirror of its (verified-correct) unflipped twin: per-block
+            # mirror diff 4997/7489 asymmetric px -> 973/969 AA noise.
+            # b=c=0 blocks keep the flip+abs path below; for them the
+            # two rules are identical, so the mirror-pair audit 5907:10
+            # still holds.
+            flip_h, flip_v = False, False
+            ma, mb, mc, md = a, c, b, dd
+        else:
+            flip_h, flip_v = a < 0, dd < 0
+            ma, mb, mc, md = abs(a), c, b, abs(dd)
         rel = [(ma * u + mb * v, mc * u + md * v)
                for u, v in ((0, 0), (cw, 0), (cw, ch), (0, ch))]
         rx0 = min(p[0] for p in rel)
@@ -1212,6 +1267,14 @@ ANIM_FPS = 12
 ANIM_MAX_FRAMES = 48      # per animation, sampled evenly from the range
 ANIM_MAX_ANIMS = 4        # longest loops kept per asset
 ANIM_SPARSE_PX = 12_000_000   # layer atlases above this try cluster-rect
+LOOP_SLOT_TOL = 32.0          # engine units: a loop cell this close to a
+                              # static block's (x, y), and clearly nearer than
+                              # any other slot, is that slot's part variant —
+                              # it inherits the slot's paint depth
+                              # (_loop_occluder). Measured 2026-10-29 on
+                              # boatloadofdonuts, whose wave parts drift 0-25
+                              # units around their slots while the nearest
+                              # OTHER slot is 24-180 units away.
                               # packing (the player gates at 16 Mpx)
 
 
@@ -1550,11 +1613,12 @@ def load_layer_orders(refresh=False):
 def _match_anim_verb(want, have, allow_base=False):
     """engine anim verb -> actual bsv3 anim name from `have` (case-
     insensitive; a trailing 'NoLoop' is engine semantics and stripped
-    before the retry). With allow_base (idle matches only) a '_Base'/'Base'
-    suffix is also tried: multi-part buildings (SubFootprints) store the
-    base part's loop as '<controller>_Base' on the main asset — ChineseJunk
-    loops Neutral_Base, KrustyStation's base part loops ActiveBase. None
-    when no strip exists for it."""
+    before the retry; a trailing 'Controller' names the anim the same way
+    HouseBoatTopController plays HouseBoatTop). With allow_base (idle
+    matches only) a '_Base'/'Base' suffix is also tried: multi-part
+    buildings (SubFootprints) store the base part's loop as '<controller>_Base'
+    on the main asset — ChineseJunk loops Neutral_Base, KrustyStation's base
+    part loops ActiveBase. None when no strip exists for it."""
     if not want:
         return None
     low = {n.lower(): n for n in have}
@@ -1563,6 +1627,11 @@ def _match_anim_verb(want, have, allow_base=False):
         return low[w]
     if w.endswith('noloop'):
         base = w[:-len('noloop')].rstrip('_-')
+        if base in low:
+            return low[base]
+        w = base
+    if w.endswith('controller') and len(w) > len('controller'):
+        base = w[:-len('controller')].rstrip('_-')
         if base in low:
             return low[base]
         w = base
@@ -1810,32 +1879,53 @@ def _anim_motion(parsed):
     return out
 
 
-def _pack_sparse(comps, blk=6, pad=3, max_w=4096):
+_SPARSE_FAIL = None                 # last self-check failure state (debug)
+
+
+def _pack_sparse(comps, blk=6, pad=3, max_w=4096, label=''):
     """Cluster-rect packing for layer strips whose cells are almost all
     transparency (the escalator's riders: ~20k opaque px in a 2.8 Mpx
     canvas). Instead of one full-cell-per-frame atlas, pack the bbox of
     every opaque figure-cluster into one shelf atlas and record per-frame
-    source rects for the player to blit (entry 'sub'). Returns
-    (atlas, subs, maxw, maxh) or None when the clusters are too big or the
-    packing saves too little to be worth the extra manifest weight."""
+    source rects for the player to blit (entry 'sub').
+
+    Each crop is masked to its OWN cluster blocks (neighbour pixels inside
+    a bbox zeroed, else they blit twice: the doubled wake-water bug), and
+    the block scan rounds up so the trailing partial-block band — the
+    boats' waterline — is scanned too.
+
+    Crops that repeat across frames — a static hull under an animating
+    wake, the carrier's unmoving deck — are byte-hashed and packed ONCE:
+    every frame showing one blits the shared rect (sub entries may point
+    at the same sx/sy). That dedupe replaces the old per-rect fat-blob
+    bail, which killed exactly the strips the uniform atlas cannot ship
+    under the player's decode gate (AircraftCarrier's 24 Mpx hull). The
+    bail-outs are now the savings tests: <3x vs full cells, or an atlas
+    still over the player's cap. Returns
+    (atlas, subs, maxw, maxh) or None."""
     try:
         import numpy as np
     except ImportError:
         return None
     from collections import deque
-    rects = []                    # (k, X0, Y0, X1, Y1, fx, fy)
+    rects = []                    # (k, X0, Y0, X1, Y1, fx, fy, cid)
     per = [[] for _ in comps]
+    labs = [None] * len(comps)    # per-frame block -> cluster id map
     for k, tup in enumerate(comps):
         im, fx, fy = tup[0], int(round(tup[1])), int(round(tup[2]))
         a = np.asarray(im)[:, :, 3]
         hgt, wid = a.shape
         m = a > 8
-        gh, gy = hgt // blk, wid // blk
-        if not gh or not gy:
-            return None
-        grid = m[:gh * blk, :gy * blk].reshape(gh, blk, gy, blk).any(
-            axis=(1, 3))
+        gh, gy = -(-hgt // blk), -(-wid // blk)   # ceil: the trailing
+        if not gh or not gy:                      # partial block band is
+            return None                           # art too (the boats'
+        # pad the trailing partial blocks so the waterline rows beyond
+        # gh*blk / gy*blk are scanned too, not silently dropped:
+        gridp = np.pad(m, ((0, gh * blk - hgt), (0, gy * blk - wid)))
+        grid = gridp.reshape(gh, blk, gy, blk).any(axis=(1, 3))
+        lab = np.full((gh, gy), -1, np.int32)     # block -> rect index
         seen = np.zeros_like(grid, bool)
+        cid = len(rects)
         for i in range(gh):
             for j in range(gy):
                 if not grid[i, j] or seen[i, j]:
@@ -1845,6 +1935,7 @@ def _pack_sparse(comps, blk=6, pad=3, max_w=4096):
                 y0, x0, y1, x1 = i, j, i, j
                 while q:
                     y, x = q.popleft()
+                    lab[y, x] = cid
                     if y < y0:
                         y0 = y
                     if y > y1:
@@ -1863,19 +1954,47 @@ def _pack_sparse(comps, blk=6, pad=3, max_w=4096):
                 X0, Y0 = max(0, x0 * blk - pad), max(0, y0 * blk - pad)
                 X1, Y1 = min(wid, x1 * blk + blk + pad), \
                     min(hgt, y1 * blk + blk + pad)
-                if (X1 - X0) * (Y1 - Y0) > 1_000_000:
-                    return None   # fat blob: clustering buys nothing
                 per[k].append(len(rects))
-                rects.append((k, X0, Y0, X1, Y1, fx, fy))
+                rects.append((k, X0, Y0, X1, Y1, fx, fy, cid))
+                cid += 1
+        labs[k] = lab
     if not rects:
         return None
+    # cross-frame dedupe: identical crops (static parts of an animating
+    # cell) pack once; twins blit the canonical rect. Keyed on content
+    # only — a same-content crop that moved still carries its own ox/oy,
+    # so sharing the atlas slot draws it in the right place either way.
+    def crop(n):
+        """cluster crop masked to its OWN blocks: pixels inside the bbox
+        that belong to a neighbouring cluster are zeroed — pasted unmasked
+        they blit twice under the twin's own rect, which is what doubled
+        the boats' wake water. Also normalises sub-threshold dust, so
+        byte-equal content really dedupes."""
+        k, X0, Y0, X1, Y1, _fx, _fy, cd = rects[n]
+        arr = np.array(comps[k][0].crop((X0, Y0, X1, Y1)))
+        by = (np.arange(Y0, Y1) // blk)[:, None]
+        bx = (np.arange(X0, X1) // blk)[None, :]
+        arr[labs[k][by, bx] != cd] = 0
+        return arr
+
+    canon, uniq, twin = {}, [], [None] * len(rects)
+    arrs = [None] * len(rects)
+    for n in range(len(rects)):
+        arr = arrs[n] = crop(n)
+        key = hashlib.sha1(('%dx%d' % (arr.shape[1], arr.shape[0])).encode()
+                           + arr.tobytes()).digest()
+        c = canon.get(key)
+        if c is None:
+            canon[key] = n
+            uniq.append(n)
+        else:
+            twin[n] = c
     mxw = max(r[3] - r[1] for r in rects)
     mxh = max(r[4] - r[2] for r in rects)
     W = min(max_w, mxw + 4)
     pos = [None] * len(rects)
     x = y = rowH = 0
-    for i in sorted(range(len(rects)), key=lambda n: -(rects[n][4] -
-                                                        rects[n][2])):
+    for i in sorted(uniq, key=lambda n: -(rects[n][4] - rects[n][2])):
         _, X0, Y0, X1, Y1 = rects[i][:5]
         rw, rh = X1 - X0, Y1 - Y0
         if x + rw + 2 > W:
@@ -1887,21 +2006,55 @@ def _pack_sparse(comps, blk=6, pad=3, max_w=4096):
         if rh > rowH:
             rowH = rh
     H = y + rowH + 2
+    for n in range(len(rects)):         # twins ride the canonical slot
+        if twin[n] is not None:
+            pos[n] = pos[twin[n]]
     full = sum(t[0].width * t[0].height for t in comps)
-    if W * H * 3 > full:           # less than a 3x win: keep uniform cells
+    if W * H * 3 > full:                # less than a 3x win: uniform cells
+        return None
+    if W * H > MAN_MAP_ATLAS_PX:        # still undecodable for the player
         return None
     atlas = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     subs = []
     for k, idxs in enumerate(per):
         fr = []
         for idx in idxs:
-            _, X0, Y0, X1, Y1, fx, fy = rects[idx]
+            _, X0, Y0, X1, Y1, fx, fy, _cd = rects[idx]
             px, py = pos[idx]
-            atlas.alpha_composite(
-                comps[k][0].crop((X0, Y0, X1, Y1)), (px, py))
+            if twin[idx] is None:
+                atlas.alpha_composite(Image.fromarray(arrs[idx]), (px, py))
             fr.append({'sx': px, 'sy': py, 'w': X1 - X0, 'h': Y1 - Y0,
                        'ox': X0 - fx, 'oy': Y0 - fy})
         subs.append(fr)
+    # end-to-end self-check: re-blit every frame from the packed atlas and
+    # diff its alpha against the source frame. Content lost (e.g. a
+    # never-scanned band) or gained (double-blended neighbour pixels) is a
+    # packer bug — never let it ship silently.
+    A = np.asarray(atlas)[:, :, 3]
+    bad = 0
+    for k, idxs in enumerate(per):
+        ca = np.asarray(comps[k][0])[:, :, 3]
+        ci, cn = ca.astype(np.int16), np.zeros_like(ca, np.int16)
+        for idx in idxs:
+            _, X0, Y0, X1, Y1 = rects[idx][:5]
+            px, py = pos[idx]
+            # int32: d * (255 - a) hits 65025, past int16 range
+            a = A[py:py + (Y1 - Y0), px:px + (X1 - X0)].astype(np.int32)
+            d = cn[Y0:Y1, X0:X1].astype(np.int32)
+            cn[Y0:Y1, X0:X1] = (a + d * (255 - a) // 255).astype(np.int16)
+        lost = int((ci - cn > 8).sum())
+        gain = int((cn - ci > 8).sum())
+        if lost or gain:
+            bad += 1
+            print(f'  SPARSE-CHECK {label} frame {k}: '
+                  f'{lost} px lost, {gain} px extra')
+    if bad:
+        global _SPARSE_FAIL                        # debug hook: last failure
+        _SPARSE_FAIL = dict(comps=comps, atlas=atlas, subs=subs,
+                            rects=rects, pos=pos, labs=labs, per=per,
+                            blk=blk, label=label)  # tools debugging
+        raise AssertionError(f'sparse packer self-check failed for {label} '
+                             f'({bad} frames)')
     return atlas, subs, mxw, mxh
 
 
@@ -1924,6 +2077,89 @@ def _layer_wants(by_name, orders, slug, name_idx):
     return out
 
 
+# Part-pair naming for multi-part sibling buildings sharing one asset (see
+# _part_layers): the base part's loop is named '…Base'/'…Bottom', the top
+# part's '…Top…' (or plain 'Neutral' on the top sibling — RedstarBarge).
+_PART_BASE_RE = re.compile(r'(base|bottom)$', re.I)
+_PART_TOP_RE = re.compile(r'top', re.I)
+# directional sibling faces are ALTERNATIVES, not stacked parts: a sign
+# placed South renders its South loop, it never composites East over it.
+# Checked on the anim's LAST WORD (Neutral_South / FlandersHellSouth), so
+# 'Base' is not mistaken for the 'se' face.
+_PART_ORIENT_WORDS = {'south', 'east', 'sw', 'se', 'ne', 'nw', 'flipped'}
+
+
+def _part_last_word(name):
+    """last identifier word of an anim name: 'Neutral_South' and
+    'FlandersHellSouth' both give 'south'."""
+    last = re.split(r'[^A-Za-z0-9]+', name)[-1]
+    return re.sub(r'(?<=[a-z0-9])(?=[A-Z])', ' ', last).split()[-1].lower()
+
+
+def _active_pairs(have, parts):
+    """the click-state twin of every layer part, in part order: the one
+    anim whose last identifier word matches the part's (Base pairs Base,
+    Top pairs Top) and whose name says 'active' — AircraftCarrier loops
+    Neutral_Base / _Top and clicks over to Active_Base / Active_Top.
+    All parts must pair with EXACTLY one candidate or none does: the
+    stack plays whole (DonutBoat's Active_In_Base vs Active_Out_Base is
+    an ambiguity, not an answer)."""
+    out = []
+    for w in parts:
+        tail = _part_last_word(w)
+        hits = [a for a in have if 'active' in a.lower() and
+                _part_last_word(a) == tail and a.lower() != w.lower()]
+        if len(hits) != 1:
+            return None
+        out.append(hits[0])
+    if len({a.lower() for a in out}) != len(out):
+        return None
+    return out
+
+
+def _part_layers(by_name, orders, slug, name_idx, have, idle):
+    """Part loops to composite for an asset the engine splits across
+    sibling buildings that each own one controller anim of the same bsv3 —
+    the sea fleet above all (LuxuryYacht loops YachtBase and LuxuryYacht_Top
+    loops YachtTop, two engine instances at one spot; the save only ever
+    places the base one, so a single-base idle left every ship, island and
+    platform missing its whole upper half on the map). Returns the part
+    anims in draw order (base first), or None unless:
+      * the sibling idles resolve to two distinct strips — or to just the
+        base one when the top sibling's verb names a loop the bsv3 never
+        shipped (DonutBoat plays BoatloadOfDonuts_Top in the engine, but
+        only Active_*_Top exist): the top then lives in the body PNG and
+        the base loop alone still must not REPLACE it,
+      * one is base-like (name ends Base/Bottom) and another top-like
+        (contains Top; a plain 'Neutral' on the top sibling qualifies;
+        an unmatched top-like want qualifies when its strip is absent),
+      * none is a directional face (South/East twins are alternatives), and
+      * the single idle we resolved IS one of the part loops — an asset
+        whose idle already covers the whole body is left alone."""
+    matched, seen = [], set()
+    unmatched_top = False
+    for w in _layer_wants(by_name, orders, slug, name_idx):
+        m = _match_anim_verb(w, have, allow_base=True)
+        if m and m.lower() not in seen:
+            seen.add(m.lower())
+            matched.append(m)
+        elif not m and _PART_TOP_RE.search(w) and \
+                _part_last_word(w) not in _PART_ORIENT_WORDS:
+            unmatched_top = True      # engine loops a top half we never got
+    if idle.lower() not in seen:
+        return None
+    if len(matched) < 2 and not (len(matched) == 1 and unmatched_top):
+        return None
+    if any(_part_last_word(m) in _PART_ORIENT_WORDS for m in matched):
+        return None
+    if not any(_PART_BASE_RE.search(m) for m in matched):
+        return None
+    if not any(_PART_TOP_RE.search(m) or m.lower() == 'neutral'
+               for m in matched) and not unmatched_top:
+        return None
+    return matched
+
+
 def _behavior_map(by_name, orders, controllers, ameta, name_idx):
     """slug -> {'idle': bsv3 anim name|None, 'tap': bsv3 anim name|None,
     'layers': [anim, ...]|absent, 'toggle': {...}|absent} restricted to
@@ -1931,11 +2167,12 @@ def _behavior_map(by_name, orders, controllers, ameta, name_idx):
     that actually exist, so the map never points the web player at a missing
     atlas.
 
-    'layers' is only for the assets no single anim can animate: their idle
+    'layers' is for the assets a single idle cannot draw: those whose idle
     resolves to nothing (EscalatorToNowhere's controller says 'Neutral', the
-    bsv3 has no such loop) while the engine still moves them — as stacked
-    part-loops. The map player then draws the static body and blits every
-    layer cell over it, in list order.
+    bsv3 has no such loop) AND those whose idle resolves to just ONE part
+    of a multi-part asset (_part_layers: the Base loop of a ship whose Top
+    loop lives on the sibling building). The map player draws the static
+    body and blits every layer cell over it, in list order.
 
     'toggle' is the click-state-machine gate (_scan_controllers): the
     building's taps flip the machine's variable, so clicks cycle states
@@ -1960,8 +2197,19 @@ def _behavior_map(by_name, orders, controllers, ameta, name_idx):
             # even when the click cycle itself was rejected (a pose has no
             # strip; ChokeCam's Toggle02)
             idle = _match_anim_verb('Neutral', have, allow_base=True)
+        part_lay = _part_layers(by_name, orders, s, name_idx, have, idle) \
+            if idle else None
+        if part_lay:
+            # the resolved idle is ONE part of a split asset (a ship's hull
+            # loop, its superstructure looping on the sibling building):
+            # compositing owns the idle slot, exactly as for the no-idle
+            # composites below — drawing the lone part left the object's
+            # whole upper half off the map
+            idle = None
         rec = {'idle': idle, 'tap': tap}
-        if idle is None:
+        if part_lay:
+            rec['layers'] = part_lay
+        elif idle is None:
             lay, seen = [], set()
             tap_low = (tap or '').lower()
             for w in _layer_wants(by_name, orders, s, name_idx):
@@ -1975,6 +2223,14 @@ def _behavior_map(by_name, orders, controllers, ameta, name_idx):
                 rec['toggle'] = tog
         elif tog:
             rec['toggle'] = tog           # idle Neutral + clickable states
+        if rec.get('layers'):
+            # the layered click one-shot: one Active strip per part, played
+            # together over the body (viewer: _tap.list). Multi-frame only
+            # — a 1-frame "animation" has nothing to play.
+            tl = _active_pairs([e['anim'] for e in rows if e['frames'] > 1],
+                               rec['layers'])
+            if tl:
+                rec['tapLayers'] = tl
         out[s] = rec
     return out
 
@@ -1987,18 +2243,136 @@ def _anim_note(cap):
             'only idle; play tap once on click), from the gamescripts packs; '
             'layers: the part loops a multi-part asset composites over its '
             'body (1-frame entries are its static parts); sparse: cluster-'
-            'rect packed, blit per entry in sub[]; toggle: the engine\'s '
+            'rect packed, blit per entry in sub[] (upx: the pre-sparse '
+            'uniform size); tapLayers: the layered click one-shot, one '
+            'Active strip per part played together; toggle: the engine\'s '
             'click state machine from buildingcontrollers.xml — inout '
             '{in,loop,out} plays in then loops loop, click again plays out; '
             'active {loop} toggles the loop on/off; cycle {poses} walks '
             'pose loops on each click (state 0 is the idle/static look)')
 
 
+# The map player refuses to decode a filmstrip over this many pixels
+# (ANIM_MAX_ATLAS_PX in web/viewer/city-view-pixi.js), and a part stack
+# draws whole or not at all — so a stack with ANY oversized strip never
+# animates on the map and its static fallback is the plain body PNG. For
+# the sea fleet that fallback lies about the object: AircraftCarrier's
+# hull sides and wake (170k px) exist ONLY in its oversized 24 Mpx
+# Neutral_Base strip, so the map drew a deck floating on the ocean.
+MAN_MAP_ATLAS_PX = 16e6
+# ...but freezing a frame is the wrong answer for click/traffic machines
+# whose loop CONTENT moves through the frame (a monorail train would be
+# baked half in and half out of the station; a gate door stuck open):
+# their body PNGs already read as complete static scenes.
+_STACK_SKIP = {'futuristicmonorailstation', 'northwardmonorailbridge',
+               'itchyscratchygate'}
+
+
+def _stack_statics(man):
+    """Bake body + every layer's cell 0 into web/assets/city/stacks/<slug>.png
+    for the oversized part stacks the map can never animate, and hang the
+    composite off the city-sprites.json entry as `stack` {png,w,h,anchor}
+    (its own canvas/anchor: cells may overhang the body, the carrier's
+    hull strip reaches 37 px below the body PNG's bottom edge). The
+    viewer draws it in place of the body when the static fallback runs;
+    animation (any layer that DOES fit the cap) is untouched — the stack
+    is only ever a still. Returns the slugs baked. Idempotent: always
+    recomposes from the pristine body PNG, which the entry's `png` still
+    names."""
+    from PIL import ImageChops
+    city = ROOT / 'web/assets/city'
+    sp_path = city / 'city-sprites.json'
+    sj = json.loads(sp_path.read_text())
+    sprites = sj.get('sprites') or {}
+    (city / 'stacks').mkdir(exist_ok=True)
+    baked = []
+    for slug, rec in sorted((man.get('behavior') or {}).items()):
+        want = rec.get('layers')
+        base = slug
+        for suf in ('flipped', 'ne', 'nw', 'se', 'sw'):
+            if base.endswith(suf):
+                base = base[:-len(suf)]
+                break
+        if not want or base in _STACK_SKIP:
+            continue
+        low = {e['anim'].lower(): e for e in (man.get('anims') or {}).get(slug, [])}
+        ents = [low[w.lower()] for w in want if w.lower() in low]
+        if not ents or not any(
+                e.get('upx', e['cols'] * e['cellw'] *
+                        math.ceil(e['frames'] / e['cols']) * e['cellh'])
+                > MAN_MAP_ATLAS_PX for e in ents):
+            # upx: the pre-sparse uniform size — a cluster-packed strip CAN
+            # animate now, but its 1-frame cell 0 still belongs in the
+            # static (Anim-off) composite: the baked stack is the fallback
+            continue
+        info = sprites.get(slug)
+        if not info:
+            continue
+        try:
+            body = Image.open(city / info['png']).convert('RGBA')
+            pieces = []
+            for e in ents:
+                st = Image.open(city / e['png']).convert('RGBA')
+                if e.get('sparse'):
+                    # shelf atlas: there is no cell grid to crop — blit
+                    # frame 0's rects at their anchor-relative offsets,
+                    # exactly as the player composites the live stack
+                    for r in (e.get('sub') or [[]])[0]:
+                        pieces.append(
+                            (int(round(info['anchor'][0] + r['ox'])),
+                             int(round(info['anchor'][1] + r['oy'])),
+                             st.crop((r['sx'], r['sy'],
+                                      r['sx'] + r['w'], r['sy'] + r['h']))))
+                else:
+                    pieces.append(
+                        (int(round(info['anchor'][0] - e['ax'])),
+                         int(round(info['anchor'][1] - e['ay'])),
+                         st.crop((0, 0, e['cellw'], e['cellh']))))
+        except OSError:
+            continue
+        W, H = body.size
+        x0, y0, x1, y1 = 0, 0, W, H
+        for cx, cy, c in pieces:
+            x0, y0 = min(x0, cx), min(y0, cy)
+            x1, y1 = max(x1, cx + c.size[0]), max(y1, cy + c.size[1])
+        # skip no-ops: strips whose cell 0 only re-paint what the body
+        # already shows (luxuryyacht's water sparkle) would just churn files
+        full = Image.new('RGBA', (x1 - x0, y1 - y0), (0, 0, 0, 0))
+        full.alpha_composite(body, (-x0, -y0))
+        under = Image.new('RGBA', full.size, (0, 0, 0, 0))
+        under.alpha_composite(body, (-x0, -y0))
+        for cx, cy, c in pieces:
+            full.alpha_composite(c, (cx - x0, cy - y0))
+        added = sum(ImageChops.subtract(full.getchannel('A'),
+                                        under.getchannel('A')).histogram()[21:])
+        if added < max(4096, 0.01 * W * H):
+            continue
+        rel = 'stacks/' + slug + '.png'
+        full.save(city / rel)
+        info['stack'] = {'png': rel, 'w': full.size[0], 'h': full.size[1],
+                         'anchor': [info['anchor'][0] - x0,
+                                    info['anchor'][1] - y0]}
+        baked.append(slug)
+    # prune stale composites: a slug that lost its bake last pass (its
+    # strips moved under the cap, or the delta gate now rejects it) must
+    # not keep a `stack` pointing at a stale — possibly mis-baked — PNG
+    stale = [s for s, i in sprites.items() if i.get('stack') and s not in baked]
+    for s in stale:
+        del sprites[s]['stack']
+    if baked or stale:
+        sp_path.write_text(json.dumps(sj, indent=1))
+        for f in (city / 'stacks').glob('*.png'):   # orphaned composites
+            if f.stem not in baked:
+                f.unlink()
+    return baked
+
+
 def do_behavior_map():
     """rewrite ONLY city-anims.json's 'behavior' gate from the manifest as
     it stands (no atlas work): the pack tables changed, or the gate rules
     did, and the map player needs the new idle/tap/layers without waiting
-    on a full filmstrip pass."""
+    on a full filmstrip pass. Also (re)bakes the oversized-stack statics
+    (see _stack_statics) and refreshes their city-sprites.json entries."""
     import datetime
     ameta_path = ROOT / 'web/assets/city/city-anims.json'
     man = json.loads(ameta_path.read_text())
@@ -2009,6 +2383,10 @@ def do_behavior_map():
                                     load_controllers(),
                                     ameta, _slug_name_index())
     ameta_path.write_text(json.dumps(man, indent=1))
+    baked = _stack_statics(man)
+    if baked:
+        print(f'static stacks baked for {len(baked)} oversized-stack slugs: '
+              + ', '.join(baked))
     n_lay = sum(1 for v in man['behavior'].values() if v.get('layers'))
     n_id = sum(1 for v in man['behavior'].values() if v.get('idle'))
     n_tp = sum(1 for v in man['behavior'].values() if v.get('tap'))
@@ -2017,6 +2395,151 @@ def do_behavior_map():
     print(f'behavior map: {len(man["behavior"])} slugs — {n_id} idle loops, '
           f'{n_lay} layered, {n_tp} tap anims, {n_tg} toggles '
           f'({n_var} click-machines parsed) -> {ameta_path}')
+
+
+def _loop_occluder(parsed, img, name, keep):
+    """Blocks the static bakes ABOVE a loop, which the loop never draws.
+
+    Returns (oc_canvas, oc_ax, oc_ay, above_canvas, above_ax, above_ay), or
+    None when nothing qualifies. Call site: do_anims' render()."""
+    if parsed['v'] != 1 or not parsed.get('frames'):
+        return None
+    saved = parsed.get('static_src')
+    try:
+        st = static_blocks(parsed, name) or []
+    finally:
+        if saved is not None:
+            parsed['static_src'] = saved
+    if not st:
+        return None
+    order = {}                              # cell -> list index, first = top
+    for i, b in enumerate(st):
+        order.setdefault(b[0], i)
+    frames = [parsed['frames'][i] for i in keep]
+    keep_ci = {b[0] for fr in frames for b in fr}
+    st_ci = set(order)
+    # The cell only ever hides art the BODY paints, so the neutral frame the
+    # body was baked from has to BE this loop's base pose: require the loop to
+    # redraw at least one of the static's own blocks. captainmordecaiboat's
+    # Top_Active loop draws 7 hull cells while its static is 3 top/flag cells,
+    # i.e. two different part sets — erasing its "omitted" blocks (which are
+    # the whole body) would have blanked the animation. Measured 2026-10-29
+    # over the 86 scored loops: this drops 8 loops, exactly the one that got
+    # worse (captainmordecaiboat) plus seven no-ops/negligible ones.
+    if not (st_ci & keep_ci):
+        return None
+    cand = [b for b in st if b[0] not in keep_ci]
+    if not cand:
+        return None
+    # a frame that draws some OTHER cell in the candidate's position slot is
+    # swapping in a part variant, not omitting baked art
+    swapped = {(round(b[1], 1), round(b[2], 1))
+               for fr in frames for b in fr if b[0] not in st_ci}
+    cand = [b for b in cand if (round(b[1], 1), round(b[2], 1)) not in swapped]
+    if not cand:
+        return None
+    depth = min(order[b[0]] for b in cand)
+    # Depth for a cell the static does not carry: the loop swaps part
+    # variants into slots the static fills with its own cell (the DonutBoat's
+    # C_Wave_09..11 take the C_Wave_08 slots), so inherit the depth of the
+    # nearest static block by position. Only a block with no slot neighbour at
+    # all is treated as painted above the omitted ones — that art stays.
+    slots = [(b[1], b[2], order[b[0]]) for b in st]
+
+    def block_depth(b):
+        if b[0] in order:
+            return order[b[0]]
+        ds = sorted((b[1] - sx) ** 2 + (b[2] - sy) ** 2 for sx, sy, _si in slots)
+        if not ds or ds[0] > LOOP_SLOT_TOL ** 2:
+            return -1                       # not in any slot: treat as painted
+                                            # above the omitted blocks
+        if len(ds) > 1 and ds[0] >= 0.75 ** 2 * ds[1]:
+            return -1                       # ambiguous owner: same, be safe
+        near = min(range(len(slots)),
+                   key=lambda k: (slots[k][1] - b[1]) ** 2 + (slots[k][2] - b[2]) ** 2)
+        return slots[near][2]
+
+    ins = [block_depth(b) for fr in frames for b in fr]
+    known = [i for i in ins if i >= 0]
+    if not known or depth >= min(known):
+        return None                     # the omitted blocks sit below the loop
+    # union across the loop: art that paints over the omitted blocks in ANY
+    # frame is never erased, so the cells stay consistent with each other
+    above = [b for fr in frames for b in fr if block_depth(b) < depth]
+    oc = _composite(parsed, img, name, cand)
+    if not oc:
+        return None
+    # The whole premise is that the BODY already paints these blocks, so the
+    # cell must not re-expose them. Where the body paints nothing there is
+    # nothing to hide behind and erasing would punch a hole in the sprite
+    # (captainmordecaiboat: its static resolves to the 4 tops/flag blocks
+    # while the loop draws the hull, so its "omitted" blocks are not baked in
+    # at all). Intersect with the body's own alpha and bail out when the body
+    # backs too little of the occluder.
+    from PIL import ImageChops
+    base = _composite(parsed, img, name, st)
+    if not base:
+        return None
+    oca = oc[0].getchannel('A')
+    m = Image.new('L', oc[0].size, 0)
+    m.paste(base[0].getchannel('A'),
+            (int(round(oc[1] - base[1])), int(round(oc[2] - base[2]))))
+    newa = ImageChops.multiply(oca, m.point(lambda v: 255 if v > 60 else 0))
+    opaque = lambda im: sum(im.histogram()[61:])      # noqa: E731
+    tot = opaque(oca)
+    if not tot or opaque(newa) < 0.2 * tot:
+        return None                     # the body does not back these blocks
+    oc = (oc[0].copy(), oc[1], oc[2], oc[3], oc[4], oc[5])
+    oc[0].putalpha(newa)
+    ab = _composite(parsed, img, name, above) if above else None
+    return (oc[0], oc[1], oc[2],
+            ab[0] if ab else None, ab[1] if ab else None, ab[2] if ab else None)
+
+
+def _erase_occluded(c, ax, ay, occl):
+    """Punch the omitted top blocks' silhouette out of a rendered cell.
+
+    `occl` is _loop_occluder's tuple; the occluder and its 'above' render are
+    aligned to the cell by their anchors (_composite reports the building
+    anchor as canvas px). Art any frame paints OVER the omitted blocks
+    survives; everything the omitted blocks would cover becomes transparent,
+    so the body PNG shows through exactly where the engine hides it."""
+    from PIL import ImageChops
+    oc, oax, oay, ab, abx, aby = occl
+
+    def aligned(ch, cx, cy):                # align by the anchor
+        m = Image.new('L', c.size, 0)
+        m.paste(ch, (int(round(ax - cx)), int(round(ay - cy))))
+        return m
+
+    mask = aligned(oc.getchannel('A'), oax, oay)
+    if ab is not None:
+        mask = ImageChops.subtract(mask, aligned(ab.getchannel('A'), abx, aby))
+    mask = mask.point(lambda v: 0 if v > 60 else 255)
+    c = c.copy()
+    c.putalpha(ImageChops.multiply(c.getchannel('A'), mask))
+    return c
+
+
+def _anim_clock(ent, keep, a, b):
+    """Record on a strip entry which engine tick each cell stands for.
+
+    rp[k] = cell k's offset in the raw loop, lt = the loop's tick count
+    (b - a + 1). The engine holds every raw frame for one tick, and generation
+    samples long loops and drops runs of identical frames, so a cell's
+    position in the atlas says nothing about when it should be shown. Without
+    the mapping the player wraps each strip on its OWN cell count, so the two
+    halves of one asset drift apart: the GreenpeaceBoat's loops are both 20
+    ticks, but its hull kept 10 cells and its superstructure 8, so they bobbed
+    at different rates (2026-10-29, "both parts animating, just at different
+    times"). The same mapping also puts every loop back on the engine's clock
+    instead of playing a thinned strip faster than it moves in the game."""
+    n = ent.get('frames') or 0
+    rp = [i - a for i in keep[:n]]
+    lt = b - a + 1
+    if n and (rp != list(range(n)) or lt != n):
+        ent['rp'] = rp
+        ent['lt'] = lt
 
 
 def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
@@ -2068,7 +2591,7 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
                                       ameta, name_idx)},
             indent=1))
 
-    slugs = [slug] if slug else sorted(sprites)
+    slugs = [slug] if isinstance(slug, str) else (list(slug) if slug else sorted(sprites))
     if placed:
         keep = _placed_slugs()
         slugs = [s for s in slugs if s in keep]
@@ -2101,23 +2624,44 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
                         else _fallback_tap_anim(have_names))
             wanted = [w for w in (idle_want, tap_want) if w]
             layset, statics = set(), set()
-            if not idle_want:
-                # no controller loop of its own: the asset may still be a
-                # multi-part one whose parts loop together — force those
-                # strips too, or the map player has nothing to composite
-                motion = None
-                for want in _layer_wants(behaviors, orders, s, name_idx):
-                    m = _match_anim_verb(want, have_names, allow_base=True)
-                    if not m:
-                        continue
+            # The engine composites the parts of a split stack TOGETHER, so
+            # every part the bsv3 carries must ship. Consulting the wants only
+            # when the idle resolved to nothing left the DonutBoat
+            # (2026-10-29) animating a bare hull: its idle resolved to
+            # BoatloadOfDonuts_Base, the longest-4 cut dropped
+            # BoatloadOfDonuts_Top, and the top half stayed frozen in the body
+            # PNG. Ask the same authority the behavior map uses — _part_layers,
+            # which refuses directional-face twins (the GeriatricParkGate's
+            # South/East loops are alternative placements, not parts) — and
+            # force whatever ELSE it says draws with the idle.
+            motion = None
+            part_wants = []
+            for want in _layer_wants(behaviors, orders, s, name_idx):
+                m = _match_anim_verb(want, have_names, allow_base=True)
+                if m and m not in part_wants:
+                    part_wants.append(m)
+            stack = _part_layers(behaviors, orders, s, name_idx,
+                                 list(have_names) + part_wants,
+                                 idle_want or 'Neutral') if part_wants else None
+            for m in part_wants:
+                if not idle_want:
+                    layset.add(m.lower())     # as before this fix
+                elif not stack or m.lower() == idle_want.lower() or \
+                        m not in stack:
+                    continue                  # not a stack, or the idle has it
+                if m.lower() in strips or \
+                        m.lower() in [q.lower() for q in wanted]:
+                    continue
+                if idle_want:
+                    # only a mate this pass has to generate joins layset: the
+                    # stacks that already ship a pair keep the gates (sparse
+                    # packing, the tap pairing) exactly as they shipped
                     layset.add(m.lower())
-                    if m.lower() in strips or \
-                            m.lower() in [q.lower() for q in wanted]:
-                        continue
-                    if motion is None:
-                        motion = _anim_motion(parsed)
-                    if motion.get(m, 0) > 1:      # a hold is not a loop
-                        wanted.append(m)
+                if motion is None:
+                    motion = _anim_motion(parsed)
+                if motion.get(m, 0) > 1:      # a hold is not a loop
+                    wanted.append(m)
+            if not idle_want:
                 # a part whose range is a single frame is a static piece of
                 # the composite (EscalatorToNowhere's StairsOV is the front
                 # panel that hides the step ends): it must still ship, as a
@@ -2134,6 +2678,33 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
                     wanted.append(nm_)
                     statics.add(nm_.lower())
                     layset.add(nm_.lower())
+            if layset:
+                # the click-state pair of every layer part must ship too,
+                # or the map has nothing to play on tap: _behavior_map
+                # records tapLayers only when EVERY part pairs (draw order
+                # is its business; here the names only force generation)
+                prs = _active_pairs(have_names, sorted(layset))
+                if prs:
+                    for p in prs:
+                        if p.lower() not in [q.lower() for q in wanted]:
+                            wanted.append(p)
+            # strips the map draws WITHOUT the click path's oversize
+            # exemption — layer parts and the resolved idle — must come
+            # back through this pass (sparse / thinning) even when they
+            # lost the longest-4 cut, or their stale over-cap atlas is
+            # all the map will ever have. Plain tap/toggle strips keep
+            # their old gate-exempt uniform atlases: the huge pool has
+            # always carried them on click.
+            need = set(layset)
+            if idle_want:
+                need.add(idle_want.lower())
+            for e in ameta.get(s, []):
+                apx = (e['w'] * e['h'] if e.get('w') else
+                       e['cols'] * e['cellw'] *
+                       math.ceil(e['frames'] / e['cols']) * e['cellh'])
+                if apx > MAN_MAP_ATLAS_PX and e['anim'].lower() in need \
+                        and e['anim'] not in wanted:
+                    wanted.append(e['anim'])
             if slug is None and s in ameta:
                 have = {e['anim'].lower() for e in ameta[s]}
                 if all(w.lower() in have for w in wanted):
@@ -2179,10 +2750,40 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
                 # Frames are rendered twice (cheap geometry pass, then the
                 # paste pass) rather than held in RAM: a 48-frame loop of a
                 # large landmark would be ~0.7 Gpx otherwise.
-                def render(fi):
-                    return _composite(parsed, img, s, parsed['frames'][fi])
-                comps = [render(i) for i in keep]
-                comps = [c for c in comps if c is not None]
+                # 2026-10-29: a loop must not re-expose art the body hides
+                # (boatloadofdonuts / the "DonutBoat" stray-water report).
+                # Its idle frames carry 9 blocks while its Neutral static
+                # carries 11: the two extras, C_BoatLoadOfDonutsTop (the
+                # donut pile) and C_BoatLoadOL (the funnel), are listed
+                # FIRST, so they paint ABOVE everything (_composite paints
+                # the list last-first). The engine therefore hides the bow
+                # wake behind the pile — the game's own flattened
+                # boatloadofdonuts_transimage.rgb shows a clean deck, and
+                # our static matches it to 0.4% inside that block. The cell
+                # has no pile to hide behind, so blitting it over the body
+                # laid the wake across the deck on every beat but the one
+                # whose off-pattern wave cell the *Input rule already drops
+                # ("still there on all but one frame"). Punching the omitted
+                # blocks' silhouette out of every cell is exactly what the
+                # engine's paint order does with them. _loop_occluder gates
+                # it to blocks missing from EVERY frame of the loop, never
+                # replaced in their own slot, and listed above every block
+                # the loop does draw — so animator parts (a tail that
+                # appears in some frames, a swapped sign variant) are
+                # untouched and the erase is a no-op for them.
+                occl = _loop_occluder(parsed, img, s, keep)
+
+                def render(fi, occl=occl):
+                    r = _composite(parsed, img, s, parsed['frames'][fi])
+                    if r is None or occl is None:
+                        return r
+                    return (_erase_occluded(r[0], r[1], r[2], occl),) + r[1:]
+                pairs = [(i, render(i)) for i in keep]
+                pairs = [p for p in pairs if p[1] is not None]
+                keep = [p[0] for p in pairs]        # keep and comps stay
+                comps = [p[1] for p in pairs]       # index-aligned (thinning
+                                                    # and the paste loop pair
+                                                    # keep[k] with cell k)
                 if not comps or (len(comps) < 2 and b > a):
                     continue
                 Ax = max(int(round(c[1])) for c in comps)
@@ -2193,24 +2794,65 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
                                     for c in comps) + Ay)
                 cols = min(cap, max(1, int(math.ceil(math.sqrt(len(comps))))))
                 rows = math.ceil(len(comps) / cols)
-                if nm.lower() in layset and b > a and \
-                        cols * cell_w * rows * cell_h > ANIM_SPARSE_PX:
-                    # mostly-empty layer strip (the riders): a uniform atlas
-                    # would blow the player's decode gate for ~1% of pixels
-                    sp = _pack_sparse(comps)
+                uniform = cols * cell_w * rows * cell_h
+                upx = uniform if uniform > MAN_MAP_ATLAS_PX else None
+                lf = None                 # pre-thin loop length (see below)
+                if b > a and ((nm.lower() in layset and
+                               uniform > ANIM_SPARSE_PX) or
+                              uniform > MAN_MAP_ATLAS_PX):
+                    # mostly-empty layer strip (the riders), or any strip the
+                    # player would reject outright (uniform atlas over its
+                    # decode gate — the carrier's hull): cluster-rects are
+                    # the only way it animates on the map at all
+                    sp = _pack_sparse(comps, label=f'{s}/{nm}')
                     if sp is not None:
                         atlas, subs, mw, mh = sp
                         png = f'{s}__{_safe_anim(nm)}.png'
                         atlas.save(out_dir / png)
                         entry[:] = [e for e in entry if e['anim'] != nm]
-                        entry.append({'anim': nm, 'png': f'anims/{png}',
-                                      'frames': len(comps), 'cols': 1,
-                                      'cellw': mw, 'cellh': mh,
-                                      'w': atlas.width, 'h': atlas.height,
-                                      'sub': subs, 'ax': Ax, 'ay': Ay,
-                                      'fps': ANIM_FPS, 'sparse': 1})
+                        ent = {'anim': nm, 'png': f'anims/{png}',
+                               'frames': len(comps), 'cols': 1,
+                               'cellw': mw, 'cellh': mh,
+                               'w': atlas.width, 'h': atlas.height,
+                               'upx': uniform,
+                               'sub': subs, 'ax': Ax, 'ay': Ay,
+                               'fps': ANIM_FPS, 'sparse': 1}
+                        _anim_clock(ent, keep, a, b)
+                        entry.append(ent)
                         n_anims += 1
                         continue
+                if uniform > MAN_MAP_ATLAS_PX and len(comps) > 2 and b > a:
+                    # over the player's decode gate and cluster-rects lost
+                    # (the carrier's wake animates across the WHOLE hull
+                    # bbox, so no shared rect exists): thin the loop to the
+                    # most frames whose grid atlas fits — a choppy wave is
+                    # still a ship, a frozen one is the floating-deck bug
+                    n_before = len(comps)
+                    fit = int(MAN_MAP_ATLAS_PX // (cell_w * cell_h))
+                    while fit >= 2:
+                        c2 = min(cap, max(1, int(math.ceil(math.sqrt(fit)))))
+                        if c2 * math.ceil(fit / c2) * cell_w * cell_h \
+                                <= MAN_MAP_ATLAS_PX:
+                            break
+                        fit -= 1
+                    if fit >= 2:
+                        step = (len(comps) - 1) / (fit - 1)
+                        idx2 = sorted({round(i * step) for i in range(fit)})
+                        comps = [comps[i] for i in idx2]
+                        keep = [keep[i] for i in idx2]
+                        lf = n_before       # loop length BEFORE thinning:
+                        # the player maps its shared clock through it, so a
+                        # thinned layer stays in step with its stack-mates
+                        Ax = max(int(round(c[1])) for c in comps)
+                        Ay = max(int(round(c[2])) for c in comps)
+                        cell_w = max(1, max(c[0].width - int(round(c[1]))
+                                            for c in comps) + Ax)
+                        cell_h = max(1, max(c[0].height - int(round(c[2]))
+                                            for c in comps) + Ay)
+                        cols = min(cap, max(1, int(math.ceil(
+                            math.sqrt(len(comps))))))
+                        rows = math.ceil(len(comps) / cols)
+                        uniform = cols * cell_w * rows * cell_h
                 atlas = Image.new('RGBA', (cols * cell_w, rows * cell_h),
                                   (0, 0, 0, 0))
                 drawn = 0
@@ -2228,11 +2870,18 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
                 png = f'{s}__{_safe_anim(nm)}.png'
                 atlas.save(out_dir / png)
                 entry[:] = [e for e in entry if e['anim'] != nm]
-                entry.append({'anim': nm, 'png': f'anims/{png}',
-                              'frames': drawn, 'cols': cols,
-                              'cellw': cell_w, 'cellh': cell_h,
-                              'ax': Ax, 'ay': Ay,
-                              'fps': ANIM_FPS})
+                ent = {'anim': nm, 'png': f'anims/{png}',
+                       'frames': drawn, 'cols': cols,
+                       'cellw': cell_w, 'cellh': cell_h,
+                       'ax': Ax, 'ay': Ay,
+                       'fps': ANIM_FPS}
+                if upx:
+                    ent['upx'] = upx    # pre-thin size: still a baked-stack
+                                        # slug (the Anim-off picture)
+                if lf and lf != drawn:
+                    ent['lf'] = lf      # pre-thin length for an old player
+                _anim_clock(ent, keep, a, b)
+                entry.append(ent)
                 n_anims += 1
             if entry:
                 n_assets += 1

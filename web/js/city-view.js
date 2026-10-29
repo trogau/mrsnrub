@@ -35,9 +35,21 @@
        while Art·sprites mode is on). Failed assets count as settled —
        every one of them has a degrade path (flat grass / flat roads /
        blocks / dots), so the pill can never stick at "loading".
-       window.__ASSETS exposes the counters for console + harness. */
-    var ALOAD = { boot: 4, bootDone: 0, pend: 0, artGot: 0, artKnown: 0, artDead: 0 };
+       window.__ASSETS exposes the counters for console + harness.
+
+       The counters count ART FILES, not HTTP hits: a filmstrip the LRU
+       dropped and the player panned back to is the same file, so it must not
+       move the number a second time (seen[] keeps "got" from outrunning
+       "known"), and the known total includes the filmstrips registered from
+       city-anims.json, not just the body PNGs. */
+    var ALOAD = { boot: 4, bootDone: 0, pend: 0, artGot: 0, artKnown: 0,
+                  artDead: 0, strips: 0, seen: {} };
     window.__ASSETS = ALOAD;
+    function artCounted(url) {              // true once per art file
+        if (ALOAD.seen[url]) return false;
+        ALOAD.seen[url] = 1;
+        return true;
+    }
     function aPaint() {
         var el = $('assets');
         if (!el) return;
@@ -251,13 +263,18 @@
         var im = imgCache[url];
         if (im === undefined) {
             ALOAD.pend++; aPaintSoon();     // streams through the asset pill
+            if (ALOAD.seen[url]) animReloads++;    // evicted, asked for again
             im = new Image();
             im.onload = function () {
-                ALOAD.pend--; ALOAD.artGot++; markDirty(); aPaintSoon();
+                ALOAD.pend--;
+                if (artCounted(url)) ALOAD.artGot++;
+                markDirty(); aPaintSoon();
             };
             im.onerror = function () {
                 imgCache[url] = null;       // degrade to block/dot
-                ALOAD.pend--; ALOAD.artDead++; markDirty(); aPaintSoon();
+                ALOAD.pend--;
+                if (artCounted(url)) ALOAD.artDead++;
+                markDirty(); aPaintSoon();
             };
             imgCache[url] = im;
             im.src = url;
@@ -388,6 +405,25 @@
     var ANIM_HUGE_MAX = 4;
     var animHuge = {};                    // oversize filmstrip url -> strip png
     var animLru = [];                     // filmstrip urls, most-recent last
+    /* the pill's "known" total must cover the filmstrips too, not just the
+       body PNGs: they are art files the viewer asks for by the hundred, and
+       leaving them out is how the readout can show more loaded than known */
+    var artStripKnown = {};
+    function artKnownStrip(e) {
+        if (!e) return;
+        var u = 'assets/city/' + e.png;
+        if (artStripKnown[u]) return;
+        artStripKnown[u] = 1;
+        ALOAD.artKnown++;
+        ALOAD.strips++;                 // harness: the filmstrip share of known
+    }
+    function artKnownTog(t) {
+        if (!t) return;
+        artKnownStrip(t['in']);
+        artKnownStrip(t.out);
+        artKnownStrip(t.loop);
+        for (var i = 0; t.poses && i < t.poses.length; i++) artKnownStrip(t.poses[i]);
+    }
     (function loadAnims() {
         fetch('assets/city/city-anims.json').then(function (r) {
             return r.ok ? r.json() : null;
@@ -405,7 +441,10 @@
                                  : list[0];
                 var tap = behav ? pickAnim(list, behav[s] && behav[s].tap)
                                 : null;
-                if (loop && loop.frames > 1) anims[s] = { cells: [loop], base: 0 };
+                if (loop && loop.frames > 1) {
+                    anims[s] = { cells: [loop], base: 0 };
+                    artKnownStrip(loop);
+                }
                 // no controller loop: a multi-part asset animates as its
                 // part loops, each blitted over the static body (draw order
                 // = manifest order, which the generator took from the
@@ -418,9 +457,16 @@
                             seen.push(e.anim); cs.push(e);   // frames==1: a
                         }                                     // static part
                     }
-                    if (cs.length) anims[s] = { cells: cs, base: 1 };
+                    if (cs.length) {
+                        anims[s] = { cells: cs, base: 1 };
+                        for (var ci2 = 0; ci2 < cs.length; ci2++)
+                            artKnownStrip(cs[ci2]);
+                    }
                 }
-                if (tap && tap.frames > 1 && tap !== loop) taps[s] = tap;
+                if (tap && tap.frames > 1 && tap !== loop) {
+                    taps[s] = tap;
+                    artKnownStrip(tap);
+                }
                 // engine click-state-machine (buildingcontrollers.xml,
                 // mirrored into the manifest's toggle record): three shapes
                 // — inout {in,loop,out}, active {loop}, cycle {poses[]}
@@ -445,7 +491,7 @@
                         for (i2 = 1; i2 < ps.length; i2++)
                             if (ps[i2] && ps[i2].frames > 1) rec2 = { kind: 'cycle', poses: ps };
                     }
-                    if (rec2) togglers[s] = rec2;
+                    if (rec2) { togglers[s] = rec2; artKnownTog(rec2); }
                 }
             }
             window.__CV_ANIM = anims;
@@ -518,8 +564,8 @@
         var tp = b._tap;              // a tapped building plays its one-shot
         if (tp) {                     // tap filmstrip, then back to the idle
             var tfi = Math.floor((animNow - tp.t0) * tp.a.fps / 1000);
-            if (tfi >= tp.a.frames) {
-                b._tap = null;
+            if (tfi >= tickCount(tp.a)) {   // one loop of the ENGINE's ticks,
+                b._tap = null;              // not of the atlas's cells
                 // an ActiveInOut transition finished: advance the toggle's
                 // state (in → active loop, out → back to static Neutral)
                 if (tp.then !== undefined) b._tog = tp.then;
@@ -529,7 +575,12 @@
                 // so like the toggle transitions it is exempt from the
                 // huge-atlas cap — the big rotor strips of the police/
                 // attack/burns helis are plain taps
-                var r = animCell(tp.a, k, tfi, true);
+                var ta = tp.a, tn = tickCount(ta), tt = Math.min(tfi, tn - 1);
+                var r = animCell(ta, k, ta.rp ? tickCell(ta, tt)
+                    : (ta.lf && tn !== ta.frames
+                        ? Math.min(Math.floor(tt * ta.frames / tn),
+                                   ta.frames - 1) : tt),
+                    true);
                 if (r) { r.tap = 1; return { cells: [r], base: 0, tap: 1 }; }
                 // gated (under the readability floor): the one-shot can't
                 // draw — let the idle path answer instead
@@ -550,8 +601,7 @@
             }
             if (a) {                      // click-driven: oversize-exempt
                 var c = animCell(a, k, hold ? a.frames - 1
-                    : (Math.floor(animNow * a.fps / 1000) + ph) % a.frames,
-                    true);
+                    : animIdx(a, animNow, ph), true);
                 return c ? { cells: [c], base: 0 } : null;
             }
             // state 0 with no strip of its own: the idle path below (the
@@ -562,7 +612,7 @@
         var cells = null;
         for (var i = 0; i < rec.cells.length; i++) {
             var a = rec.cells[i];
-            var c = animCell(a, k, (Math.floor(animNow * a.fps / 1000) + ph) % a.frames);
+            var c = animCell(a, k, animIdx(a, animNow, ph));
             if (!c) {
                 // a layered stack must composite whole: one missing part
                 // (e.g. the front-panel occluder) would smear the layers
@@ -606,12 +656,47 @@
     }
     function animFrame(a, b, nowMs) {     // one deterministic frame per prop
         var ph = Math.abs(Math.round((b.px || 0) * 3 + (b.py || 0) * 7));
-        return (Math.floor((nowMs === undefined ? animNow : nowMs) *
-                           a.fps / 1000) + ph) % a.frames;
+        return animIdx(a, nowMs === undefined ? animNow : nowMs, ph);
+    }
+    /* the recorded engine clock (the generator's rp/lt, see _anim_clock):
+       rp[k] is cell k's offset in the raw loop and lt the loop's tick count,
+       so every layer of a part stack advances through the SAME ticks. Wrapping
+       each strip on its own cell count made the GreenpeaceBoat's 10-cell hull
+       and 8-cell superstructure bob at different rates (2026-10-29). Mirrored
+       in web/viewer/city-view-pixi.js, which is the source of truth. */
+    function tickCount(a) {              // ticks in the strip's engine loop
+        return a.lt || a.lf || a.frames;
+    }
+    function tickCell(a, t) {            // cell to show on tick t of that loop
+        var rp = a.rp, k = -1, bv = -1, i;
+        // the engine holds each raw frame for a tick and the atlas only keeps
+        // the frames that differ, so tick t shows the newest cell at or before
+        // it — wrapping to the last cell for the ticks before the first
+        for (i = 0; i < rp.length; i++)
+            if (rp[i] <= t && rp[i] > bv) { bv = rp[i]; k = i; }
+        return k < 0 ? rp.length - 1 : k;
+    }
+    function animIdx(a, clockMs, ph) {   // shared clock -> this strip's cell
+        return cellAt(a, (Math.floor(clockMs * a.fps / 1000) + ph) %
+                         tickCount(a));
+    }
+    function cellAt(a, t) {              // cell to show on engine tick t
+        var n = tickCount(a);
+        if (t >= n) return -1;
+        if (a.rp) return tickCell(a, t);
+        return a.lf && n !== a.frames    // pre-rp thinning: spread the cells
+            ? Math.min(Math.floor(t * a.frames / n), a.frames - 1)
+            : t;                         // evenly over the loop
     }
     window.__CV_ANIM_FI = function (slug, b, nowMs) {   // smoke-test probe
         if (!anims || !anims[slug]) return -1;
         return animFrame(anims[slug].cells[0], b, nowMs);
+    };
+    window.__CV_ANIM_cell = function (slug, b, i, nowMs) {  // harness: clock
+        var r = anims && anims[slug];                        // mapping per
+        if (!r || !r.cells[i]) return -1;                    // registered part
+        return animIdx(r.cells[i], nowMs || 0,
+            Math.abs(Math.round((b.px || 0) * 3 + (b.py || 0) * 7)));
     };
     window.__CV_ANIM_layers = function (slug) {         // smoke-test probe
         var r = anims && anims[slug];
@@ -669,7 +754,7 @@
         if (!b._tap) return -1;
         var fi = Math.floor((performance.now() - b._tap.t0) *
                             b._tap.a.fps / 1000);
-        return fi < b._tap.a.frames ? fi : -1;
+        return fi < tickCount(b._tap.a) ? fi : -1;
     };
     window.__CV_TAP_at = function (tx, ty, fire) {  // harness: lot rule
         var b = blockAtTile(tx, ty);
@@ -678,7 +763,7 @@
         if (!b._tap) return -1;
         var fi = Math.floor((performance.now() - b._tap.t0) *
                             b._tap.a.fps / 1000);
-        return fi < b._tap.a.frames ? fi : -1;
+        return fi < tickCount(b._tap.a) ? fi : -1;
     };
     window.__CV_TOG = function (mi) {   // harness: state-machine readout
         var b = byMi[mi];
@@ -713,10 +798,52 @@
         if (n !== undefined) ANIM_MIN_PX = Math.max(0, n | 0);
         return ANIM_MIN_PX;
     };
-    /* the huge-slot budget is a SESSION cap and click-driven one-shots keep
-       arriving (heli rotor taps): recycle the oldest huge entry that no
-       building is mid-animation on. */
-    function freeHugeSlot() {
+    /* ---- filmstrip atlas cache ------------------------------------------------
+       The same three caps as the Pixi viewer: the big-atlas tier (ANIM_BIG_MAX
+       over ANIM_BIG_ATLAS_PX), the oversize pool (ANIM_HUGE_MAX, click-driven
+       only) and the LRU bound (ANIM_CACHE_MAX decoded filmstrips). A full cap
+       is a REASON TO WAIT, never a licence to drop a strip the player is
+       looking at: animUse records the last frame the renderer asked for each
+       url and every eviction path refuses to touch a strip asked for on THIS
+       frame or the last (the last frame matters — the buildings drawn later in
+       the same frame have not stamped yet). When the whole cache is on screen
+       the arrival is refused and draws its static PNG until a slot frees;
+       evicting a visible strip only buys a re-decode next frame. */
+    var animBig = {};                     // big-tier resident urls
+    var animFrameId = 0;                  // bumped once per rendered frame
+    var animUse = {};                     // url -> last frame the renderer drew it
+    var animRefused = 0;                  // arrivals that had to wait for a slot
+    var animReloads = 0;                  // re-decodes of an already-settled file
+    var animDrops = 0;                    // decodes freed by eviction
+    var animRetryT = 0;                   // one-shot retry deadline
+    var animTried = {};                   // url -> asked for a slot once already
+    function animInUse(url) {             // asked for now, or a frame ago
+        var u = animUse[url];
+        return u === animFrameId || u === animFrameId - 1;
+    }
+    /* no slot this frame: draw static and ask again soon. The retry window is
+       armed once per url (animTried) so a strip that can never get in — the
+       whole cache is on screen and nobody moves — does not keep the page
+       repainting forever, which is what the "always loading" pill looked
+       like from the outside. */
+    function animWait(url) {
+        animRefused++;
+        if (!animTried[url]) {
+            animTried[url] = 1;
+            if (animNow >= animRetryT) animRetryT = animNow + 2000;
+        }
+        return null;
+    }
+    function dropStrip(url, counted) {    // free one filmstrip's decode
+        if (counted) animDrops++;
+        if (animBig[url]) { delete animBig[url]; animBigLive--; }
+        delete animHuge[url];
+        var im = imgCache[url];
+        if (im) { try { im.src = ''; } catch (e) { /* freed on GC */ } }
+        delete imgCache[url];
+    }
+    /* recycle the oldest entry of a tier that nothing on screen wants */
+    function freeSlot(tier) {
         var i, b, live = {};
         for (i = 0; i < buildings.length; i++) {
             b = buildings[i];
@@ -732,61 +859,105 @@
         }
         for (i = 0; i < animLru.length; i++) {
             var old = animLru[i];
-            if (!animHuge[old] || live[animHuge[old]]) continue;
-            delete animHuge[old];               // frees the oversize slot
+            if (!tier[old] || live[tier[old]] || animInUse(old)) continue;
+            delete tier[old];                   // frees the tier slot
             animLru.splice(i, 1);
-            var im = imgCache[old];
-            if (im) { try { im.src = ''; } catch (e) { /* freed on GC */ } }
-            delete imgCache[old];               // a still-visible one reloads
+            dropStrip(old, 1);
             return true;
         }
         return false;
+    }
+    /* one LRU slot for a new arrival; false = every resident strip is on
+       screen right now, so the arrival waits instead of evicting one */
+    function freeCacheSlot(click) {
+        if (animLru.length < ANIM_CACHE_MAX) return true;
+        for (var i = 0; i < animLru.length; i++) {
+            var old = animLru[i];
+            if (animInUse(old)) continue;
+            animLru.splice(i, 1);
+            dropStrip(old, 1);
+            if (animNow >= animRetryT) animRetryT = animNow + 2000;
+            return true;                    // a strip just freed: retry soon
+        }
+        /* nothing to spare: a click-driven one-shot still gets in, up to the
+           oversize pool's own slack — it is what the player just asked to see
+           and it is gone in a second */
+        return !!click && animLru.length < ANIM_CACHE_MAX + ANIM_HUGE_MAX;
     }
     /* filmstrip request point (both render paths): enforces the big-atlas
        session budget and the LRU bound. Returns the decoded Image, null =
        draw the static PNG instead (budget spent / still decoding). */
     function animAtlasFor(a, click) {
         var url = 'assets/city/' + a.png;
-        if (!(url in imgCache)) {             // first request this session
-            if (a.px > ANIM_MAX_ATLAS_PX ||
-                (click && a.px > ANIM_BIG_ATLAS_PX)) {
-                // oversize: only the click-driven paths (toggle machines
-                // and tap one-shots) ever ask, so it rides the small
-                // oversize session pool — recycled by freeHugeSlot(), not
-                // the big-tier budget (which is for loops the map picked
-                // on its own and is never released: the ziffcorp heli tap
-                // at 15.7M sat just under MAX and starved there)
-                if (!animHuge[url]) {
-                    if (Object.keys(animHuge).length >= ANIM_HUGE_MAX &&
-                        !freeHugeSlot()) return null;
-                    animHuge[url] = a.png;
-                }
-            } else if (a.px > ANIM_BIG_ATLAS_PX) {
-                if (animBigLive >= ANIM_BIG_MAX) return null;
-                animBigLive++;
-            }
-            animLru.push(url);
-            while (animLru.length > ANIM_CACHE_MAX) {
-                var old = animLru.shift();    // oldest touched url dies first
-                var im = imgCache[old];
-                if (im) { try { im.src = ''; } catch (e) { /* freed on GC */ } }
-                delete imgCache[old];         // a still-visible one reloads
-                delete animHuge[old];         // frees its oversize-slot too
-            }
-        } else {                              // touch → most-recently-used
+        animUse[url] = animFrameId;         // the renderer wants it THIS frame
+        if (url in imgCache) {              // touch → most-recently-used
             var i = animLru.indexOf(url);
             if (i < 0) animLru.push(url);     // reloaded after an eviction
             else if (i < animLru.length - 1) {
                 animLru.splice(i, 1);
                 animLru.push(url);
             }
+            return imgFor(url);
         }
+        if (a.px > ANIM_MAX_ATLAS_PX ||
+            (click && a.px > ANIM_BIG_ATLAS_PX)) {
+            // oversize: only the click-driven paths (toggle machines
+            // and tap one-shots) ever ask, so it rides the small
+            // oversize session pool — recycled by freeSlot(), not
+            // the big-tier budget (which is for loops the map picked
+            // on its own: the ziffcorp heli tap at 15.7M sat just
+            // under MAX and starved there)
+            if (!animHuge[url]) {
+                if (Object.keys(animHuge).length >= ANIM_HUGE_MAX &&
+                    !freeSlot(animHuge)) return animWait(url);
+                animHuge[url] = a.png;
+            }
+        } else if (a.px > ANIM_BIG_ATLAS_PX) {
+            if (!animBig[url]) {
+                // full is not fatal: recycle the big strip nobody is watching
+                // (off-screen only — animUse protects a visible one)
+                if (animBigLive >= ANIM_BIG_MAX && !freeSlot(animBig))
+                    return animWait(url);
+                animBig[url] = 1;
+                animBigLive++;
+            }
+        }
+        if (!freeCacheSlot(click)) {        // full of visible strips: wait
+            if (animBig[url]) { delete animBig[url]; animBigLive--; }
+            delete animHuge[url];
+            return animWait(url);
+        }
+        animLru.push(url);
         return imgFor(url);
+    }
+    function animWanted() {                 // distinct strips drawn last frame
+        var n = 0, u;
+        for (u in animUse) if (animInUse(u)) n++;
+        return n;
     }
     window.__CV_ANIM_stats = function () {    // console/harness telemetry
         return { big: animBigLive, bigMax: ANIM_BIG_MAX,
                  lru: animLru.length, lruMax: ANIM_CACHE_MAX,
-                 capPx: ANIM_MAX_ATLAS_PX, bigPx: ANIM_BIG_ATLAS_PX };
+                 capPx: ANIM_MAX_ATLAS_PX, bigPx: ANIM_BIG_ATLAS_PX,
+                 wanted: animWanted(),
+                 refused: animRefused, reloads: animReloads, drops: animDrops };
+    };
+    window.__CV_ANIM_clear = function () {    // harness: forget every filmstrip
+        var us = animLru.slice();             // decode, so an arrival under a
+        animLru.length = 0;                   // shrunk cap can be re-watched
+        for (var u in animBig) delete animBig[u];
+        for (var u2 in animHuge) delete animHuge[u2];
+        animBigLive = 0;
+        for (var i = 0; i < us.length; i++) dropStrip(us[i]);
+        return 0;
+    };
+    window.__CV_ANIM_cache = function (n) {   // harness: shrink the bound and
+        if (n !== undefined) ANIM_CACHE_MAX = Math.max(1, n | 0);
+        return ANIM_CACHE_MAX;                // watch it honour it calmly
+    };
+    window.__CV_ANIM_bigmax = function (n) {  // harness: same for the big tier
+        if (n !== undefined) ANIM_BIG_MAX = Math.max(0, n | 0);
+        return ANIM_BIG_MAX;
     };
 
     /* ---- art tune panel: pin-convention A/B without reloads ------------------
@@ -2065,6 +2236,7 @@
     function render() {
         var t0 = performance.now();
         animNow = t0;                     // one clock per frame: instances agree
+        animFrameId++;                    // the atlas cache's "is it on screen" tick
         animLive = 0;                     // counted by the art passes below
         charAnimLive = 0;
         animBudget = ANIM_MAX_BLITS;      // shared 2D/GL blit allowance
@@ -2191,10 +2363,13 @@
         lastT = t;
         if (cam.vx || cam.vy) { CAM.tick(cam, dt); markDirty(); }
         if (needsRender) { needsRender = false; render(); }
-        else if ((animLive || charAnimLive) && artMode && animOn && t >= animNextT) {
+        else if ((animLive || charAnimLive ||
+                  (artMode && animOn && animNow >= animRetryT)) &&
+                artMode && animOn && t >= animNextT) {
             // keep the filmstrips and character idle loops moving: last
             // frame drew animated sprites, so schedule the next cell swap
-            // (~the loops' 12 fps)
+            // (~the loops' 12 fps); a strip refused a cache slot is owed
+            // one retry on the same cadence (animRetryT, armed per arrival)
             animNextT = t + 90;
             markDirty();
         }
