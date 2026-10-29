@@ -44,7 +44,7 @@
     // and stack sheets all load through cityUrl(), and a stale cached PNG
     // against fresh city-anims.json sub-rects draws sparse water from wrong
     // shelf spots (the "water attached incorrectly" report, round 6).
-    var MANIFEST_V = '?v=20261029.5';           // city-sprites/-anims.json
+    var MANIFEST_V = '?v=20261030.1';           // city-sprites/-anims.json
     function cityUrl(p) { return B + 'assets/city/' + p + ASSET_V; }
 
     var stage = $('stage');
@@ -86,11 +86,13 @@
        for: body PNGs, season variants, character sheets, pier sheets and the
        filmstrips it registered from city-anims.json. */
     var ALOAD = { boot: 4, bootDone: 0, pend: 0, artGot: 0, artKnown: 0,
-                  artDead: 0, strips: 0, seen: {} };
+                  artDead: 0, strips: 0, req: 0, seen: {}, hist: [],
+                  trace: 0, tr: [] };
     window.__ASSETS = ALOAD;
     function artCounted(url) {              // true once per art file
         if (ALOAD.seen[url]) return false;
         ALOAD.seen[url] = 1;
+        if (ALOAD.hist.length < 40000) ALOAD.hist.push(url);
         return true;
     }
     function aPaint() {
@@ -129,9 +131,10 @@
        the scene dirty on settle, mirroring city-view.js's imgFor. */
     var texs = {};
     function texFor(url) {
+        if (ALOAD.trace && ALOAD.tr.length < 8000) ALOAD.tr.push(url);
         var r = texs[url];
         if (r === undefined) {
-            ALOAD.pend++; aPaintSoon();     // streams through the asset pill
+            ALOAD.pend++; ALOAD.req++; aPaintSoon();  // streams through the asset pill
             r = texs[url] = { st: 0, tex: null, subs: {} };
             var im = new Image();
             if (ALOAD.seen[url]) animReloads++;     // evicted, now asked for again
@@ -1523,6 +1526,97 @@
     window.__CV_ANIM_bigmax = function (n) {  // harness: same for the big tier
         if (n !== undefined) ANIM_BIG_MAX = Math.max(0, n | 0);
         return ANIM_BIG_MAX;
+    };
+    /* ---- "is it loading the whole map?" audit (console: __CV_ART_audit()) ----
+       Answers the question the pill cannot: the pill counts files ever asked
+       for, which correctly rises as you zoom out and more of the map is on
+       screen. What must NOT happen is asking for art the player cannot see.
+       So: rebuild the set of art the CURRENT viewport legitimately owns
+       (every building/character whose lot projects onto the screen, plus the
+       filmstrips registered for those slugs) and classify each art file ever
+       requested against it. offScreen counts should stay near zero — they are
+       an un-gated request path, the thing this check exists to catch. */
+    function artAudit(urls, recentN) {
+        var A = CAM.tileAffine(cam, VW, VH);
+        var mgn = 40;                       // generous: tall sprites overhang
+        var visSlug = {}, visChar = {}, i, j, b, key, n = 0;
+        for (i = 0; i < buildings.length; i++) {
+            b = buildings[i];
+            if (objHidden[b.cat]) continue;
+            var x0 = A.a * b.x0 + A.b * b.y0 + A.c, y0 = A.d * b.x0 + A.e * b.y0 + A.f;
+            var x1 = A.a * b.x1 + A.b * b.y1 + A.c, y1 = A.d * b.x1 + A.e * b.y1 + A.f;
+            if (Math.max(x0, x1) < -mgn || Math.min(x0, x1) > VW + mgn ||
+                Math.max(y0, y1) < -mgn || Math.min(y0, y1) > VH + mgn) continue;
+            n++;
+            key = (animKey(b) || b.slug || '').toLowerCase();
+            if (key) visSlug[key] = 1;
+        }
+        var ch = M.chars;
+        for (i = 0; i < ch.length; i++) {
+            var c = ch[i];
+            if (A.a * c[1] + A.b * c[2] + A.c < -mgn ||
+                A.a * c[1] + A.b * c[2] + A.c > VW + mgn ||
+                A.d * c[1] + A.e * c[2] + A.f < -mgn ||
+                A.d * c[1] + A.e * c[2] + A.f > VH + mgn) continue;
+            var rec = charMan && charMan.characters[c[0]];
+            if (rec && rec.slug) visChar[String(rec.slug).toLowerCase()] = 1;
+        }
+        var cat = { body: 0, season: 0, char: 0, film: 0, other: 0 };
+        var off = { body: [], season: [], char: [], film: [], other: [] };
+        var offN = 0, seen = {}, asked = 0;
+        for (i = Math.max(0, urls.length - recentN); i < urls.length; i++) {
+            var u = urls[i];
+            if (seen[u]) continue;
+            seen[u] = 1; asked++;
+            var f = u.slice(u.lastIndexOf('/') + 1).replace(/\?[^/]*$/, '');
+            var base = f.replace(/\.png$/i, '').toLowerCase();
+            var kind = 'other', hit = 0;
+            if (u.indexOf('/dlc/') > -1 || f.indexOf('__') === 0) {
+                hit = 1;                      // ground sheets / atlas keys:
+                kind = 'other';               // not per-object art
+            } else if (/(^|\/)characters\//.test(u)) {
+                kind = 'char';
+                base = base.replace(/_\d+$/, '');
+                hit = visChar[base] === 1;
+            } else if (u.indexOf('/seasons/') > -1) {
+                kind = 'season';
+                hit = visSlug[base] === 1;
+            } else if (u.indexOf('/anims/') > -1) {
+                kind = 'film';
+                hit = visSlug[base.split('__')[0]] === 1;
+            } else if (/(^|\/)assets\/city\//.test(u)) {
+                kind = 'body';
+                hit = visSlug[base] === 1;
+            }
+            cat[kind]++;
+            if (!hit) { offN++; if (off[kind].length < 12) off[kind].push(f); }
+        }
+        return { zoom: Math.round(cam.zoom * 1000) / 1000,
+                 scale: Math.round(CAM.scale(cam) * 100) / 100,
+                 lod: CAM.scale(cam) < BUILD_LOD_S, vw: VW, vh: VH,
+                 buildingsOnScreen: n, charsOnScreen: Object.keys(visChar).length,
+                 artEverAsked: urls.length, askedChecked: asked,
+                 offScreen: offN, byKind: cat, offSamples: off,
+                 req: ALOAD.req, artGot: ALOAD.artGot, artKnown: ALOAD.artKnown };
+    }
+    window.__CV_ART_audit = function (opt) {   // console/harness: the above
+        opt = opt || {};                        // over the real request log
+        return artAudit(ALOAD.hist, opt.recent || 600);
+    };
+    window.__CV_ART_audit_urls = function (urls, n) {   // harness: explicit list
+        return artAudit(urls || [], n || 600);
+    };
+    window.__CV_ART_requests = function () {   // console: the log itself
+        return ALOAD.hist.slice();
+    };
+    /* Live trace (console/harness): record EVERY request call, not just the
+       first sight of a file — a settled camera asks for the same art every
+       frame, which is exactly the storm the pill cannot show. Switch it on,
+       let the view settle, then audit __ASSETS.tr against the window. */
+    window.__CV_ART_trace = function (on) {
+        ALOAD.trace = on ? 1 : 0;
+        ALOAD.tr.length = 0;
+        return ALOAD.trace;
     };
 
     /* ---- art tune panel: pin-convention A/B without reloads ------------------

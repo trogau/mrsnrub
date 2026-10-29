@@ -2058,18 +2058,39 @@ def _pack_sparse(comps, blk=6, pad=3, max_w=4096, label=''):
     return atlas, subs, mxw, mxh
 
 
-def _layer_wants(by_name, orders, slug, name_idx):
+def _sibling_base_anim(nm, have):
+    """the bsv3 anim named '<sibling>Base'/'<sibling>_Base' when the asset
+    carries one: the base part's loop named after the base building, the
+    convention TheRottingPelicanBase/ChineseJunk's Neutral_Base follow. A
+    pack that forgets the base's NeutralAnimationController (the engine
+    then runs the body's default 'Neutral' and the map loses the whole
+    base loop — SpringfieldMaximumSecurityPrison shipped idle) still gets
+    its base composited when the strip is there to be found."""
+    low = {h.lower(): h for h in have or []}
+    return low.get(nm.lower() + 'base') or low.get(nm.lower() + '_base')
+
+
+def _layer_wants(by_name, orders, slug, name_idx, have=None):
     """ordered anim names the engine composites for this asset — the parts
     that loop TOGETHER over the body: the <AnimationLayerOrder> list when
     the assetdata declares one, then the controller anim of every building
     that renders from this slug (OldEnglishStationBase loops NeutralBase,
-    …Top loops NeutralTop). Deduped case-insensitively, draw order first."""
+    …Top loops NeutralTop). With `have` (the asset's bsv3 anim names) a
+    sibling that declared no controller contributes the '<sibling>Base'
+    strip it owns by naming convention instead (_sibling_base_anim).
+    Deduped case-insensitively, draw order first."""
     names = _slug_names(name_idx, slug)
     if not names:
         return []
     out, seen = [], set()
-    for lst in ([orders.get(nm) or [] for nm in names] +
-                [[(by_name.get(nm) or {}).get('idle')] for nm in names]):
+    idles = []
+    for nm in names:
+        rec = by_name.get(nm)
+        w = (rec or {}).get('idle')
+        if w is None and not rec:
+            w = _sibling_base_anim(nm, have)
+        idles.append([w] if w else [])
+    for lst in ([orders.get(nm) or [] for nm in names] + idles):
         for w in lst:
             if w and w.lower() not in seen:
                 seen.add(w.lower())
@@ -2138,7 +2159,7 @@ def _part_layers(by_name, orders, slug, name_idx, have, idle):
         whose idle already covers the whole body is left alone."""
     matched, seen = [], set()
     unmatched_top = False
-    for w in _layer_wants(by_name, orders, slug, name_idx):
+    for w in _layer_wants(by_name, orders, slug, name_idx, have):
         m = _match_anim_verb(w, have, allow_base=True)
         if m and m.lower() not in seen:
             seen.add(m.lower())
@@ -2212,7 +2233,7 @@ def _behavior_map(by_name, orders, controllers, ameta, name_idx):
         elif idle is None:
             lay, seen = [], set()
             tap_low = (tap or '').lower()
-            for w in _layer_wants(by_name, orders, s, name_idx):
+            for w in _layer_wants(by_name, orders, s, name_idx, have):
                 m = _match_anim_verb(w, have, allow_base=True)
                 if m and m.lower() not in seen and m.lower() != tap_low:
                     seen.add(m.lower())
@@ -2636,7 +2657,8 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
             # force whatever ELSE it says draws with the idle.
             motion = None
             part_wants = []
-            for want in _layer_wants(behaviors, orders, s, name_idx):
+            for want in _layer_wants(behaviors, orders, s, name_idx,
+                                     have_names):
                 m = _match_anim_verb(want, have_names, allow_base=True)
                 if m and m not in part_wants:
                     part_wants.append(m)
@@ -2904,7 +2926,16 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
 
 
 def _safe_anim(nm):
-    return ''.join(c if c.isalnum() else '_' for c in nm)[:32] or 'anim'
+    """filmstrip filename slug for an anim name. The 32-char cap must not
+    silently collide: SpringfieldMaximumSecurityPrisonTop_Active and
+    …PrisonBase both truncated to 'SpringfieldMaximumSecurityPrison', so
+    the two entries shared one PNG and the later write clobbered the tap
+    strip. A truncated name keeps a short digest of the full name instead."""
+    safe = ''.join(c if c.isalnum() else '_' for c in nm)
+    if len(safe) <= 32:
+        return safe or 'anim'
+    return safe[:27] + '_' + hashlib.sha1(
+        safe.encode('utf-8')).hexdigest()[:4]
 
 
 

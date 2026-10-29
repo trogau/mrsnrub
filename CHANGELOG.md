@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-10-30.1
+
+- **Prison: the maximum-security base animates on the map** — building
+  `SpringfieldMaximumSecurityPrison` sat completely still: the bsv3 carries an
+  animated `SpringfieldMaximumSecurityPrisonBase` loop (7 distinct frames), but
+  the gamescripts pack declares its `<NeutralAnimationController>` only on the
+  `…PrisonTop` sibling, and that top loop is a 1-frame hold, so the behavior
+  gate resolved to nothing. Two fixes in `tools/gen_city_sprites.py`:
+  - `_layer_wants` now consults the asset's own anim names (`have`): a sibling
+    building that renders from the slug but declared no controller contributes
+    the `'<sibling>Base'` strip it owns by naming convention (the same rule
+    TheRottingPelican declares explicitly). The gate for
+    `springfieldmaximumsecurityprison` (and `…flipped`) now reads
+    `layers: ['SpringfieldMaximumSecurityPrisonBase']`, and the viewer composites
+    that base loop over the static body like every other part stack.
+  - `_safe_anim` no longer lets its 32-char cap collide: `…PrisonTop_Active`
+    and `…PrisonBase` both truncated to `SpringfieldMaximumSecurityPrison`, so
+    the two filmstrips shared one PNG and the later write silently replaced the
+    tap strip with the base atlas. Truncated names now carry a short sha1
+    digest; both slugs' atlases were regenerated (three strips each, no shared
+    files, `Top_Active` restored to its own atlas).
+  - No `data/building_behaviors.json` change — the fallback is derived from the
+    pack cache + the bsv3, so `behavior --write-map` reproduces the gate.
+    Viewer: `MANIFEST_V` bumped to `?v=20261030.1` (script `?v=64`) so the new
+    `city-anims.json` is picked up. Evidence filmstrip:
+    `mapdump/registration/m4-anims-springfieldmaximumsecurityprison-base.png`.
+
 ## 2026-10-29.14
 
 - **Ocean objects: the art pill settles, and a strip on screen is never
