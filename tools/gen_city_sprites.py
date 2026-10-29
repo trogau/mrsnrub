@@ -1201,12 +1201,28 @@ def _composite(parsed, img, name, blocks):
             plan = kept
     if not plan:
         return None
-    X0 = min(t[0] for t in plan)
-    Y0 = min(t[1] for t in plan)
-    X1 = max(t[2] for t in plan)
-    Y1 = max(t[3] for t in plan)
-    W = max(1, int(round(X1 - X0)))
-    H = max(1, int(round(Y1 - Y0)))
+    # Snap every block to integer device pixels in ABSOLUTE space BEFORE
+    # subtracting the canvas origin (2026-10-30, privateisland05). Rounding
+    # (qx0 - X0) per frame made a static block's cell-space position a
+    # function of the FRAME, not of the block: when a moving water block
+    # changed the bbox fraction, every static block's paste shifted +-1 px
+    # and the cluster scan turned that into +-2 px oy wobble + 78<->84 px
+    # bbox breathing — the island's rocks bobbed independently while the
+    # engine holds them at one fixed float position. Snapping once against
+    # the block's own coordinates makes placement depend on that block's
+    # data alone, so identical blocks place identically on every frame.
+    snapped = []
+    for (qx0, qy0, qx1, qy1, ma, mb, mc, md, flip_h, flip_v,
+         cx, cy, cw, ch, rx0, ry0) in plan:
+        bx0, by0 = int(round(qx0)), int(round(qy0))
+        ow = max(1, int(round(qx1 - qx0)))
+        oh = max(1, int(round(qy1 - qy0)))
+        snapped.append((bx0, by0, ow, oh, ma, mb, mc, md, flip_h, flip_v,
+                        cx, cy, cw, ch, rx0, ry0))
+    OX = min(t[0] for t in snapped)
+    OY = min(t[1] for t in snapped)
+    W = max(1, max(t[0] + t[2] for t in snapped) - OX)
+    H = max(1, max(t[1] + t[3] for t in snapped) - OY)
     if W * H > 16_000_000:
         # 3.3x the largest legitimate sprite (4.8 Mpx); catches whatever
         # coordinate garbage survives the cull above before the allocation
@@ -1219,15 +1235,13 @@ def _composite(parsed, img, name, blocks):
     # 0.807 forward, 0.832 shadow-first — see notes/06). Ground shadows
     # are the last records in every file we have, so reversed they land
     # behind everything, which is also what every building needs.
-    for (qx0, qy0, qx1, qy1, ma, mb, mc, md, flip_h, flip_v,
-         cx, cy, cw, ch, rx0, ry0) in reversed(plan):
+    for (bx0, by0, ow, oh, ma, mb, mc, md, flip_h, flip_v,
+         cx, cy, cw, ch, rx0, ry0) in reversed(snapped):
         cr = img.crop((cx, cy, cx + cw, cy + ch))
         if flip_h:
             cr = cr.transpose(Image.FLIP_LEFT_RIGHT)
         if flip_v:
             cr = cr.transpose(Image.FLIP_TOP_BOTTOM)
-        ow = max(1, int(round(qx1 - qx0)))
-        oh = max(1, int(round(qy1 - qy0)))
         if abs(mb) < 1e-3 and abs(mc) < 1e-3:
             if not (abs(ma - 1.0) < 1e-3 and abs(md - 1.0) < 1e-3):
                 cr = cr.resize((ow, oh), Image.NEAREST)
@@ -1243,8 +1257,8 @@ def _composite(parsed, img, name, blocks):
                       -mc / detm, ma / detm, (-mc * rx0 + ma * ry0) / detm)
             cr = cr.transform((ow, oh), Image.AFFINE, coeffs,
                               resample=Image.BILINEAR)
-        canvas.alpha_composite(cr, (int(round(qx0 - X0)), int(round(qy0 - Y0))))
-    return canvas, -X0, -Y0, len(plan), skipped, rotmax
+        canvas.alpha_composite(cr, (bx0 - OX, by0 - OY))
+    return canvas, -OX, -OY, len(plan), skipped, rotmax
 
 
 def render_static(parsed, img, name):
@@ -1880,9 +1894,11 @@ def _anim_motion(parsed):
 
 
 _SPARSE_FAIL = None                 # last self-check failure state (debug)
+_SPARSE_PX = [0]                      # last rejected pack's atlas px (retry)
 
 
-def _pack_sparse(comps, blk=6, pad=3, max_w=4096, label=''):
+def _pack_sparse(comps, blk=4, pad=3, max_w=4096, max_h=4096, label='',
+                 conn=4, tile_min=24000, fill_max=65):
     """Cluster-rect packing for layer strips whose cells are almost all
     transparency (the escalator's riders: ~20k opaque px in a 2.8 Mpx
     canvas). Instead of one full-cell-per-frame atlas, pack the bbox of
@@ -1899,117 +1915,287 @@ def _pack_sparse(comps, blk=6, pad=3, max_w=4096, label=''):
     every frame showing one blits the shared rect (sub entries may point
     at the same sx/sy). That dedupe replaces the old per-rect fat-blob
     bail, which killed exactly the strips the uniform atlas cannot ship
-    under the player's decode gate (AircraftCarrier's 24 Mpx hull). The
-    bail-outs are now the savings tests: <3x vs full cells, or an atlas
-    still over the player's cap. Returns
+    under the player's decode gate (AircraftCarrier's 24 Mpx hull).
+
+    Clustering splits STATIC from MOVING blocks (2026-10-30,
+    privateisland05's top): a block is MOVING when its RGBA pixels differ
+    across the loop (compared in anchor space), and moving blocks never
+    join a static cluster's 8-connectivity. Without that, the island's
+    gull/flag/swimmer/rotor each touch the tower, dragging their changing
+    pixels into the tower's cluster: the 4.5 Mpx tower crop hashed unique
+    on every frame, the atlas blew past the decode gate, and the strip
+    fell back to a 2-cell grid that read as frozen. With the split the
+    tower crop is byte-equal across all 48 frames — packed once — and the
+    atlas is one tower rect plus small per-frame part rects. Every opaque
+    pixel is still covered (a moving block whose part is absent in a
+    frame carries that frame's own art into the moving cluster), so the
+    self-check below stays exact.
+
+    The bail-outs are now the savings tests: <3x vs full cells, or an
+    atlas still over the player's cap. Returns
     (atlas, subs, maxw, maxh) or None."""
     try:
         import numpy as np
     except ImportError:
         return None
     from collections import deque
-    rects = []                    # (k, X0, Y0, X1, Y1, fx, fy, cid)
-    per = [[] for _ in comps]
+    _SPARSE_PX[0] = 0                       # stale hint from prior strip
+
+    # Moving-block map in ANCHOR space: lay every frame's RGBA onto one
+    # union canvas at its anchor offset and flag each blk-px block whose
+    # pixels ever differ from frame 0. Frames' canvases differ in size
+    # and origin, so the comparison must run anchor-space, not canvas-
+    # space (the same distinction the grid snap above had to respect).
+    anch = [(int(round(t[1])), int(round(t[2]))) for t in comps]
+    amin_x = min(-fx for fx, _ in anch)
+    amin_y = min(-fy for _, fy in anch)
+    amax_x = max(t[0].width - fx for t, (fx, _) in zip(comps, anch))
+    amax_y = max(t[0].height - fy for t, (_, fy) in zip(comps, anch))
+    tpx, tpy = amin_x % blk, amin_y % blk      # pad so a grid line lands
+    UW = -(-(amax_x - amin_x + tpx) // blk) * blk   # on anchor coord 0
+    UH = -(-(amax_y - amin_y + tpy) // blk) * blk
+
+    def place(k):
+        a = np.asarray(comps[k][0])
+        r = (0 - anch[k][1]) - amin_y + tpy
+        c = (0 - anch[k][0]) - amin_x + tpx
+        D = np.zeros((UH, UW, 4), np.uint8)
+        D[r:r + a.shape[0], c:c + a.shape[1]] = a
+        return D
+    D0 = place(0)
+    diff = np.zeros((UH, UW), bool)
+    for k in range(1, len(comps)):
+        diff |= (place(k) != D0).any(axis=2)
+    GH, GW = UH // blk, UW // blk
+    mv = diff.reshape(GH, blk, GW, blk).any(axis=(1, 3))   # moving blocks
+    del diff, D0
+
+    cands = []                    # clustered candidates, same tuple shape
     labs = [None] * len(comps)    # per-frame block -> cluster id map
+    cid = 0                       # cluster ids unique across the strip
     for k, tup in enumerate(comps):
         im, fx, fy = tup[0], int(round(tup[1])), int(round(tup[2]))
         a = np.asarray(im)[:, :, 3]
         hgt, wid = a.shape
         m = a > 8
-        gh, gy = -(-hgt // blk), -(-wid // blk)   # ceil: the trailing
-        if not gh or not gy:                      # partial block band is
-            return None                           # art too (the boats'
+        # Anchor-aligned grid (2026-10-30, privateisland05): the bbox grid
+        # must snap in ANCHOR space, not canvas space. The canvas origin
+        # drifts +-2 px frame to frame (its topmost block is animating
+        # water), so a canvas-aligned grid snapped a STATIC rock's top edge
+        # to a different line each frame and the shipped oy bobbed
+        # -503/-502/-501 while the engine holds the rock still. Shifting
+        # the scan so a grid line passes through the anchor makes the snap
+        # phase a function of engine space alone: same block -> same rect
+        # on every frame. ox/oy are already anchor-relative (X0 - fx), so
+        # they inherit the stability.
+        shx, shy = (-fx) % blk, (-fy) % blk
+        gh, gy = -(-(hgt + shy) // blk), -(-(wid + shx) // blk)   # ceil:
+        if not gh or not gy:                      # the trailing partial
+            return None                           # block band is art too
         # pad the trailing partial blocks so the waterline rows beyond
         # gh*blk / gy*blk are scanned too, not silently dropped:
-        gridp = np.pad(m, ((0, gh * blk - hgt), (0, gy * blk - wid)))
+        gridp = np.pad(m, ((shy, gh * blk - hgt - shy),
+                           (shx, gy * blk - wid - shx)))
         grid = gridp.reshape(gh, blk, gy, blk).any(axis=(1, 3))
+        # this frame's slice of the anchor-space moving map
+        offy = (0 - fy - amin_y + tpy) // blk
+        offx = (0 - fx - amin_x + tpx) // blk
+        mvf = mv[offy:offy + gh, offx:offx + gy]
         lab = np.full((gh, gy), -1, np.int32)     # block -> rect index
         seen = np.zeros_like(grid, bool)
-        cid = len(rects)
-        for i in range(gh):
-            for j in range(gy):
-                if not grid[i, j] or seen[i, j]:
-                    continue
-                q = deque([(i, j)])
-                seen[i, j] = True
-                y0, x0, y1, x1 = i, j, i, j
-                while q:
-                    y, x = q.popleft()
-                    lab[y, x] = cid
-                    if y < y0:
-                        y0 = y
-                    if y > y1:
-                        y1 = y
-                    if x < x0:
-                        x0 = x
-                    if x > x1:
-                        x1 = x
-                    for dy in (-1, 0, 1):
-                        for dx in (-1, 0, 1):
-                            ny, nx = y + dy, x + dx
-                            if 0 <= ny < gh and 0 <= nx < gy and \
-                                    grid[ny, nx] and not seen[ny, nx]:
-                                seen[ny, nx] = True
-                                q.append((ny, nx))
-                X0, Y0 = max(0, x0 * blk - pad), max(0, y0 * blk - pad)
-                X1, Y1 = min(wid, x1 * blk + blk + pad), \
-                    min(hgt, y1 * blk + blk + pad)
-                per[k].append(len(rects))
-                rects.append((k, X0, Y0, X1, Y1, fx, fy, cid))
-                cid += 1
+
+        def grow(i0, j0, gmask):
+            nonlocal cid
+            q = deque([(i0, j0)])
+            seen[i0, j0] = True
+            y0, x0, y1, x1 = i0, j0, i0, j0
+            while q:
+                y, x = q.popleft()
+                lab[y, x] = cid
+                if y < y0:
+                    y0 = y
+                if y > y1:
+                    y1 = y
+                if x < x0:
+                    x0 = x
+                if x > x1:
+                    x1 = x
+                for dy, dx in ([(0, 1), (0, -1), (1, 0), (-1, 0)] if conn == 4
+                               else [(dy, dx) for dy in (-1, 0, 1)
+                                     for dx in (-1, 0, 1)]):
+                        ny, nx = y + dy, x + dx
+                        if 0 <= ny < gh and 0 <= nx < gy and \
+                                gmask[ny, nx] and not seen[ny, nx]:
+                            seen[ny, nx] = True
+                            q.append((ny, nx))
+            # No canvas-edge clipping (2026-10-30, privateisland05's top):
+            # the frame canvases' bboxes breathe a few px as art moves, and
+            # min(wid, ...) then moved the rect edge with them — the byte-
+            # identical 1.7k x 2.0k tower cluster packed 48 TIMES (1702 px
+            # wide on some frames, 1704 on others). A pure grid multiple is
+            # frame-invariant; area outside the canvas blits as transparent.
+            X0, Y0 = x0 * blk - shx - pad, y0 * blk - shy - pad
+            X1, Y1 = x1 * blk + blk - shx + pad, y1 * blk + blk - shy + pad
+            cands.append((k, X0, Y0, X1, Y1, fx, fy, cid, shx, shy))
+            cid += 1
+
+        for gmask in (grid & ~mvf, grid & mvf):  # static clusters first,
+            for i in range(gh):                   # then the moving parts
+                for j in range(gy):
+                    if gmask[i, j] and not seen[i, j]:
+                        grow(i, j, gmask)
         labs[k] = lab
-    if not rects:
+    if not cands:
         return None
+    # cluster crop masked to its OWN blocks: pixels inside the bbox that
+    # belong to a neighbouring cluster are zeroed — pasted unmasked they
+    # blit twice under the twin's own rect, which is what doubled the
+    # boats' wake water. The rect may reach outside the frame canvas
+    # (grid-multiple bounds); that area crops as zero.
+    def crop(cand):
+        k, X0, Y0, X1, Y1, _fx, _fy, cd, shx, shy = cand
+        cw, ch = comps[k][0].size
+        arr = np.zeros((Y1 - Y0, X1 - X0, 4), np.uint8)
+        cx0, cy0 = max(X0, 0), max(Y0, 0)
+        cx1, cy1 = min(X1, cw), min(Y1, ch)
+        if cx1 > cx0 and cy1 > cy0:
+            arr[cy0 - Y0:cy1 - Y0, cx0 - X0:cx1 - X0] = \
+                np.asarray(comps[k][0].crop((cx0, cy0, cx1, cy1)))
+        lab = labs[k]
+        gh, gy = lab.shape
+        ys, xs = np.arange(Y0, Y1), np.arange(X0, X1)
+        byr = np.clip((ys + shy) // blk, 0, gh - 1)[:, None]
+        bxr = np.clip((xs + shx) // blk, 0, gy - 1)[None, :]
+        m = lab[byr, bxr] == cd
+        m &= ((ys >= 0) & (ys < ch))[:, None]
+        m &= ((xs >= 0) & (xs < cw))[None, :]
+        arr[~m] = 0
+        return arr
+
     # cross-frame dedupe: identical crops (static parts of an animating
     # cell) pack once; twins blit the canonical rect. Keyed on content
     # only — a same-content crop that moved still carries its own ox/oy,
     # so sharing the atlas slot draws it in the right place either way.
-    def crop(n):
-        """cluster crop masked to its OWN blocks: pixels inside the bbox
-        that belong to a neighbouring cluster are zeroed — pasted unmasked
-        they blit twice under the twin's own rect, which is what doubled
-        the boats' wake water. Also normalises sub-threshold dust, so
-        byte-equal content really dedupes."""
-        k, X0, Y0, X1, Y1, _fx, _fy, cd = rects[n]
-        arr = np.array(comps[k][0].crop((X0, Y0, X1, Y1)))
-        by = (np.arange(Y0, Y1) // blk)[:, None]
-        bx = (np.arange(X0, X1) // blk)[None, :]
-        arr[labs[k][by, bx] != cd] = 0
-        return arr
+    # Each cluster is first split into tight, dense rectangles
+    # (2026-10-30, privateisland05's top loop): sparkle/wake chains
+    # 8-connect into sprawling bboxes whose every pixel of sky and sea
+    # between the art still cost atlas. First split along fully
+    # transparent rows/columns to fixed point, then recurse large sparse
+    # boxes in half along their long edge: the tower's 49 %-fill 3.1 Mpx
+    # blob and the balloon's 51 %-fill 0.38 Mpx/frame chain both shrink
+    # toward their opaque pixels, which is what fit enough loop phases
+    # under the player's decode gate to read as animation. Every pixel
+    # lands in exactly one box, so the self-check below stays exact.
+    def _runs(mask):
+        # start/end of each True run, vectorised: the density recursion
+        # calls this on every node of every cluster crop
+        m = mask.astype(np.int8)
+        d = np.diff(m)
+        starts = [int(v) for v in np.flatnonzero(d == 1) + 1]
+        ends = [int(v) for v in np.flatnonzero(d == -1) + 1]
+        if m[0]:
+            starts.insert(0, 0)
+        if m[-1]:
+            ends.append(len(m))
+        return list(zip(starts, ends))
 
-    canon, uniq, twin = {}, [], [None] * len(rects)
-    arrs = [None] * len(rects)
-    for n in range(len(rects)):
-        arr = arrs[n] = crop(n)
-        key = hashlib.sha1(('%dx%d' % (arr.shape[1], arr.shape[0])).encode()
-                           + arr.tobytes()).digest()
-        c = canon.get(key)
-        if c is None:
-            canon[key] = n
-            uniq.append(n)
-        else:
-            twin[n] = c
+    def _boxes(op, y0, y1, x0, x1, depth=0):
+        if not op[y0:y1, x0:x1].any():          # a density split can
+            return []                            # leave an empty half
+        rows = _runs(op[y0:y1, x0:x1].any(axis=1))
+        if len(rows) > 1:
+            out = []
+            for a, b in rows:
+                out += _boxes(op, y0 + a, y0 + b, x0, x1, depth)
+            return out
+        cols = _runs(op[y0:y1, x0:x1].any(axis=0))
+        if len(cols) > 1:
+            out = []
+            for a, b in cols:
+                out += _boxes(op, y0, y1, x0 + a, x0 + b, depth)
+            return out
+        h, w = y1 - y0, x1 - x0
+        if (w * h > tile_min and min(h, w) >= 96 and depth < 8 and
+                int(op[y0:y1, x0:x1].sum()) * 100 < fill_max * h * w):
+            if w >= h:                            # exact partition: no
+                m = x0 + w // 2                   # pixel in two boxes
+                return (_boxes(op, y0, y1, x0, m, depth + 1) +
+                        _boxes(op, y0, y1, m, x1, depth + 1))
+            m = y0 + h // 2
+            return (_boxes(op, y0, m, x0, x1, depth + 1) +
+                    _boxes(op, m, y1, x0, x1, depth + 1))
+        return [(y0, y1, x0, x1)]
+
+    rects, arrs, twin = [], [], []
+    per = [[] for _ in comps]
+    canon, uniq = {}, []
+    for cand in cands:
+        k, X0, Y0, X1, Y1, fx, fy, cd, shx, shy = cand
+        arr = crop(cand)
+        op = arr[:, :, 3] > 8
+        if not op.any():
+            continue
+        hgt, wid = op.shape
+        for ry0, ry1, rx0, rx1 in _boxes(op, 0, hgt, 0, wid):
+            pa = arr[ry0:ry1, rx0:rx1]
+            n = len(rects)
+            rects.append((k, X0 + rx0, Y0 + ry0, X0 + rx1, Y0 + ry1,
+                          fx, fy, cd, shx, shy))
+            arrs.append(pa)
+            per[k].append(n)
+            key = hashlib.sha1(pa.tobytes()
+                               + b'%08x%08x' % (pa.shape[1], pa.shape[0])
+                               ).digest()
+            c = canon.get(key)
+            if c is None:
+                canon[key] = n
+                uniq.append(n)
+                twin.append(None)
+            else:
+                twin.append(c)
+    if not rects:
+        return None
     mxw = max(r[3] - r[1] for r in rects)
     mxh = max(r[4] - r[2] for r in rects)
-    W = min(max_w, mxw + 4)
+    W = min(max_w, max(mxw + 4, 64))
+    # Bottom-left skyline packing (2026-10-30, privateisland05's top):
+    # the old shelf left most of every row past its tallest cell empty
+    # (~55% filled), and the loop was thinned to 14 frames to fit the
+    # player's gate. Filling the column-height valleys instead packs the
+    # same pieces near-nominal, so far more frames fit. Widest first
+    # (the tower rect alone fixes the atlas width). The page must also
+    # fit a GPU texture side limit: the narrow (769 px) pack that first
+    # shipped the island top grew to H = 20161, a side over the GPU's
+    # MAX_TEXTURE_SIZE uploads incomplete and BLITS BLACK (the "renders
+    # as entirely black sprites" report, 2026-10-30) — so when the
+    # column heights exceed max_h, widen toward max_w and re-pack.
+    need = sum((rects[i][3] - rects[i][1] + 2) *
+               (rects[i][4] - rects[i][2] + 2) for i in uniq)
+    order = sorted(uniq, key=lambda n: -(rects[n][3] - rects[n][1]))
     pos = [None] * len(rects)
-    x = y = rowH = 0
-    for i in sorted(uniq, key=lambda n: -(rects[n][4] - rects[n][2])):
-        _, X0, Y0, X1, Y1 = rects[i][:5]
-        rw, rh = X1 - X0, Y1 - Y0
-        if x + rw + 2 > W:
-            x = 0
-            y += rowH + 2
-            rowH = 0
-        pos[i] = (x, y)
-        x += rw + 2
-        if rh > rowH:
-            rowH = rh
-    H = y + rowH + 2
+    while True:
+        colh = [0] * W
+        for i in order:
+            _, X0, Y0, X1, Y1 = rects[i][:5]
+            rw, rh = X1 - X0, Y1 - Y0
+            rw2, rh2 = min(W, rw + 2), rh + 2   # 2 px gutters, as before
+            win = np.lib.stride_tricks.sliding_window_view(colh, rw2).max(axis=1)
+            x = int(np.argmin(win))
+            y = int(win[x])
+            pos[i] = (x, y)
+            colh[x:x + rw2] = [y + rh2] * rw2
+        H = max(colh) + 2
+        if H <= max_h or W >= max_w:
+            break
+        W = min(max_w, max(2 * W, int(need * 1.10 / max_h) + 8))
+    if H > max_h:                     # a single rect taller than a page:
+        _SPARSE_PX[0] = W * H         # uniform cells (bisect sees this)
+        return None
     for n in range(len(rects)):         # twins ride the canonical slot
         if twin[n] is not None:
             pos[n] = pos[twin[n]]
     full = sum(t[0].width * t[0].height for t in comps)
+    _SPARSE_PX[0] = W * H             # last pack attempt's size (retry hint)
     if W * H * 3 > full:                # less than a 3x win: uniform cells
         return None
     if W * H > MAN_MAP_ATLAS_PX:        # still undecodable for the player
@@ -2019,7 +2205,7 @@ def _pack_sparse(comps, blk=6, pad=3, max_w=4096, label=''):
     for k, idxs in enumerate(per):
         fr = []
         for idx in idxs:
-            _, X0, Y0, X1, Y1, fx, fy, _cd = rects[idx]
+            _, X0, Y0, X1, Y1, fx, fy, _cd = rects[idx][:8]
             px, py = pos[idx]
             if twin[idx] is None:
                 atlas.alpha_composite(Image.fromarray(arrs[idx]), (px, py))
@@ -2038,16 +2224,31 @@ def _pack_sparse(comps, blk=6, pad=3, max_w=4096, label=''):
         for idx in idxs:
             _, X0, Y0, X1, Y1 = rects[idx][:5]
             px, py = pos[idx]
+            # rect bounds may reach outside the frame canvas (grid-
+            # multiple bounds): clip the blit to the canvas, atlas-side
+            # window shifts with the clipped edge
+            cx0, cy0 = max(0, X0), max(0, Y0)
+            cx1, cy1 = min(ca.shape[1], X1), min(ca.shape[0], Y1)
+            if cx1 <= cx0 or cy1 <= cy0:
+                continue
             # int32: d * (255 - a) hits 65025, past int16 range
-            a = A[py:py + (Y1 - Y0), px:px + (X1 - X0)].astype(np.int32)
-            d = cn[Y0:Y1, X0:X1].astype(np.int32)
-            cn[Y0:Y1, X0:X1] = (a + d * (255 - a) // 255).astype(np.int16)
+            a = A[py + (cy0 - Y0):py + (cy1 - Y0),
+                  px + (cx0 - X0):px + (cx1 - X0)].astype(np.int32)
+            d = cn[cy0:cy1, cx0:cx1].astype(np.int32)
+            cn[cy0:cy1, cx0:cx1] = (a + d * (255 - a) // 255).astype(np.int16)
+        # and nothing may blit where THIS frame draws no art: the twin
+        # sharing rides on "same block content on every frame", which is
+        # vacuously true for a cluster absent from the anchor-space
+        # reference frame — without this, a mover that vanishes for half
+        # the loop (the private-island gulls/balloons) ghosts at its
+        # other poses' positions (2026-10-30, nine-balloons mapsim).
+        extra = int(((cn > 8) & (ci <= 8)).sum())
         lost = int((ci - cn > 8).sum())
         gain = int((cn - ci > 8).sum())
-        if lost or gain:
+        if lost or gain or extra:
             bad += 1
             print(f'  SPARSE-CHECK {label} frame {k}: '
-                  f'{lost} px lost, {gain} px extra')
+                  f'{lost} px lost, {gain} px extra, {extra} px phantom')
     if bad:
         global _SPARSE_FAIL                        # debug hook: last failure
         _SPARSE_FAIL = dict(comps=comps, atlas=atlas, subs=subs,
@@ -2070,6 +2271,21 @@ def _sibling_base_anim(nm, have):
     return low.get(nm.lower() + 'base') or low.get(nm.lower() + '_base')
 
 
+def _sibling_top_anim(have, claimed):
+    """the asset's unclaimed top-part loop when a top sibling declared no
+    controller: PrivateIsland's proxy buildings ship without a controller
+    yet every PrivateIsland0X bsv3 carries 'PrivateIslandTop' (90 motion
+    frames of palms) beside the base's declared 'privateislandbase' — the
+    asset's own name is the top part's authority there. Like _active_pairs
+    the claim is all-or-nothing: exactly one top-like candidate (last word
+    Top, never a tap-state Active_*) or none; directional faces are
+    alternative placements, already excluded by the last-word test."""
+    cands = [h for h in have or []
+             if 'active' not in h.lower() and h.lower() not in claimed
+             and _part_last_word(h) == 'top']
+    return cands[0] if len(cands) == 1 else None
+
+
 def _layer_wants(by_name, orders, slug, name_idx, have=None):
     """ordered anim names the engine composites for this asset — the parts
     that loop TOGETHER over the body: the <AnimationLayerOrder> list when
@@ -2077,8 +2293,12 @@ def _layer_wants(by_name, orders, slug, name_idx, have=None):
     that renders from this slug (OldEnglishStationBase loops NeutralBase,
     …Top loops NeutralTop). With `have` (the asset's bsv3 anim names) a
     sibling that declared no controller contributes the '<sibling>Base'
-    strip it owns by naming convention instead (_sibling_base_anim).
-    Deduped case-insensitively, draw order first."""
+    strip it owns by naming convention instead (_sibling_base_anim), and a
+    controller-less *top* sibling contributes the asset's lone unclaimed
+    top-like strip when a base-like loop is already wanted there
+    (_sibling_top_anim — without that pair the base loop alone would gate
+    as the idle and REPLACE the body, blanking the island's whole upper
+    half). Deduped case-insensitively, draw order first."""
     names = _slug_names(name_idx, slug)
     if not names:
         return []
@@ -2090,6 +2310,16 @@ def _layer_wants(by_name, orders, slug, name_idx, have=None):
         if w is None and not rec:
             w = _sibling_base_anim(nm, have)
         idles.append([w] if w else [])
+    if have:
+        want_lo = {w.lower() for lst in idles for w in lst}
+        if any(_PART_BASE_RE.search(w) for lst in idles for w in lst):
+            for i, nm in enumerate(names):
+                if idles[i] or _part_last_word(nm) != 'top':
+                    continue
+                w = _sibling_top_anim(have, want_lo)
+                if w:
+                    idles[i] = [w]
+                    want_lo.add(w.lower())
     for lst in ([orders.get(nm) or [] for nm in names] + idles):
         for w in lst:
             if w and w.lower() not in seen:
@@ -2227,6 +2457,15 @@ def _behavior_map(by_name, orders, controllers, ameta, name_idx):
             # composites below — drawing the lone part left the object's
             # whole upper half off the map
             idle = None
+        elif idle and _PART_BASE_RE.search(idle):
+            # a loop NAMED for a part must never REPLACE the body either:
+            # the player draws a plain idle strip instead of the body PNG,
+            # so the lone base-water loops left ornatepier's and squidport's
+            # arches and SmallIsland02's islet off the map (their top loops
+            # are 1-frame holds, so no top strip exists to pair with). The
+            # rest of the art lives only in the body — composite the part.
+            part_lay = [idle]
+            idle = None
         rec = {'idle': idle, 'tap': tap}
         if part_lay:
             rec['layers'] = part_lay
@@ -2287,6 +2526,76 @@ MAN_MAP_ATLAS_PX = 16e6
 # their body PNGs already read as complete static scenes.
 _STACK_SKIP = {'futuristicmonorailstation', 'northwardmonorailbridge',
                'itchyscratchygate'}
+
+_BODY_MASKS = {}          # slug -> (opaque mask, anchor_x, anchor_y) | None
+
+
+def _body_mask(slug):
+    """The shipped flattened body PNG's opaque mask and its anchor, cached.
+    One read per slug serves every strip the slug ships."""
+    if slug not in _BODY_MASKS:
+        m = None
+        try:
+            import numpy as np              # lazy, as in _pack_sparse
+            sj = json.loads((ROOT / 'web/assets/city/city-sprites.json')
+                            .read_text())
+            info = (sj.get('sprites') or {}).get(slug) or {}
+            p = ROOT / 'web/assets/city' / info.get('png', '')
+            if p.is_file():
+                m = (np.asarray(Image.open(p).convert('RGBA'))[:, :, 3] > 8,
+                     int(round(info['anchor'][0])),
+                     int(round(info['anchor'][1])))
+        except (OSError, KeyError, TypeError, ValueError,
+                json.JSONDecodeError):
+            m = None                      # no body to compare against
+        _BODY_MASKS[slug] = m
+    return _BODY_MASKS[slug]
+
+
+def _strip_selfcontained(slug, comps):
+    """May the viewer skip the body PNG under this sparse strip's cells?
+
+    Only when the strip re-blits the scene the body shows: every frame's
+    rects are the layer's OWN composite, so a strip whose frames carry the
+    whole building (privateisland05's top: tower, island, sea, balloon and
+    all) hides nothing by suppressing the body — while the body, drawn
+    under it, re-exposes the stale Neutral pose (the frozen second balloon
+    beside the loop's moving one, 2026-10-30). A thin overlay layer (the
+    same asset's base strip: a 342x186 cell of spray) is only ever an
+    addition to the body, so it must keep it.
+
+    Measured against the body PNG's own pixels in anchor space: the frames
+    together must account for the whole body (UNION — a mover is never at
+    the body's home pose, which is exactly the case this enables), and no
+    single frame may drop much of it (per-frame floor, so a strip that
+    shows a fragment most of the loop can't claim the scene)."""
+    bm = _body_mask(slug)
+    if not bm:
+        return False
+    import numpy as np                      # lazy, as in _pack_sparse
+    body, bax, bay = bm
+    n_body = int(body.sum())
+    if n_body < 4096 or not comps:
+        return False
+    hgt, wid = body.shape
+    union = np.zeros((hgt, wid), bool)
+    worst = 1.0
+    for c in comps:
+        canvas, fax, fay = c[0], c[1], c[2]
+        arr = np.asarray(canvas)[:, :, 3] > 8
+        ch, cw = arr.shape
+        ox, oy = int(round(fax - bax)), int(round(fay - bay))
+        sx0, sy0 = max(0, -ox), max(0, -oy)
+        sx1, sy1 = min(cw, wid - ox), min(ch, hgt - oy)
+        if sx1 <= sx0 or sy1 <= sy0:
+            frac = 0.0
+        else:
+            m = np.zeros((hgt, wid), bool)
+            m[sy0 + oy:sy1 + oy, sx0 + ox:sx1 + ox] = arr[sy0:sy1, sx0:sx1]
+            union |= m
+            frac = int((m & body).sum()) / n_body
+        worst = min(worst, frac)
+    return int((union & body).sum()) >= 0.9 * n_body and worst >= 0.8
 
 
 def _stack_statics(man):
@@ -2826,7 +3135,55 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
                     # player would reject outright (uniform atlas over its
                     # decode gate — the carrier's hull): cluster-rects are
                     # the only way it animates on the map at all
+                    # (2026-10-30, privateisland05's top) If the atlas is
+                    # still over the gate, thin the loop with wrap-around
+                    # phase sampling and retry — the moving content grows
+                    # ~linearly with frame count, so a gate-passing strip
+                    # usually sits at 2/3..1/2 of the sampled frames. 30
+                    # visible phases beat the 2-cell grid fallback.
                     sp = _pack_sparse(comps, label=f'{s}/{nm}')
+                    n_before = len(comps)
+                    comps0, keep0 = comps, keep
+                    # (2026-10-30, privateisland05's top) If the atlas is
+                    # over the player's gate, thin with wrap-around phase
+                    # sampling and repack: atlas px ≈ fixed (statics,
+                    # packed once) + linear (per-frame movers), so one
+                    # probe estimates the fit and a short bisect between
+                    # the passing and failing counts lands the largest
+                    # loop that fits. 30 visible phases beat the 2-cell
+                    # grid fallback; the probes converge in 2-4 packs.
+                    if sp is None and len(comps0) > 10:
+                        lo, hi = 0, len(comps0)     # pass / fail counts
+                        pts = [(len(comps0), _SPARSE_PX[0])]
+                        best = None
+                        while hi - lo > 1:
+                            px = pts[-1][1]
+                            if len(pts) >= 2 and pts[-1][0] != pts[-2][0]:
+                                (n1, p1), (n2, p2) = pts[-2], pts[-1]
+                                sl = (p1 - p2) / float(n1 - n2)
+                            else:
+                                sl = 0.0
+                            if sl > 0:
+                                # solve the two-point line for the gate
+                                est = int((MAN_MAP_ATLAS_PX * 0.995
+                                           - (p1 - sl * n1)) / sl)
+                            else:
+                                est = int(hi * MAN_MAP_ATLAS_PX / px * 0.9)
+                            n_try = max(lo + 1, min(hi - 1, max(10, est)))
+                            idx2 = sorted({(i * len(comps0)) // n_try
+                                           for i in range(n_try)})
+                            cand = [comps0[i] for i in idx2]
+                            ck = [keep0[i] for i in idx2]
+                            r = _pack_sparse(cand, label=f'{s}/{nm}')
+                            if r is None:
+                                hi = n_try
+                                pts.append((n_try, _SPARSE_PX[0]))
+                            else:
+                                lo, best = n_try, (cand, ck, r)
+                        if best is None:            # grid pass below must
+                            comps, keep = comps0, keep0   # see full sampling
+                        else:
+                            comps, keep, sp = best
                     if sp is not None:
                         atlas, subs, mw, mh = sp
                         png = f'{s}__{_safe_anim(nm)}.png'
@@ -2839,6 +3196,29 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
                                'upx': uniform,
                                'sub': subs, 'ax': Ax, 'ay': Ay,
                                'fps': ANIM_FPS, 'sparse': 1}
+                        if _strip_selfcontained(s, comps):
+                            # this strip's cells ARE the scene (measured
+                            # against the body PNG, see the test): the
+                            # flattened body under one only re-exposes the
+                            # stale Neutral pose — the frozen second
+                            # balloon beside the loop's moving one
+                            # (privateisland05, 2026-10-30). The viewer
+                            # skips the body for these; an overlay strip
+                            # that only adds a piece never gets the flag.
+                            ent['nc'] = 1
+                        if len(comps) < n_before:
+                            ent['lf'] = n_before   # shared-clock marker,
+                            # same convention as the thinned grid path
+                            # Thinning slows a loop as much as it cuts
+                            # frames: at 12 fps a 22-cell/96-tick strip
+                            # holds each pose 0.37 s beside the base's
+                            # 0.17 s (the "top reads slow" report). Run
+                            # the strip's own clock so poses change ~4/s
+                            # (the base's cadence), capped at 18 — past
+                            # 1.5x the shared 12 a city loop turns
+                            # jittery.
+                            ent['fps'] = max(ANIM_FPS, min(
+                                18, round(4.0 * (b - a) / len(comps))))
                         _anim_clock(ent, keep, a, b)
                         entry.append(ent)
                         n_anims += 1
@@ -2858,8 +3238,15 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
                             break
                         fit -= 1
                     if fit >= 2:
-                        step = (len(comps) - 1) / (fit - 1)
-                        idx2 = sorted({round(i * step) for i in range(fit)})
+                        # Sample WRAP-AROUND phases, not an endpoints
+                        # linspace (2026-10-30, privateisland05): the old
+                        # round(i*step) picked cells 0 and len-1 at fit=2,
+                        # which are temporally ADJACENT in a looping strip
+                        # — the Top shipped rp [0, 95] of a 96-tick loop
+                        # and read as frozen. Phase spread keeps ~half the
+                        # loop between adjacent shipped poses.
+                        idx2 = sorted({(i * len(comps)) // fit
+                                       for i in range(fit)})
                         comps = [comps[i] for i in idx2]
                         keep = [keep[i] for i in idx2]
                         lf = n_before       # loop length BEFORE thinning:

@@ -1,5 +1,92 @@
 # Changelog
 
+## 2026-10-30.6
+
+- **Black sprites fixed: sparse atlas pages capped to a GPU texture side** —
+  the `.5` top atlas shipped as a single 769×**20161** page. A texture with a
+  side over the GPU's `MAX_TEXTURE_SIZE` uploads *incomplete*, and WebGL
+  samples an incomplete texture as opaque black, so the whole island rendered
+  as black silhouettes (on the reporting machine's 16384-side GPU; the `8847`
+  tall page before it had been under the limit). Two-sided fix.
+  Generator (`tools/gen_city_sprites.py` `_pack_sparse`): sparse pages now
+  have a `max_h` as well as a `max_w` (4096 each) — when the skyline packer's
+  column heights exceed it, the page **widens** toward `max_w` and re-packs,
+  and a pack that still cannot fit reports its size so `do_anims`' bisect
+  thins the loop instead of shipping an unusable page. The wider page is also
+  strictly better: the top now ships **25** frames at 4096×3757 = 15.39 Mpx
+  (was 22 at 769×20161) — width is what the skyline packer needed.
+  Viewer (`web/viewer/city-view-pixi.js`): probes `MAX_TEXTURE_SIZE` once at
+  load (`ANIM_MAX_SIDE`, `WEBGL_lose_context` released, 16384 fallback for
+  the GL-less harness) and `animCell` refuses any strip with a longer side
+  than that, so such a building falls back to its body PNG instead of
+  rendering black. The last legacy over-side page in the manifest,
+  `crateoffireworks` (346×17409), was regenerated under the cap: 32 frames
+  at 744×2080 = 1.55 Mpx. Manifest regression: those two slugs only.
+- **`nc` is now earned by a coverage test, not stamped on every strip** — the
+  `.5` body-skip flagged *every* sparse strip as self-contained, but that is
+  true only of a strip whose frames carry the whole building. `privateisland05`
+  ships two: its top (97 blocks/frame — the island, tower, balloon and all)
+  and a thin base overlay (29 blocks: the pier, wake and boat, a 342×186
+  cell). Under the blanket flag the overlay alone would have drawn a floating
+  pier with no island. New `_strip_selfcontained(slug, comps)` measures the
+  strip's own frames against the shipped body PNG in anchor space: the frames
+  **together** must account for ≥ 90 % of the body's opaque pixels (union — a
+  mover is never at the body's home pose, which is exactly the case the flag
+  exists for) and no single frame may drop more than 20 % of it. The top
+  measures 0.9588 / 0.8709 and keeps `nc`; the overlay measures 0.0000 and
+  keeps its body. The viewer additionally requires the flagged cell to have
+  rects to blit. Independent check (`/tmp/opencode/pi05_verify.py`): all 73
+  shipped cells (25 top + 48 base) blit their ground-truth composite
+  pixel-exactly, and each entry's `nc` matches its measured coverage.
+  Evidence: `mapdump/registration/m4-evidence-privateisland05-{mapsim,topframes,allcells,baseonly,atlas-top,atlas-base}.png`
+  — `baseonly.png` shows the overlay case with and without the body.
+  `MANIFEST_V` → `?v=20261030.6`, `__CV_VER` → `2026-10-30.6`,
+  `city-view-pixi.js?v=67`.
+
+## 2026-10-30.5
+
+- **Private-island top: 22-phase loop, no frozen balloon, right speed** —
+  the top of `privateisland05` (PrivateIsland_Complete) still read as frozen
+  because its layer strip cannot ship as a uniform grid (full 1918×2346
+  cells cap at 2 frames under the viewer's 16 Mpx decode gate) and the
+  sparse cluster packer bailed on it. The packer now ships it, and the two
+  follow-on reports (a fixed second balloon under the animating one, the
+  loop running slow) are fixed with it. Packer (`tools/gen_city_sprites.py`
+  `_pack_sparse`): (1) static/moving block split — a block is *moving* when
+  its RGBA ever differs from frame 0 (anchor-space), and moving blocks
+  never join a static cluster, so the tower's crop packs byte-identical
+  once instead of uniquely per frame; (2) cluster crops are partitioned by
+  a recursive splitter — fully-transparent rows/columns to fixed point,
+  then large sparse boxes split in half along their long edge until dense —
+  which is what got the nominal area under the gate (diagonal
+  sparkle/rope chains make every row and column non-empty, so plain
+  run-splitting left 50 %-fill rects); clusters and the moving map now use
+  4-connectivity and a 4 px block grid (was 8/6). (3) Rect bounds are pure
+  grid multiples (canvas-edge clipping made the byte-identical tower rect
+  pack 48 times); (4) a bottom-left skyline packer (sliding-window-min
+  column heights, 2 px gutters) replaces the ~55 %-efficient shelf; (5)
+  piece content hashes gained a fixed-width shape suffix (a `%dx%d` prefix
+  could collide with a neighbour's alpha bytes); (6) `do_anims`' sparse
+  branch binary-searches the frame count against the gate using the
+  packer's `_SPARSE_PX` report (atlas px ≈ fixed statics + linear movers,
+  so two probes bracket and it converges in 2-4 packs), always subsampling
+  the ORIGINAL kept frames so thinning never compounds. `PrivateIslandTop`
+  now ships 22 sparse frames (rp 0→91 over the 96-tick loop, atlas
+  769×20161 = 15.50 Mpx ≤ gate; base keeps its full 48). The packer's
+  self-check gained a **phantom counter** (no blit may paint where the
+  frame's own art is absent — twin sharing is vacuously true for a cluster
+  the reference frame lacks). Viewer: sparse entries the self-check proved
+  re-blit their FULL composited frame ship `'nc': 1` (no body needed) and
+  `emitBuilding` skips the flattened body PNG under such a cell — the body
+  carried the Neutral-pose balloon, which peeked out from under the loop's
+  moving one (the "fixed balloon" report). Thinned sparse strips also get
+  a per-entry `fps` (≈4 pose changes/s, capped at 18): thinning cuts frames
+  but not the loop's tick period, so at the shared 12 fps the 22-cell top
+  held each pose ~0.4 s beside the base's 0.17 s — the "reads slow"
+  report. Evidence: `mapdump/registration/m4-evidence-privateisland05-{mapsim,topframes,allcells,balloon-vs}.png`.
+  `MANIFEST_V` → `?v=20261030.5`, `__CV_VER` → `2026-10-30.5`,
+  `city-view-pixi.js?v=66`.
+
 ## 2026-10-30.4
 
 - **Zoomed-out art is requested by the drawn quad, not the tile ring** — the

@@ -44,7 +44,7 @@
     // and stack sheets all load through cityUrl(), and a stale cached PNG
     // against fresh city-anims.json sub-rects draws sparse water from wrong
     // shelf spots (the "water attached incorrectly" report, round 6).
-    var MANIFEST_V = '?v=20261030.3';           // city-sprites/-anims.json
+    var MANIFEST_V = '?v=20261030.6';           // city-sprites/-anims.json
     function cityUrl(p) { return B + 'assets/city/' + p + ASSET_V; }
 
     var stage = $('stage');
@@ -917,6 +917,28 @@
     var ANIM_MIN_PX = QP.get('animMinPx') !== null
         ? Math.max(0, parseInt(QP.get('animMinPx'), 10) || 0) : 48;
     var ANIM_MAX_ATLAS_PX = 16e6;
+    /* A page over the GPU's texture side limit uploads INCOMPLETE and
+       WebGL samples an incomplete texture as opaque black — privateisland05's
+       first 22-frame sparse atlas (769x20161) rendered the whole building
+       black on a 16384-side GPU (2026-10-30). Refuse such strips (the
+       building falls back to its body PNG instead); the generator caps
+       its sparse pages at 4096 a side, this guards against manifests
+       that predate or outgrow that. Probe the real limit once (the
+       harness has no GL: fall back to the common desktop floor). */
+    var ANIM_MAX_SIDE = (function () {
+        var m = 0;
+        try {
+            var c = document.createElement('canvas');
+            var gl = c.getContext('webgl2') || c.getContext('webgl');
+            if (gl) {
+                m = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 0;
+                var ext = gl.getExtension &&
+                          gl.getExtension('WEBGL_lose_context');
+                if (ext) ext.loseContext();   // hand the context slot back
+            }
+        } catch (e) { /* no GL to ask */ }
+        return m > 0 ? m : 16384;
+    })();
     var ANIM_BIG_ATLAS_PX = 6e6;
     var ANIM_BIG_MAX = 8;
     var ANIM_CACHE_MAX = 40;
@@ -1157,6 +1179,9 @@
                        : a.cols * a.cellw * Math.ceil(a.frames / a.cols) * a.cellh;
         if ((a.px > ANIM_MAX_ATLAS_PX && !oversize) ||
             Math.min(a.cellw, a.cellh) * k < ANIM_MIN_PX) return null;
+        if (Math.max(a.w || a.cols * a.cellw,
+                     a.h || Math.ceil(a.frames / a.cols) * a.cellh) > ANIM_MAX_SIDE)
+            return null;              // over the GPU's texture side limit
         return { a: a, fi: fi };
     }
     /* Is any of this cell's art inside the viewport? Asked BEFORE the atlas is
@@ -2940,7 +2965,7 @@
     /* ============================ render ===================================== */
     var DIAG = {
         mode: 'Pixi', ms: 0, fps: 0, maxMs: 0, anims: 0, charAnims: 0,
-        pool: 0, ver: '2026-10-30.4'
+        pool: 0, ver: '2026-10-30.6'
     };
     window.__CV_DIAG = DIAG;
     window.__CV_VER = DIAG.ver;                    // console sanity check
@@ -3448,7 +3473,7 @@
         if (!baseTex) return false;
         var an = animOf(b, k);            // filmstrip cells instead of the PNG?
         if (an) {
-            var drew = 0, i, j, ok = 1, vis = 0;
+            var drew = 0, i, j, ok = 1, vis = 0, cov = 0;
             // a layer cell may legitimately be as big as the body it hides
             var cap = an.base ? Math.max(4096, Math.max(sp.w, sp.h) * k) : 2048;
             for (i = 0; i < an.cells.length; i++) {
@@ -3458,13 +3483,23 @@
                 if (!animAtlasFor(st, c0.tap) ||
                     Math.max(st.cellw, st.cellh) * k > cap) {
                     if (an.base) ok = 0;  // stack must draw whole, or not at all
+                } else if (st.nc && st.sub && (st.sub[c0.fi] || []).length) {
+                    // self-contained sparse strip: the generator measured
+                    // its frames against the body PNG and confirmed they
+                    // re-blit the whole scene, so the flattened body under
+                    // one only re-exposes the stale Neutral pose — the top
+                    // loop's balloon moved, the body's frozen one peeked
+                    // out from under it (privateisland05, 2026-10-30).
+                    // Draw the cells alone. An overlay strip (a thin spray
+                    // layer) never carries the flag, so it keeps the body.
+                    cov = 1;
                 }
             }
             var bodyVis = !(bl + sp.w * k < -4 || bl > VW + 4 ||
                             (py - sp.anchor[1] * k) + sp.h * k < -4 ||
                             (py - sp.anchor[1] * k) > VH + 4);
             if (ok && (vis || bodyVis)) {
-                if (an.base && bodyVis) {   // multi-part body: PNG under the cells
+                if (an.base && bodyVis && !cov) {   // multi-part body: PNG under the cells
                     emitSpr(baseTex, bl, py - sp.anchor[1] * k,
                             sp.w * k, sp.h * k, mir);
                     drew = 1;
