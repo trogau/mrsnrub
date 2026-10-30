@@ -152,7 +152,7 @@
         t.appendChild(cv);
         var nm = el('div', 'vname');
         var a = document.createElement('a');
-        a.href = B + 'assets-explorer.html?path=' +
+        a.href = B + 'assets-explorer.php?path=' +
             encodeURIComponent('assets/characters/' + (c.png || c.frames[0].file));
         a.textContent = c.outfit || c.stem;
         a.addEventListener('click', function (ev) { ev.stopPropagation(); });

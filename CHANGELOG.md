@@ -1,5 +1,87 @@
 # Changelog
 
+## 2026-10-30.8
+
+- **Asset Explorer is now a PHP page over a SQLite index (no more
+  2.2 GB manifest load).** The static `assets-explorer.html` page loaded all
+  14 manifest parts (~3.56M entries, ~2.2 GB of JS) up front and no longer
+  worked. New pipeline: **`tools/build_assets_db.php`** streams the manifest
+  parts through a brace-scanner into **`web/api/assets.sqlite`** (~1.7 GB,
+  gitignored; one `assets` table with a tab-`cat` column plus `sources`,
+  `packs`, `strings`, `data_text` and DB-side drill-down tables
+  `anim_char`/`anim_group`, `dlc_group`/`dlc_fam` whose representative-entry
+  ranking mirrors the old client `repCmp` via SQL window functions; ~20 min
+  run). **`web/api/assets.php`** is the JSON API —
+  `op=meta|languages|core|counts|list|asset|variants|strings|data` — paginated
+  (240/page), search = DB-side `LIKE … ESCAPE` over
+  `path||origin||family||res_class||kind` (whole-tab search ~1.1 s), also
+  runnable under the CLI (`php web/api/assets.php 'op=…&q=…'`, `ASSETS_DB`
+  env override) for tests. Shared PDO/entry helpers in
+  **`web/api/assets-db.php`**. The page **`web/assets-explorer.php`**
+  server-renders the header counts and inlines the ~220 core (non-DLC)
+  entries as `window.MANIFEST` (still needed by `assets.js`/`i18n.js`/the
+  Motion tab) and sets `window.EXPLORER_API`; **`web/js/explorer.js`** was
+  rewritten fetch-based — paged grid with a "Load more" button,
+  character/family drill-downs and counts from the group tables, strings tab
+  via `op=strings` (debounced), raw data via `op=data`, variants via
+  `op=variants`, `?path=` deep links unchanged. `assets-explorer.html`
+  survives as a redirect stub that preserves `?path=` deep links, and all
+  link sites (`web/index.html`, boot-explorer, `cdn-explorer.js`,
+  `scenes.js`, the Pixi variant tiles in `viewer/`) now point at the `.php`
+  page. `tools/smoke-explorer-dom.cjs` was rewritten to stub `fetch()` by
+  shelling the real PHP API against the real database, with expected
+  counts/totals read straight from SQLite via `node:sqlite` (42 checks);
+  `smoke-explorer.cjs` (inventory integrity) and
+  `smoke-map-explorer-dom.cjs` still pass.
+- **Explorer fetch race guard made per-channel.** The rewritten `explorer.js`
+  guarded every API response with one shared request counter, so a grid page
+  in flight invalidated the tab-counts response (and vice versa) — after
+  boot nothing rendered. `apiGet(params, ch)` now keeps a counter per
+  channel (`counts`, `grid`, `variants`, `strings`, `data`, `asset`) and
+  callers compare against their own channel's latest.
+
+## 2026-10-30.7
+
+- **Road Lab beach tab — the two fixed coast tile types.** The tiles that
+  line the ocean where it meets the land (never paintable like roads/rivers,
+  never in the save — the SAND layer is engine filler, notes/01) are
+  identified as **`LandEdge` strips the engine draws itself**, declared in
+  gamescripts `landinfo.xml <LandSprite>` as
+  `LandEdge filename="Beach" direction="y" culling="left" width="16"
+  offsety="-1" repeat="-1"`, not RoadMap tiles and not building props: the
+  bottom (below-the-mountains) set is **`BEACHSHORE1`/`2`** — the water's
+  edge: sand + wavy shoreline + animated `C_Wave_*` foam + seaweed, 20 frames
+  × 20 blocks — and **`BEACHBUILDAREA1`/`2`** — the buildable sand behind it
+  with the inland grass edge + rocks, 20 frames × 15 blocks; `…2` is the
+  duller unpurchased-plot sand. `BEACHBORDEROVERLAY` (the green cliff/rock
+  map-border cap, `<AlternateLandSprite>`) is carried for context; the upper
+  set above the mountains (`springfieldheightsnobeach`) is deferred. The art
+  is the building-sprite bsv3 asset `Beach` (`beach.bsv3` / `beach.png`,
+  newest tutorialgame pack). New
+  **`tools/gen_beach_tiles.py`** parses it with `gen_city_sprites.parse_bsv3`
+  into **`web/assets/city/beach-tiles.json`** (anims → frames → block lists
+  in engine draw order, sheet crop cells, per-anim bounds, the `LandEdge`
+  attribute contract). New **beach** tab (`web/viewer/road-lab.html`
+  `tab-beach`, `road-lab.js?v=27`): three cards — each tile type on the
+  in-game sea blue, plus a **coast band** that stacks both anims UNSHIFTED
+  (they share one bsv3 coordinate space) to composite the complete
+  sea → foam → sand → rocks → grass strip. The art is pre-sheared oblique
+  screen-space art at 64 art px per town tile, so the cards blit raw on a
+  plain 64-px square grid (no ground affine, no second shear). Steppers:
+  zoom (×0.5–4), frame (waves, wraps mod 20), purchased/unpurchased sand,
+  and for the band repeats/pitch/along-axis to probe the open `repeat="-1"`
+  rule; toggles for sea, grid and ruler. All metadata moved into HTML
+  captions (`p.meta`) and the canvas paints only sea/grid/art/numbered ruler
+  in a 26 px band above the art, so nothing overlaps the tiles any more. The
+  copyable reference block gained a **`BEACH_TILES`** contract replacing the
+  `BEACH_PROPS` one; `tools/smoke-road-lab.cjs` (~35 beach checks, 249 total)
+  asserts the manifest/`LandEdge` contract, sheet identity, per-card block
+  counts and crop rects, the single 64 px/tile transform, band draw order
+  and shared coordinate space, stepper clamps, toggles, "no text over the
+  art", label collisions and the balanced literal. Evidence for review:
+  `mapdump/registration/m4-beach-*.png` (per-anim + `m4-beach-coastband-1/2`).
+  No viewer/pixi changes — inspection only.
+
 ## 2026-10-30.6
 
 - **Black sprites fixed: sparse atlas pages capped to a GPU texture side** —

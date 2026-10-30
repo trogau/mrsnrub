@@ -1,24 +1,29 @@
-/* explorer.js — asset explorer page logic.
+/* explorer.js — asset explorer page logic (server-backed).
  *
- * Browses every asset extracted from the APK (manifest.js inventory +
- * webdata.js embedded data — no fetch(), so it works from file:// like
- * the game itself):
+ * The manifest grew to ~3.5M entries (~2.2 GB of parts), so this page no
+ * longer loads it in the browser. web/assets-explorer.php serves the shell
+ * and inlines only the ~220 core (non-DLC) entries the game's own modules
+ * (assets.js / splashlayout.js / scenes.js) need for the Motion tab; every
+ * browse, search, variant, string and data-file query goes to the PHP API
+ * in web/api/assets.php, which reads the SQLite index built by
+ * tools/build_assets_db.php. Search words (path, origin, family, resClass,
+ * kind — plus the decoded .btp strings) are matched in the database.
  *
  *   - images: grid of thumbnails, big preview with fit/100% zoom, and
  *     side-by-side switching between the small/medium/large resolution
  *     classes the game ships (manifest `family` grouping)
- *   - audio: 62 WAVs (music, UI SFX, Homer lines) with a full player
+ *   - audio: WAVs (music, UI SFX, Homer lines) with a full player
  *   - fonts: glyph samples rendered in the game's own faces
- *   - strings: the 16 decoded .btp string tables, searchable
- *   - data: raw text of XML/TXT/GLSL/HTML data files
+ *   - strings: the 16 decoded .btp string tables, searchable in the DB
+ *   - data: raw text of XML/TXT/GLSL/HTML data files (from the DB)
  *   - motion: live previews of the animations the APK's data describes
- *     (the splash scene composed from splashscreen.xml, the loading
- *     donut spin, the tap-finger bob)
+ *   - dlc / animations tabs: DB-side grouping into families/characters
  */
 (function () {
     'use strict';
 
-    var M = window.MANIFEST;
+    var API = window.EXPLORER_API || 'api/assets.php';
+    var PAGE = 240;                       // tiles per grid page
     var D = window.WEBDATA;
 
     // ---------------------------------------------------------------- helpers
@@ -35,8 +40,31 @@
         return (n / 1024 / 1024).toFixed(2) + ' MB';
     }
     function base(p) { return p.split('/').pop(); }
-    var byPath = {};
-    for (var i = 0; i < M.files.length; i++) { byPath[M.files[i].path] = M.files[i]; }
+    function esc(s) {
+        return String(s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;',
+                     '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    var seqs = {};                        // fetch race guard, per channel
+    function apiGet(params, ch) {
+        var qs = [];
+        for (var k in params) {
+            if (params[k] != null && params[k] !== '') {
+                qs.push(encodeURIComponent(k) + '=' +
+                        encodeURIComponent(params[k]));
+            }
+        }
+        var my = (seqs[ch] = (seqs[ch] || 0) + 1);
+        return fetch(API + '?' + qs.join('&'), { cache: 'no-store' })
+            .then(function (r) {
+                return r.json().then(function (j) {
+                    if (!r.ok) { throw new Error(j.error || ('HTTP ' + r.status)); }
+                    return { my: my, data: j };
+                });
+            });
+    }
 
     var FONT_FAMILIES = {
         'fonts/comiccrazyrevised.otf': "'ComicCrazy'",
@@ -44,136 +72,7 @@
         'fonts/helveticaneue.ttf': "'HelveticaNeue'",
         'fonts/helveticaneuebold.ttf': "'HelveticaNeue'"
     };
-    var CLASS_RANK = { small: 0, 'medium-small': 1, medium: 2, large: 3,
-                       mdpi: 0, hdpi: 1, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4,
-                       drawable: 5,
-                       // CDN pack device tiers (movie/video variants)
-                       iphone: 0, ipad: 1, retina: 2, ipad3: 3 };
 
-    // -------------------------------------------------- animation grouping
-    // Character animation frames are named <char>_<animation>_f<n>.png
-    // (edna_back_walk_f0.png = first frame of Edna's back-walk), so the
-    // character is the first underscore-separated segment of the file
-    // name. The explorer lists the characters first and collapses each
-    // animation's 25/50/100 resolution classes (and duplicate CDN
-    // revisions) into one tile.
-    function animCharOf(e) {
-        var b = base(e.path);
-        var u = b.indexOf('_');
-        return u < 0 ? b : b.slice(0, u);
-    }
-    // numeric rank of a resolution class / device tier: APK + numeric
-    // CDN tiers (25/50/100) by value, device tiers by CLASS_RANK
-    function tierRank(e) {
-        var r = CLASS_RANK[e.resClass];
-        if (r != null) { return r; }
-        var n = parseInt(e.resClass, 10);
-        return isFinite(n) ? n : 0;
-    }
-    // rank two entries of the same logical asset (character animation or
-    // DLC file): highest resolution class first, then entries that carry
-    // a grid thumbnail, then the unrevised ("current") CDN pack before
-    // revisions (newest first)
-    function repCmp(a, b) {
-        var ta = tierRank(a), tb = tierRank(b);
-        if (ta !== tb) { return tb - ta; }
-        if (!!a.thumb !== !!b.thumb) { return a.thumb ? 1 : -1; }
-        var ra = (a.dlc && a.dlc.revision != null) ? a.dlc.revision : 1 << 30;
-        var rb = (b.dlc && b.dlc.revision != null) ? b.dlc.revision : 1 << 30;
-        if (ra !== rb) { return rb - ra; }
-        return a.path < b.path ? -1 : (a.path > b.path ? 1 : 0);
-    }
-    var ANIM_CHARS = {};  // char -> { list: [{ name, rep }], thumb }
-    var ANIM_ALL = [];    // every distinct char + animation pair (search)
-    (function () {
-        var buckets = {};
-        for (var i = 0; i < M.files.length; i++) {
-            var e = M.files[i];
-            if (e.type !== 'anim') { continue; }
-            var c = animCharOf(e);
-            var name = e.animation || base(e.path).replace(/_f\d*\.png$/, '');
-            var key = c + '\u0000' + name;
-            (buckets[key] = buckets[key] || { char: c, name: name, es: [] })
-                .es.push(e);
-        }
-        for (var key in buckets) {
-            var g = buckets[key];
-            g.es.sort(repCmp);
-            g.rep = g.es[0];
-            (ANIM_CHARS[g.char] = ANIM_CHARS[g.char] || { list: [] }).list.push(g);
-            ANIM_ALL.push(g);
-        }
-        for (var c2 in ANIM_CHARS) {
-            var list = ANIM_CHARS[c2].list;
-            list.sort(function (a, b) { return a.name < b.name ? -1 : 1; });
-            var thumb = null;
-            for (var j = 0; j < list.length && !thumb; j++) {
-                if (list[j].rep.thumb) { thumb = list[j].rep.thumb; }
-            }
-            ANIM_CHARS[c2].thumb = thumb;
-        }
-        ANIM_ALL.sort(function (a, b) {
-            return a.char < b.char ? -1 : (a.char > b.char ? 1
-                : (a.name < b.name ? -1 : 1));
-        });
-    })();
-
-    // ------------------------------------------------------------ DLC grouping
-    // DLC packs ship every file once per device tier (iphone/ipad/ipad3/
-    // retina or 25/50/100) and once per CDN revision, so the explorer
-    // lists the event families first and collapses each file's
-    // tier/revision copies into one tile (the detail pane's variant
-    // switcher offers them).
-    var DLC_FAMS = {};    // family -> { list: [{ name, type, rep }], packs }
-    var DLC_ALL = [];     // every distinct family + file (search)
-    (function () {
-        var buckets = {};
-        for (var i = 0; i < M.files.length; i++) {
-            var e = M.files[i];
-            if (!e.path || e.path.indexOf('dlc/') !== 0) { continue; }
-            if (e.type === 'video' || e.type === 'anim') { continue; }
-            var name = base(e.path);
-            var key = e.family + '\u0000' + name + '\u0000' + e.type;
-            (buckets[key] = buckets[key] || { fam: e.family, name: name,
-                                              type: e.type, es: [] }).es.push(e);
-        }
-        for (var key in buckets) {
-            var g = buckets[key];
-            g.es.sort(repCmp);
-            g.rep = g.es[0];
-            (DLC_FAMS[g.fam] = DLC_FAMS[g.fam] || { list: [], packs: {} })
-                .list.push(g);
-            for (var k = 0; k < g.es.length; k++) {
-                var pk = g.es[k].dlc ? g.es[k].dlc.pack : '';
-                DLC_FAMS[g.fam].packs[pk] = true;
-            }
-            DLC_ALL.push(g);
-        }
-        for (var f in DLC_FAMS) {
-            var list = DLC_FAMS[f].list;
-            list.sort(function (a, b) {
-                return a.name < b.name ? -1 : (a.name > b.name ? 1
-                    : (a.type < b.type ? -1 : 1));
-            });
-            var packs = 0;
-            for (var p in DLC_FAMS[f].packs) { packs++; }
-            DLC_FAMS[f].packs = packs;
-            var thumb = null;
-            for (var j = 0; j < list.length && !thumb; j++) {
-                if (list[j].type === 'image' &&
-                    (list[j].rep.thumb || list[j].rep.path)) {
-                    thumb = list[j].rep.thumb || list[j].rep.path;
-                }
-            }
-            DLC_FAMS[f].thumb = thumb;
-        }
-        DLC_ALL.sort(function (a, b) {
-            return a.fam < b.fam ? -1 : (a.fam > b.fam ? 1
-                : (a.name < b.name ? -1 : 1));
-        });
-    })();
-
-    // ------------------------------------------------------------ tabs + grid
     var TABS = [
         { id: 'all', label: 'All' },
         { id: 'image', label: 'Images' },
@@ -188,51 +87,35 @@
     ];
     var MOTION = { id: 'motion', label: 'Motion' };
 
-    function catOf(e) {
-        if (e.type === 'video') { return 'video'; }
-        if (e.type === 'anim') { return 'anim'; }
-        if (e.path && e.path.indexOf('dlc/') === 0) { return 'dlc'; }
-        if (e.source && e.source.indexOf('res/') === 0) { return 'android'; }
-        if (e.type === 'text' || e.type === 'data') { return 'data'; }
-        return e.type;
-    }
     var state = { tab: 'all', q: '', selected: null, motionLang: 'en',
-                  animChar: null, dlcFam: null };
-
-    function visible(tab) {
-        var out = [];
-        for (var i = 0; i < M.files.length; i++) {
-            var e = M.files[i];
-            if (tab !== 'all' && catOf(e) !== tab) { continue; }
-            if (state.q) {
-                var hay = (e.path + ' ' + (e.origin || '') + ' ' +
-                           (e.family || '') + ' ' + (e.resClass || '') +
-                           ' ' + (e.kind || '')).toLowerCase();
-                if (hay.indexOf(state.q) < 0) { continue; }
-            }
-            out.push(e);
-        }
-        return out;
-    }
+                  animChar: null, dlcFam: null,
+                  offset: 0, total: 0, kind: 'assets', items: [],
+                  gridSeq: 0 };
 
     var grid = document.getElementById('grid');
     var detail = document.getElementById('detail');
     var crumb = document.getElementById('crumb');
 
+    // ---------------------------------------------------------------- tabs
     function renderTabs() {
         var nav = document.getElementById('tabs');
-        nav.innerHTML = '';
-        var all = TABS.concat([MOTION]);
-        for (var i = 0; i < all.length; i++) (function (t) {
-            var b = el('button', state.tab === t.id ? 'on' : '', t.label);
-            var n = t.id === 'motion' ? '' :
-                ' <span class="n">' + visible(t.id).length + '</span>';
-            b.innerHTML = t.label + n;
-            b.addEventListener('click', function () { setTab(t.id); });
-            nav.appendChild(b);
-        })(all[i]);
+        apiGet({ op: 'counts', q: state.q }, 'counts').then(function (res) {
+            if (res.my !== seqs.counts) { return; }
+            var counts = res.data.counts;
+            nav.innerHTML = '';
+            var all = TABS.concat([MOTION]);
+            for (var i = 0; i < all.length; i++) (function (t) {
+                var b = el('button', state.tab === t.id ? 'on' : '');
+                b.innerHTML = esc(t.label) +
+                    (t.id === 'motion' ? ''
+                        : ' <span class="n">' + (counts[t.id] || 0) + '</span>');
+                b.addEventListener('click', function () { setTab(t.id); });
+                nav.appendChild(b);
+            })(all[i]);
+        }, function () { /* keep stale tab counts */ });
     }
 
+    // --------------------------------------------------------------- tiles
     function subLabel(e) {
         switch (e.type) {
             case 'image':
@@ -258,136 +141,138 @@
         }
     }
 
-    function tileFor(e) {
-        var t = el('div', 'tile' + (state.selected === e.path ? ' sel' : ''));
-        t.dataset.path = e.path;
-        var pic, glyph = null, picCls = 'tile-pic';
+    function tilePic(e, opts) {
+        var picCls = 'tile-pic';
         var hasPic = e.type === 'image' || (e.type === 'video' && e.thumb) ||
             (e.type === 'anim' && e.frames && e.frames.length);
+        if (opts.pic) { hasPic = true; }
         if (hasPic) {
-            pic = el('div', picCls);
+            var pic = el('div', picCls + (opts.picCls ? ' ' + opts.picCls : ''));
             var img = document.createElement('img');
             img.loading = 'lazy';
             img.decoding = 'async';
-            img.src = 'assets/' + (e.thumb || e.path);
+            img.src = 'assets/' + (opts.src || e.thumb || e.path);
             img.alt = base(e.path);
             pic.appendChild(img);
             if (e.type === 'video' || e.type === 'anim') {
                 pic.classList.add(e.type === 'video' ? 'video' : 'anim');
                 pic.appendChild(el('span', 'play-badge', '▶'));
             }
-        } else {
-            if (e.type === 'audio') {
-                glyph = e.kind === 'music' ? '♫' : '♪';
-                picCls += ' glyph' + (e.kind === 'music' ? ' music' : '');
-            } else if (e.type === 'font') {
-                glyph = 'Ag';
-                picCls += ' glyph';
-            } else if (e.type === 'i18n') {
-                glyph = base(e.path).slice(0, -5).toUpperCase();
-                picCls += ' glyph';
-            } else if (e.type === 'video') {
-                glyph = '▶';
-                picCls += ' glyph video';
-            } else {
-                glyph = '≡';
-                picCls += ' glyph';
-            }
-            pic = el('div', picCls, glyph);
-            if (e.type === 'font') {
-                pic.style.fontFamily = FONT_FAMILIES[e.path] || 'sans-serif';
-                pic.style.fontWeight = e.path.indexOf('bold') >= 0 ? 'bold' : 'normal';
-                pic.style.fontSize = '34px';
-            } else if (e.type === 'i18n') {
-                pic.style.fontFamily = "'ComicCrazy', sans-serif";
-                pic.style.fontSize = '26px';
-            }
+            return pic;
         }
-        t.appendChild(pic);
-        t.appendChild(el('div', 'tile-label', base(e.path)));
-        t.appendChild(el('div', 'tile-sub', subLabel(e)));
-        t.addEventListener('click', function () { select(e); });
+        var glyph = null;
+        if (e.type === 'audio') {
+            glyph = e.kind === 'music' ? '♫' : '♪';
+            picCls += ' glyph' + (e.kind === 'music' ? ' music' : '');
+        } else if (e.type === 'font') {
+            glyph = 'Ag';
+            picCls += ' glyph';
+        } else if (e.type === 'i18n') {
+            glyph = base(e.path).slice(0, -5).toUpperCase();
+            picCls += ' glyph';
+        } else if (e.type === 'video') {
+            glyph = '▶';
+            picCls += ' glyph video';
+        } else if (opts.glyph != null) {
+            glyph = opts.glyph;
+            picCls += ' glyph';
+        } else {
+            glyph = '≡';
+            picCls += ' glyph';
+        }
+        var pic2 = el('div', picCls, glyph);
+        if (e.type === 'font') {
+            pic2.style.fontFamily = FONT_FAMILIES[e.path] || 'sans-serif';
+            pic2.style.fontWeight = e.path.indexOf('bold') >= 0 ? 'bold' : 'normal';
+            pic2.style.fontSize = '34px';
+        } else if (e.type === 'i18n') {
+            pic2.style.fontFamily = "'ComicCrazy', sans-serif";
+            pic2.style.fontSize = '26px';
+        }
+        return pic2;
+    }
+
+    function makeTile(cls) {
+        var t = el('div', 'tile' + (cls || ''));
         return t;
     }
 
-    // one tile per character: representative thumb (or first frame, when
-    // no downsampled thumb exists) + distinct-anim count
-    function charTile(c) {
-        var g = ANIM_CHARS[c];
-        var t = el('div', 'tile');
-        t.dataset.char = c;
+    function tileFor(e) {
+        var t = makeTile(state.selected === e.path ? ' sel' : '');
+        t.dataset.path = e.path;
+        t.appendChild(tilePic(e, {}));
+        t.appendChild(el('div', 'tile-label', base(e.path)));
+        t.appendChild(el('div', 'tile-sub', subLabel(e)));
+        t.addEventListener('click', function () { select(e.path); });
+        return t;
+    }
+
+    // one tile per character (Animations tab level 1, from anim_char)
+    function charTile(g) {
+        var t = makeTile();
+        t.dataset.char = g.char;
         var pic = el('div', 'tile-pic');
         var img = document.createElement('img');
         img.loading = 'lazy';
         img.decoding = 'async';
-        img.src = 'assets/' + (g.thumb || g.list[0].rep.path);
-        img.alt = c;
+        img.src = 'assets/' + (g.thumb || g.rep_path);
+        img.alt = g.char;
         pic.appendChild(img);
         t.appendChild(pic);
         t.appendChild(el('div', 'tile-label',
-            c.charAt(0).toUpperCase() + c.slice(1)));
+            g.char.charAt(0).toUpperCase() + g.char.slice(1)));
         t.appendChild(el('div', 'tile-sub',
-            g.list.length + (g.list.length === 1 ? ' animation' : ' animations')));
-        t.addEventListener('click', function () { setAnimChar(c); });
+            g.n_anims + (g.n_anims === 1 ? ' animation' : ' animations')));
+        t.addEventListener('click', function () { setAnimChar(g.char); });
         return t;
     }
 
-    // one tile per distinct animation of a character: its representative
-    // (highest-resolution, current-revision) entry's first frame
-    function animTile(c, g, showChar) {
-        var e = g.rep;
-        var t = el('div', 'tile' + (state.selected === e.path ? ' sel' : ''));
+    // one tile per distinct animation (rep entry), from the DB's group rows
+    function animTile(g, showChar) {
+        var e = g.entry;
+        var t = makeTile(state.selected === e.path ? ' sel' : '');
         t.dataset.path = e.path;
-        var pic = el('div', 'tile-pic anim');
-        var img = document.createElement('img');
-        img.loading = 'lazy';
-        img.decoding = 'async';
-        img.src = 'assets/' + (e.thumb || e.path);
-        img.alt = c + '_' + g.name;
-        pic.appendChild(img);
-        pic.appendChild(el('span', 'play-badge', '▶'));
-        t.appendChild(pic);
+        t.appendChild(tilePic(e, { pic: true, picCls: 'anim',
+                                   src: e.thumb || e.path }));
         t.appendChild(el('div', 'tile-label',
-            showChar ? c + '_' + g.name : g.name));
+            showChar ? g.char + '_' + g.name : g.name));
         t.appendChild(el('div', 'tile-sub', subLabel(e)));
-        t.addEventListener('click', function () { select(e); });
+        t.addEventListener('click', function () { select(e.path); });
         return t;
     }
 
-    // one tile per event family: representative image + asset count
-    function famTile(f) {
-        var g = DLC_FAMS[f];
-        var t = el('div', 'tile');
-        t.dataset.fam = f;
+    // one tile per event family (DLC tab level 1, from dlc_fam)
+    function famTile(g) {
+        var t = makeTile();
+        t.dataset.fam = g.fam;
         var pic = el('div', 'tile-pic' + (g.thumb ? '' : ' glyph'));
         if (g.thumb) {
             var img = document.createElement('img');
             img.loading = 'lazy';
             img.decoding = 'async';
             img.src = 'assets/' + g.thumb;
-            img.alt = f;
+            img.alt = g.fam;
             pic.appendChild(img);
         } else {
             pic.appendChild(document.createTextNode(
-                f.charAt(0).toUpperCase()));
+                g.fam.charAt(0).toUpperCase()));
         }
         t.appendChild(pic);
         t.appendChild(el('div', 'tile-label',
-            f.charAt(0).toUpperCase() + f.slice(1)));
+            g.fam.charAt(0).toUpperCase() + g.fam.slice(1)));
         t.appendChild(el('div', 'tile-sub',
-            g.list.length + ' assets · ' + g.packs +
+            g.n_assets + ' assets · ' + g.packs +
             (g.packs === 1 ? ' pack' : ' packs')));
-        t.addEventListener('click', function () { setDlcFam(f); });
+        t.addEventListener('click', function () { setDlcFam(g.fam); });
         return t;
     }
 
-    // one tile per distinct file of a family: its representative
-    // (highest-tier, current-revision) entry
-    function dlcTile(f, g, showFam) {
-        var e = g.rep;
-        var t = el('div', 'tile' + (state.selected === e.path ? ' sel' : ''));
+    // one tile per distinct file of a family (rep entry)
+    function dlcTile(g, showFam) {
+        var e = g.entry;
+        var t = makeTile(state.selected === e.path ? ' sel' : '');
         t.dataset.path = e.path;
-        if (g.type === 'image') {
+        if (e.type === 'image') {
             var pic = el('div', 'tile-pic');
             var img = document.createElement('img');
             img.loading = 'lazy';
@@ -401,26 +286,44 @@
                 g.name.slice(-4).toUpperCase()));
         }
         t.appendChild(el('div', 'tile-label',
-            showFam ? f + ' / ' + g.name : g.name));
+            showFam ? g.fam + ' / ' + g.name : g.name));
         t.appendChild(el('div', 'tile-sub',
-            showFam ? (g.type + ' · ' + subLabel(e)) : subLabel(e)));
-        t.addEventListener('click', function () { select(e); });
+            showFam ? (e.type + ' · ' + subLabel(e)) : subLabel(e)));
+        t.addEventListener('click', function () { select(e.path); });
         return t;
     }
 
-    // breadcrumb above the grid on a character's animation page or a
-    // family's DLC page
+    // ---------------------------------------------------------------- grid
+    function gridParams() {
+        var p = { op: 'list', tab: state.tab, q: state.q,
+                  offset: state.offset, limit: PAGE };
+        if (state.tab === 'anim' && !state.q) { p.char = state.animChar; }
+        if (state.tab === 'dlc' && !state.q) { p.fam = state.dlcFam; }
+        return p;
+    }
+
+    function tilesFor(kind, items) {
+        var frag = document.createDocumentFragment();
+        for (var i = 0; i < items.length; i++) {
+            var g = items[i];
+            if (kind === 'assets') { frag.appendChild(tileFor(g)); }
+            else if (kind === 'chars') { frag.appendChild(charTile(g)); }
+            else if (kind === 'anims') { frag.appendChild(animTile(g, g.char != null)); }
+            else if (kind === 'fams') { frag.appendChild(famTile(g)); }
+            else if (kind === 'files') { frag.appendChild(dlcTile(g, g.fam != null)); }
+        }
+        return frag;
+    }
+
     function renderCrumb() {
         crumb.innerHTML = '';
-        var c = null, n = 0, unit = '', back = null;
+        var c = null, n = state.total, unit = '', back = null;
         if (state.tab === 'anim' && state.animChar != null && !state.q) {
             c = state.animChar;
-            n = ANIM_CHARS[c].list.length;
             unit = n === 1 ? ' animation' : ' animations';
             back = function () { setAnimChar(null); };
         } else if (state.tab === 'dlc' && state.dlcFam != null && !state.q) {
             c = state.dlcFam;
-            n = DLC_FAMS[c].list.length;
             unit = ' assets';
             back = function () { setDlcFam(null); };
         }
@@ -433,6 +336,57 @@
             c.charAt(0).toUpperCase() + c.slice(1) + ' · ' + n + unit));
     }
 
+    function appendLoadMore() {
+        if (state.offset >= state.total) { return; }
+        var more = el('button', 'more', 'Load more — showing ' +
+            Math.min(state.offset, state.total) + ' of ' + state.total);
+        more.addEventListener('click', function () {
+            state.offset += PAGE;
+            fetchGrid(false);
+        });
+        grid.appendChild(more);
+    }
+
+    function fetchGrid(reset) {
+        if (reset) { state.offset = 0; }
+        apiGet(gridParams(), 'grid').then(function (res) {
+            if (res.my !== seqs.grid) { return; }   // a newer render won
+            var d = res.data;
+            state.kind = d.kind;
+            state.total = d.total;
+            if (reset) {
+                state.items = d.items;
+                grid.innerHTML = '';
+            } else {
+                for (var i = 0; i < d.items.length; i++) {
+                    state.items.push(d.items[i]);
+                }
+            }
+            grid.appendChild(tilesFor(d.kind, d.items));
+            renderCrumb();
+            appendLoadMore();
+        }, function (err) {
+            if (reset) { grid.innerHTML = ''; }
+            grid.appendChild(el('div', 'placeholder',
+                'The asset index could not be queried: ' + err.message +
+                ' — is the PHP server running and the database built ' +
+                '(php tools/build_assets_db.php)?'));
+        });
+    }
+
+    function renderGrid() { fetchGrid(true); }
+
+    function markSelected() {
+        var tiles = grid.children;
+        for (var i = 0; i < tiles.length; i++) {
+            if (!tiles[i].dataset) { continue; }
+            var on = tiles[i].dataset.path === state.selected;
+            if (tiles[i].classList.contains('tile')) {
+                tiles[i].className = 'tile' + (on ? ' sel' : '');
+            }
+        }
+    }
+
     function setAnimChar(c) {
         state.animChar = c;
         renderGrid();
@@ -441,73 +395,6 @@
     function setDlcFam(f) {
         state.dlcFam = f;
         renderGrid();
-    }
-
-    function renderGrid() {
-        grid.innerHTML = '';
-        var frag = document.createDocumentFragment();
-        if (state.tab === 'anim' && !state.q) {
-            if (state.animChar == null) {
-                // level 1: the characters
-                var cs = Object.keys(ANIM_CHARS).sort();
-                for (var i = 0; i < cs.length; i++) {
-                    frag.appendChild(charTile(cs[i]));
-                }
-            } else {
-                // level 2: one character's distinct animations
-                var g = ANIM_CHARS[state.animChar];
-                for (var j = 0; j < g.list.length; j++) {
-                    frag.appendChild(animTile(state.animChar, g.list[j], false));
-                }
-            }
-        } else if (state.tab === 'anim') {
-            // search: flat list of the matching distinct animations
-            for (var k = 0; k < ANIM_ALL.length; k++) {
-                var a = ANIM_ALL[k];
-                var hay = (a.char + '_' + a.name + ' ' + (a.rep.family || '') +
-                           ' ' + (a.rep.resClass || '') + ' ' + a.rep.path)
-                    .toLowerCase();
-                if (hay.indexOf(state.q) < 0) { continue; }
-                frag.appendChild(animTile(a.char, a, true));
-            }
-        } else if (state.tab === 'dlc' && !state.q) {
-            if (state.dlcFam == null) {
-                // level 1: the event families
-                var fs = Object.keys(DLC_FAMS).sort();
-                for (var x = 0; x < fs.length; x++) {
-                    frag.appendChild(famTile(fs[x]));
-                }
-            } else {
-                // level 2: one family's distinct files
-                var dg = DLC_FAMS[state.dlcFam];
-                for (var y = 0; y < dg.list.length; y++) {
-                    frag.appendChild(dlcTile(state.dlcFam, dg.list[y], false));
-                }
-            }
-        } else if (state.tab === 'dlc') {
-            // search: flat list of the matching distinct files
-            for (var z = 0; z < DLC_ALL.length; z++) {
-                var d = DLC_ALL[z];
-                var hay2 = (d.name + ' ' + d.fam + ' ' + d.type + ' ' +
-                            (d.rep.resClass || '') + ' ' + d.rep.path)
-                    .toLowerCase();
-                if (hay2.indexOf(state.q) < 0) { continue; }
-                frag.appendChild(dlcTile(d.fam, d, true));
-            }
-        } else {
-            var list = visible(state.tab);
-            for (var n = 0; n < list.length; n++) { frag.appendChild(tileFor(list[n])); }
-        }
-        renderCrumb();
-        grid.appendChild(frag);
-    }
-
-    function markSelected() {
-        var tiles = grid.children;
-        for (var i = 0; i < tiles.length; i++) {
-            var on = tiles[i].dataset.path === state.selected;
-            tiles[i].className = 'tile' + (on ? ' sel' : '');
-        }
     }
 
     // ------------------------------------------------------------- detail pane
@@ -574,8 +461,8 @@
         }
     }
 
-    // shared variant switcher: all manifest entries sharing e.family
-    // (APK resolution classes or CDN device tiers), sorted by CLASS_RANK
+    // shared variant switcher: the DB returns all manifest entries sharing
+    // e.family (APK resolution classes or CDN device tiers), sorted
     function famLabel(e) {
         return e.type === 'video' ? 'Device variants — '
              : (e.dlc ? 'DLC resolution tiers — '
@@ -583,46 +470,26 @@
     }
     function appendVariants(box, e) {
         if (!e.family) { return; }
-        // variant set. For APK content the family names the asset
-        // (splashscreen.png / _medium / _large), so the set is the same
-        // family + type in OTHER resolution classes. A DLC family is an
-        // event shared by hundreds of files, so there the set is every
-        // OTHER copy of this exact file (any device tier or CDN
-        // revision) — plus this one.
-        var name = e.dlc ? base(e.path) : null;
-        var fam = [];
-        for (var i = 0; i < M.files.length; i++) {
-            var f = M.files[i];
-            if (f.family !== e.family || f.type !== e.type) { continue; }
-            if (name != null) {
-                if (f.path !== e.path && base(f.path) === name) { fam.push(f); }
-            } else if (f.resClass !== e.resClass) {
-                fam.push(f);
-            }
-        }
-        fam.push(e);
-        fam.sort(function (a, b) {
-            var ra = tierRank(a), rb = tierRank(b);
-            if (ra !== rb) { return ra - rb; }
-            var xa = (a.dlc && a.dlc.revision != null) ? a.dlc.revision : 1 << 30;
-            var xb = (b.dlc && b.dlc.revision != null) ? b.dlc.revision : 1 << 30;
-            if (xa !== xb) { return xa - xb; }
-            return a.path < b.path ? -1 : 1;
-        });
-        if (fam.length <= 1) { return; }
-        var v = el('div', 'variants');
-        v.appendChild(el('div', 'vlabel', famLabel(e) + fam.length));
-        var row = el('div', 'vrow');
-        for (var j = 0; j < fam.length; j++) (function (f) {
-            var b = el('button', f.path === e.path ? 'on' : '',
-                f.resClass +
-                (f.dlc && f.dlc.revision != null ? ' · r' + f.dlc.revision : '') +
-                (f.w != null ? ' · ' + f.w + '×' + f.h : ''));
-            b.addEventListener('click', function () { select(f); });
-            row.appendChild(b);
-        })(fam[j]);
-        v.appendChild(row);
-        box.appendChild(v);
+        apiGet({ op: 'variants', family: e.family, type: e.type,
+                 path: e.path, res: e.resClass,
+                 base: e.dlc ? base(e.path) : null }, 'variants')
+            .then(function (res) {
+                var fam = res.data.items || [];
+                if (fam.length <= 1) { return; }
+                var v = el('div', 'variants');
+                v.appendChild(el('div', 'vlabel', famLabel(e) + fam.length));
+                var row = el('div', 'vrow');
+                for (var j = 0; j < fam.length; j++) (function (f) {
+                    var b = el('button', f.path === e.path ? 'on' : '',
+                        f.resClass +
+                        (f.dlc && f.dlc.revision != null ? ' · r' + f.dlc.revision : '') +
+                        (f.w != null ? ' · ' + f.w + '×' + f.h : ''));
+                    b.addEventListener('click', function () { select(f.path); });
+                    row.appendChild(b);
+                })(fam[j]);
+                v.appendChild(row);
+                box.appendChild(v);
+            }, function () { /* variant row is optional */ });
     }
 
     function detailImage(e) {
@@ -911,42 +778,52 @@
         return box;
     }
 
+    // the string table itself is queried from the database (op=strings),
+    // so the key/text search works over the stored rows
     function detailI18n(e) {
         var box = el('div');
         var code = base(e.path).slice(0, -5);
         box.appendChild(detailHeader(e, el('span', 'badge', code.toUpperCase())));
 
-        var strings = D.i18n[code] || {};
-        var keys = Object.keys(strings).sort();
-
         var wrap = el('div', 'strings');
         var q = el('input');
         q.placeholder = 'filter keys or text…';
         var table = document.createElement('table');
-        function renderRows(needle) {
-            table.innerHTML = '';
-            for (var i = 0; i < keys.length; i++) {
-                var k = keys[i];
-                var v = strings[k];
-                if (needle && (k + ' ' + v).toLowerCase().indexOf(needle) < 0) {
-                    continue;
+        var countRow = el('div', 'hint', '');
+        function load(needle) {
+            apiGet({ op: 'strings', lang: code, q: needle }, 'strings')
+            .then(function (res) {
+                if (res.my !== seqs.strings) { return; }   // newer keystroke won
+                var rows = res.data.rows;
+                table.innerHTML = '';
+                for (var i = 0; i < rows.length; i++) {
+                    var tr = document.createElement('tr');
+                    tr.appendChild(el('td', 'k', rows[i][0]));
+                    tr.appendChild(el('td', 'v', String(rows[i][1])));
+                    table.appendChild(tr);
                 }
-                var tr = document.createElement('tr');
-                tr.appendChild(el('td', 'k', k));
-                tr.appendChild(el('td', 'v', String(v)));
-                table.appendChild(tr);
-            }
+                countRow.textContent = rows.length + ' of ' + res.data.total +
+                    ' strings in the database';
+            }, function (err) {
+                table.innerHTML = '';
+                countRow.textContent = 'string query failed: ' + err.message;
+            });
         }
-        renderRows('');
+        var timer = null;
         q.addEventListener('input', function () {
-            renderRows(q.value.trim().toLowerCase());
+            if (timer) { clearTimeout(timer); }
+            timer = setTimeout(function () {
+                load(q.value.trim());
+            }, 200);
         });
+        load('');
         wrap.appendChild(q);
         wrap.appendChild(table);
         box.appendChild(wrap);
+        box.appendChild(countRow);
 
         box.appendChild(metaTable([
-            ['Strings', keys.length],
+            ['Strings', e.strings != null ? e.strings : '—'],
             ['Source pack', e.source],
             ['Original file', e.origin || '—'],
             ['Decoded from', '.btp (Bight string pack)']
@@ -954,13 +831,18 @@
         return box;
     }
 
+    // data-file text comes from the database (op=data)
     function detailData(e) {
         var box = el('div');
         box.appendChild(detailHeader(e));
-        var txt = D.dataText ? D.dataText[e.path] : null;
-        var pre = el('pre', 'data-text',
-            txt != null ? txt : '(text not embedded — open ' + e.path + ')');
-        box.appendChild(pre);
+        apiGet({ op: 'data', path: e.path }, 'data').then(function (res) {
+            if (res.my !== seqs.data) { return; }
+            var pre = el('pre', 'data-text',
+                res.data.text != null ? res.data.text
+                    : '(text not embedded — open ' + e.path + ')');
+            // insert right after the header (before variants/meta)
+            box.insertBefore(pre, box.children[1] || null);
+        }, function () { /* leave the pane header-only */ });
         appendVariants(box, e);
         box.appendChild(metaTable([
             ['Kind', e.type],
@@ -989,10 +871,17 @@
         detail.scrollTop = 0;
     }
 
-    function select(e) {
-        state.selected = e.path;
+    function select(path) {
+        state.selected = path;
         markSelected();
-        renderDetail(e);
+        apiGet({ op: 'asset', path: path }, 'asset').then(function (res) {
+            if (state.selected !== path) { return; }   // superseded click
+            renderDetail(res.data.entry);
+        }, function (err) {
+            detail.innerHTML = '';
+            detail.appendChild(el('div', 'placeholder',
+                'Could not load ' + path + ': ' + err.message));
+        });
     }
 
     // --------------------------------------------------------------- motion tab
@@ -1174,8 +1063,6 @@
             return;
         }
         renderGrid();
-        var e = state.selected ? byPath[state.selected] : null;
-        if (e) { renderDetail(e); }
     }
 
     // preload the images the motion previews need (same set the game boots with)
@@ -1185,35 +1072,25 @@
         Assets.load(critical[c], function () {});
     }
 
-    // header counts
-    var counts = {};
-    for (var f = 0; f < M.files.length; f++) {
-        var cc = catOf(M.files[f]);
-        counts[cc] = (counts[cc] || 0) + 1;
-    }
-    document.getElementById('counts').textContent =
-        M.files.length + ' assets · ' + (counts.image || 0) + ' images · ' +
-        (counts.audio || 0) + ' sounds · ' +
-        ((counts.video || 0) ? (counts.video || 0) + ' movies · ' : '') +
-        (counts.font || 0) + ' fonts · ' +
-        (counts.i18n || 0) + ' string tables · ' + (counts.android || 0) +
-        ' android icons' +
-        ((counts.dlc || 0) ? ' · ' + (counts.dlc || 0) + ' dlc' : '');
-
     var search = document.getElementById('search');
+    var searchTimer = null;
     search.addEventListener('input', function () {
-        state.q = search.value.trim().toLowerCase();
-        if (state.tab === 'motion') { setTab('all'); return; }
-        renderTabs();
-        renderGrid();
+        if (searchTimer) { clearTimeout(searchTimer); }
+        searchTimer = setTimeout(function () {
+            state.q = search.value.trim();
+            if (state.tab === 'motion') { setTab('all'); return; }
+            renderTabs();
+            renderGrid();
+        }, 250);
     });
 
-    // deep link: assets-explorer.html?path=<manifest path> opens with that
+    // deep link: assets-explorer.php?path=<manifest path> opens with that
     // asset selected (the map pages' sprite-variant tiles link here)
     try {
         var deep = new URLSearchParams(location.search).get('path');
-        if (deep && byPath[deep]) { state.selected = deep; }
+        if (deep) { state.selected = deep; }
     } catch (err) { /* no URLSearchParams (or no query): plain boot */ }
 
     setTab('all');
+    if (state.selected) { select(state.selected); }
 })();

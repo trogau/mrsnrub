@@ -310,7 +310,7 @@ function renderDetail() {
             <div class="actions">
                 <button id="btn-open" data-tip="extract to local cache and list the zip contents">${d.entries.length ? 'Reopen zip' : 'Open zip'}</button>
                 <button id="btn-spec" data-tip="show the --dlc JSON spec for tools/extract_assets.py (copies nothing, runs nothing)">--dlc pipeline spec</button>
-                <a href="assets-explorer.html" data-tip="the Asset Explorer (APK-extracted + previously decoded DLC)">Asset Explorer ↗</a>
+                <a href="assets-explorer.php" data-tip="the Asset Explorer (APK-extracted + previously decoded DLC)">Asset Explorer ↗</a>
                 <button id="btn-rescan" data-tip="re-list this whole bundle (resets its rows)">Rescan bundle</button>
             </div>
         </div>

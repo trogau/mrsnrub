@@ -253,7 +253,7 @@
                 w: 150, h: 42, x: G.W - 312, y: 16,
                 onTap: function () {
                     global.AudioMixer.playSfx('01_general_button.wav');
-                    openInNewTab('assets-explorer.html');
+                    openInNewTab('assets-explorer.php');
                 }
             });
         },
