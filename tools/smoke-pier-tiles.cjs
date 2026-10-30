@@ -135,8 +135,43 @@ check('viewer blits one frame per 4x4 brush cell (camera-derived box map)',
     /s\.setFromMatrix\(new PIXI\.Matrix\(i00 \* fx/.test(pv) &&
     /buildPierCell\(featC, pc\.tn, pc\.tx, pc\.ty, pc\.occ, pc\.arr, 4\)/.test(pv) &&
     /if \(\(pc\.tx & 3\) \|\| \(pc\.ty & 3\)\) continue;/.test(pv));
-check('viewer uses the shadow-derived box map (127x66 box)',
-    /\(bx - 63\.5\) \* kx/.test(pv) && /\(by - 33\) \* ky/.test(pv));
+/* 2026-10-30.23: the frame ORIGIN pins to the cell's front corner (x0, y1)
+   at 1:1 art px — the building pivot rule. Measured against the full-res
+   in-game export registered by the surrounding BUILDINGS: the
+   BarnacleBayMarina brush L lands on its save cells (residual 0 tile); the
+   .21/.22 leg-ring "ground corner" offset put it ~48 art px too high and
+   centring C_Shadow (.19) ~70 px too high. Guard against both coming back */
+check('viewer pins each frame ORIGIN to the cell front corner at 1:1 art px',
+    /var K = CAM\.scale\(cam\) \/ ART\.S;/.test(pv) &&
+    /var px = tx, py = ty \+ big;/.test(pv) &&
+    /pier-tiles\.json\?v=/.test(pv) &&
+    /var ex = \(bx \+ PIER_NUDGE\.x\) \* K, ey = \(by \+ PIER_NUDGE\.y\) \* K;/.test(pv) &&
+    /px \+ i00 \* ex \+ i01 \* ey, py \+ i10 \* ex \+ i11 \* ey/.test(pv) &&
+    !/pierGround|\.ground\b/.test(pv) &&
+    !/63\.5|a\.calib\./.test(pv.slice(pv.indexOf('function buildPierCell'), pv.indexOf('function applyPierMode'))));
+check('the nudge knob ships at zero (it is for sweeps, not a fudge)',
+    /var n = \{ x: 0, y: 0 \};/.test(pv));
+for (const t of ['boardwalk', 'pier']) {
+    const a = man.assets[t];
+    check(t + ': manifest carries no ground-corner offset (the origin IS the pivot)', !('ground' in a));
+    /* the deck top's front (bottom) vertex sits within a few art px of the
+       origin, so origin-on-corner == deck surface on the cell */
+    const tops = a.states.Normal_None.filter(b => /_Top_Crop/.test(b.n));
+    const minY = Math.min(...tops.map(b => b.p[1]));
+    check(t + ': deck top spans one 256-px cell diamond ending at the origin row',
+        minY < -255 && minY > -268, 'deck top y0 ' + minY);
+}
+/* 2026-10-30.25: a brush cell wholly IN FRONT of a building it overlaps on
+   screen is blitted again in the scene pool right after that building
+   (BarnacleBayMarina's dock end was painted over the brush L); cells in
+   front of a late cell follow it, and buildings standing on it re-emit */
+check('viewer redraws brush cells that lie in front of a building (scene over pass)',
+    /function inFront\(p, q\)/.test(pv) &&
+    /p\.u0 >= q\.u1 - 1e-9 \|\| p\.v0 >= q\.v1 - 1e-9/.test(pv) &&
+    /function derivePierOver\(\)/.test(pv) &&
+    /if \(po && i && \(po\.at\[i - 1\] \|\| po\.re\[i - 1\]\)\) emitPierOver\(i - 1, A, s, k\);/.test(pv) &&
+    /if \(po && buildings\.length\) emitPierOver\(buildings\.length - 1, A, s, k\);/.test(pv) &&
+    /pierOver\.recs !== pierRecs/.test(pv));
 check('viewer state rule probes the two lower neighbour cells',
     /water\(tx, ty \+ big\)/.test(pv) && /water\(tx \+ big, ty\)/.test(pv) &&
     pv.includes("'Normal_PostLeftAndRight'"));
@@ -150,8 +185,10 @@ check('viewer rebuilds once the brush sheets have decoded',
 check('applyPierMode hooks both buildGround and the legend pass',
     (pv.match(/applyPierMode\(\);/g) || []).length >= 2 &&
     pv.includes('function applyPierMode'));
-check('viewer shrinks the fill under the art (shadow covers the diamond)',
-    /r\.fill\.width = r\.fill\.height = vis \? 1 : 1 \+ BLEED/.test(pv));
+check('a cell\'s frame owns all 16 tile fills and hides them while the art shows',
+    /var cellFills = \{\};/.test(pv) &&
+    /fills: cellFills\[pc\.tn \+ ':' \+ pc\.tx \+ ',' \+ pc\.ty\]/.test(pv) &&
+    /r\.fills\[k\]\.visible = !vis && !terrain\.hidden\[r\.tn\];/.test(pv));
 
 /* ---- 4. page + lab integration ------------------------------------------ */
 const html = read('web/viewer/index.html');

@@ -1436,7 +1436,89 @@
             '}\n' +
             formatWaterRef() +
             formatDirtRef(DIRT, 'DIRT_ART') +
-            formatDirtRef(DIRTR, 'DIRT_ART_RIVER');
+            formatDirtRef(DIRTR, 'DIRT_ART_RIVER') +
+            formatBeachRef();
+    }
+    function formatBeachRef() {
+        if (!BEACH_J) return 'BEACH_TILES = null;   // run tools/gen_beach_tiles.py\n';
+        var low = (BEACH_J.coast || {}).lower || {};
+        function le(o) {
+            return Object.keys(o).map(function (k) {
+                return k + ': "' + o[k] + '"';
+            }).join(', ');
+        }
+        function tile(n) {
+            var t = BEACH_J.tiles[n], a = BEACH_J.anims[t.anim];
+            return '    ' + n + ': { anim: "' + t.anim + '"' +
+                (t.unpurchasedAnim ? ', unpurchased: "' + t.unpurchasedAnim + '"' : '') +
+                ', frames: ' + a.frames.length + ', blocks: ' + a.frames[0].length +
+                ', bounds: [' + a.bounds.join(', ') + '],\n' +
+                '      landedge: { ' + le(t.landedge) + ' } },\n';
+        }
+        var hi = (BEACH_J.coast || {}).heights || {};
+        return 'BEACH_TILES = {                      // fixed coast tiles — landinfo.xml LandEdge\n' +
+            '  // NOT RoadMap tiles, never paintable, never in the save (the SAND\n' +
+            '  // layer is engine filler, notes/01): the engine draws these strips\n' +
+            '  // itself at the ocean/land boundary. The coast is TWO sets — the\n' +
+            '  // southern (below-the-mountains) shore stamps filename="Beach", the\n' +
+            '  // northern Springfield Heights shore stamps\n' +
+            '  // filename="springfieldheightsnobeach" (repeat="6", six strips then\n' +
+            '  // stop). They meet at the seam, the row where the mountain ridge\n' +
+            '  // reaches the water (the Mountain03 asset in the viewer).\n' +
+            '  manifest: "assets/city/beach-tiles.json",\n' +
+            '  pack: "' + BEACH_J.pack + '",\n' +
+            '  sheet: "' + BEACH_J.sheet + '",\n' +
+            '  heightsSheet: "' + ((BEACH_J.assets || {}).heights || {}).sheet + '",\n' +
+            '  pxPerTile: ' + BEACH_J.pxPerTile + ',                // pre-sheared oblique art, screen-space blit\n' +
+            '  tiles: {\n' +
+            tile('shore') + tile('buildarea') + tile('border') +
+            tile('h_shore') + tile('h_beach') + tile('h_overlay') +
+            '  },\n' +
+            '  place: {                             // where they are applied (Road Lab map card)\n' +
+            '    shorelineX: 0, sea: [-64, 0], coastY: [0, 512],   // terrain.js seaFill\n' +
+            '    // GridTypeMap splits its two beach ranges at y=' + low.from + ': beach x ' +
+            (low.x ? low.x[0] + '..' + low.x[1] : '?') + ' SOUTH of it (the lower set),\n' +
+            '    //   beach x 0..12 + cliff x 12..16 NORTH of it (the Heights set).\n' +
+            '    //   That row is the seam; the region table (SHMountains y -18..0)\n' +
+            '    //   agrees, but the exact row is UNVERIFIED against the map.\n' +
+            '    seam: ' + beachSeam() + ',\n' +
+            '    fill: ' + (BEACH_MAP.fill ? 'true' : 'false') +
+            ', repeat: "' + ((BEACH_J.coast || {}).repeat || '?') + '",   // -1 = stamp until the edge ends\n' +
+            '    coastFrom: ' + beachSeam() + ', coastTo: ' + BEACH_MAP.end +
+            ', strips: ' + beachPlaceInstances().length + ',\n' +
+            '    along: "' + BEACH_MAP.along + '", pitchTiles: ' + BEACH_MAP.pitch +
+            ', coverRows: ' + beachPlaceSpan() +
+            ', artSpanTiles: ' + (BEACH_J.tiles.shore.spanTiles || '?') +
+            ', anchorColumn: ' + BEACH_MAP.offX + ',\n' +
+            '    // pitch = coverRows (the rows one strip paints): the art reaches ' +
+            (BEACH_J.tiles.shore.spanTiles || '?') + ' tiles but fills only ' +
+            beachPlaceSpan() + ',\n  //   so an ' + (BEACH_J.tiles.shore.spanTiles || '?') +
+            '-tile pitch would leave a 1-row gap every ' + (BEACH_J.tiles.shore.spanTiles || '?') + '.\n' +
+            '    depthTiles: [' + BEACH_J.anims[BEACH_J.tiles.shore.anim].tilebox[0] + ', ' +
+            BEACH_J.anims[BEACH_J.tiles.buildarea.anim].tilebox[2] + '],   // opaque art, measured (width="16" unexplained)\n' +
+            '    coveredTiles: ' + beachPlaceTiles().filter(function (t) {
+                return t.set !== 'heights';
+            }).length + ',\n' +
+            '    heights: {                         // THE OTHER SET (north of the seam)\n' +
+            '      set: "' + (hi.set || '?') + '", repeat: "' + (hi.repeat || '?') +
+            '", offsety: "' + (hi.offsety || '?') + '",\n' +
+            '      on: ' + (BEACH_MAP.heights ? 'true' : 'false') +
+            ', mode: "' + BEACH_MAP.hmode + '",   // replace = meets the lower set; over = stacked on it\n' +
+            '      strips: ' + BEACH_MAP.hinst + ', pitchTiles: ' + BEACH_MAP.hpitch +
+            ', coverRows: ' + beachPlaceSpanOf('heights') + ',\n' +
+            '      // its shore art measures the SAME columns as the lower shore, so\n' +
+            '      // north of the seam it REPLACES these tiles; only beachmtnoverlay\n' +
+            '      // (repeat=1) and BEACHBORDEROVERLAY are true overlays.\n' +
+            '      coveredTiles: ' + beachPlaceTiles().filter(function (t) {
+                return t.set === 'heights';
+            }).length + ',\n' +
+            '    },\n' +
+            '  },\n' +
+            '  strip: { repeats: ' + BST.repeats + ', pitchTiles: ' + BST.pitch +
+            ', along: "' + BST.dir + '" },   // live lab rig (open question: the real repeat rule)\n' +
+            '  heightsStrip: { repeats: ' + HST.repeats + ', pitchTiles: ' + HST.pitch +
+            ', along: "' + HST.dir + '" },\n' +
+            '}\n';
     }
     function formatWaterRef() {
         var wp = wEffPass();
@@ -1495,6 +1577,7 @@
         renderDirt(DIRTR);
         renderPier(BW);
         renderPier(PW);
+        renderBeach();
         $('refout').textContent = formatRef();
         syncReadouts();
     }
@@ -1574,7 +1657,13 @@
     }
 
     function bindStepper(btnId, fn) {
-        $(btnId).addEventListener('click', fn);
+        var b = $(btnId);
+        if (!b) {                 // a control the page doesn't have is a authoring
+            if (typeof console !== 'undefined' && console.warn)
+                console.warn('road-lab: no such control #' + btnId);
+            return;               // bug, not a reason to black out every canvas
+        }
+        b.addEventListener('click', fn);
     }
 
     bindToggle('btn-iso', 'iso');
@@ -1989,15 +2078,128 @@
        tab 3 = the original footpath/carriageway tuning rig. Panes use
        display:contents so their sections remain flex items of <main>;
        [hidden] collapses the pane. */
-    var TABS = ['tab-sheet', 'tab-water', 'tab-dirt', 'tab-dirt2', 'tab-bw', 'tab-pier', 'tab-bridge', 'tab-tune'];
-    var TABBTN = { 'tab-sheet': 'tab-btn-sheet', 'tab-water': 'tab-btn-water', 'tab-dirt': 'tab-btn-dirt', 'tab-dirt2': 'tab-btn-dirt2', 'tab-bw': 'tab-btn-bw', 'tab-pier': 'tab-btn-pier', 'tab-bridge': 'tab-btn-bridge', 'tab-tune': 'tab-btn-tune' };
+    var TABS = ['tab-sheet', 'tab-water', 'tab-dirt', 'tab-dirt2', 'tab-bw', 'tab-pier', 'tab-bridge', 'tab-beach', 'tab-align', 'tab-tune'];
+    var TABBTN = { 'tab-sheet': 'tab-btn-sheet', 'tab-water': 'tab-btn-water', 'tab-dirt': 'tab-btn-dirt', 'tab-dirt2': 'tab-btn-dirt2', 'tab-bw': 'tab-btn-bw', 'tab-pier': 'tab-btn-pier', 'tab-bridge': 'tab-btn-bridge', 'tab-beach': 'tab-btn-beach', 'tab-align': 'tab-btn-align', 'tab-tune': 'tab-btn-tune' };
     var activeTab = 'tab-sheet';
     function setTab(id) {
         if (TABS.indexOf(id) < 0) return;
         activeTab = id;
         for (var ti = 0; ti < TABS.length; ti++) $(TABS[ti]).hidden = (TABS[ti] !== id);
         for (var t in TABBTN) $(TABBTN[t]).className = (t === id) ? 'on' : '';
+        if (id === 'tab-align') alignOpen();
     }
+
+    /* ---- marina align (hand registration of the ocean brushes) -------------
+       The live City View in an iframe (same origin), framed on
+       BarnacleBayMarina through its ?camTx/camTy/camZ view (never persisted,
+       so the user's own City View camera is untouched). The controls drive
+       the viewer's window.__CV_PIER_NUDGE(dx, dy): every boardwalk / pier
+       frame moves together, in screen-aligned art px. The readout carries the
+       nudge, its tile-space equivalent and the URL that reproduces it. */
+    var ALIGN_CAM = { tx: -12, ty: 150, zoom: 0.45 };  // the marina, its brush L, sea + beach
+    var AL = { dx: 0, dy: 0, ab: false, opened: false };
+    function alignWin() {
+        var f = $('al-frame');
+        try { return f && f.contentWindow && f.contentWindow.__CV_PIER_NUDGE ? f.contentWindow : null; }
+        catch (e) { return null; }
+    }
+    function alignOpen() {
+        if (AL.opened) return;
+        AL.opened = true;
+        $('al-frame').src = 'index.html?camTx=' + ALIGN_CAM.tx + '&camTy=' + ALIGN_CAM.ty +
+            '&camZ=' + ALIGN_CAM.zoom;
+        (function wait() {                      // the viewer's hook appears once it booted
+            var w = alignWin();
+            if (!w) { setTimeout(wait, 250); return; }
+            alignApply();
+        })();
+    }
+    function alignApply() {
+        var w = alignWin();
+        var live = AL.ab ? { x: 0, y: 0 } : { x: AL.dx, y: AL.dy };
+        if (w) w.__CV_PIER_NUDGE(live.x, live.y);
+        $('al-dx').value = AL.dx;
+        $('al-dy').value = AL.dy;
+        $('al-flip').className = AL.ab ? 'on' : '';
+        $('al-status').textContent = w
+            ? (AL.ab ? 'showing 0,0 (A/B) — your nudge is ' + AL.dx + ',' + AL.dy
+                     : 'live nudge ' + AL.dx + ',' + AL.dy + ' art px')
+            : 'loading view…';
+        alignReadout();
+    }
+    function alignReadout() {
+        var w = alignWin(), c = null, ver = null;
+        try {
+            c = w && w.__CV_CAM ? w.__CV_CAM() : null;
+            var sc = w && w.document.querySelector('script[src*="city-view-pixi.js"]');
+            ver = w ? (w.__CV_VER + (sc ? ' / ' + sc.getAttribute('src') : '')) : null;
+        } catch (e) { /* not booted */ }
+        /* screen art px -> ground tiles: +x tile = (64, -32) px, +y tile = (64, +32) */
+        var tx = (AL.dx / 64 - AL.dy / 32) / 2, ty = (AL.dx / 64 + AL.dy / 32) / 2;
+        var out = {
+            tool: 'road-lab marina align',
+            pierDx: AL.dx,
+            pierDy: AL.dy,
+            unit: 'screen-aligned art px from the shipped placement (+x right, +y down; 1 tile = 128x64 art px)',
+            tileEquiv: { x: +tx.toFixed(4), y: +ty.toFixed(4) },
+            viewerVer: ver,
+            camera: c ? { tx: +c.tx.toFixed(2), ty: +c.ty.toFixed(2), zoom: +c.zoom.toFixed(3) } : null,
+            url: 'viewer/index.html?pierDx=' + AL.dx + '&pierDy=' + AL.dy +
+                (c ? '&camTx=' + c.tx.toFixed(2) + '&camTy=' + c.ty.toFixed(2) + '&camZ=' + c.zoom.toFixed(3) : ''),
+            notes: $('al-notes').value || ''
+        };
+        $('al-out').textContent = JSON.stringify(out, null, 2);
+    }
+    function alignMove(mx, my, mult) {
+        var st = parseFloat($('al-step').value) || 1;
+        AL.dx += mx * st * (mult || 1);
+        AL.dy += my * st * (mult || 1);
+        AL.ab = false;
+        alignApply();
+    }
+    (function bindAlign() {
+        if (!$('al-frame')) return;
+        $('al-left').addEventListener('click', function () { alignMove(-1, 0); });
+        $('al-right').addEventListener('click', function () { alignMove(1, 0); });
+        $('al-up').addEventListener('click', function () { alignMove(0, -1); });
+        $('al-down').addEventListener('click', function () { alignMove(0, 1); });
+        $('al-reset').addEventListener('click', function () { AL.dx = AL.dy = 0; AL.ab = false; alignApply(); });
+        $('al-flip').addEventListener('click', function () { AL.ab = !AL.ab; alignApply(); });
+        $('al-recenter').addEventListener('click', function () {
+            AL.opened = false; $('al-frame').src = 'about:blank'; alignOpen();
+        });
+        ['al-dx', 'al-dy'].forEach(function (id) {
+            $(id).addEventListener('change', function () {
+                var v = parseFloat($(id).value);
+                if (!isFinite(v)) v = 0;
+                if (id === 'al-dx') AL.dx = v; else AL.dy = v;
+                AL.ab = false;
+                alignApply();
+            });
+        });
+        $('al-notes').addEventListener('input', alignReadout);
+        $('al-copy').addEventListener('click', function () {
+            alignReadout();
+            var txt = $('al-out').textContent;
+            var done = function (ok) { $('al-copied').textContent = ok ? 'copied' : 'select the text below and copy it'; };
+            try { navigator.clipboard.writeText(txt).then(function () { done(true); }, function () { done(false); }); }
+            catch (e) { done(false); }
+        });
+        setInterval(function () { if (activeTab === 'tab-align') alignReadout(); }, 1000);  // camera moves
+        if (typeof document.addEventListener === 'function') document.addEventListener('keydown', function (e) {
+            if (activeTab !== 'tab-align') return;
+            var tg = e.target && e.target.tagName;
+            if (tg === 'INPUT' || tg === 'SELECT' || tg === 'TEXTAREA') return;
+            var m = e.shiftKey ? 4 : 1;
+            if (e.key === 'ArrowLeft') alignMove(-1, 0, m);
+            else if (e.key === 'ArrowRight') alignMove(1, 0, m);
+            else if (e.key === 'ArrowUp') alignMove(0, -1, m);
+            else if (e.key === 'ArrowDown') alignMove(0, 1, m);
+            else if (e.key === 'b' || e.key === 'B') { AL.ab = !AL.ab; alignApply(); }
+            else return;
+            e.preventDefault();
+        });
+    })();
     (function bindTabs() {
         var arr = document.querySelectorAll('[data-tab]');
         for (var i = 0; i < arr.length; i++) {
@@ -2438,6 +2640,1059 @@
         bridgeSiteReset();
     })();
 
+    /* ---- Fixed coast beach tiles (beach tab) ------------------------------
+       The two tile types that line the ocean/land boundary in-game are NOT
+       RoadMap tiles and never were paintable like roads/rivers: the save
+       holds no beach cells at all (the SAND layer is engine filler noise,
+       notes/01). They are `LandEdge` strips the ENGINE draws itself along the
+       map edge, declared in gamescripts landinfo.xml <LandSprite>:
+
+         <LandEdge filename="Beach" direction="y" culling="left" width="16"
+                   offsety="-1" repeat="-1" animname="BEACHSHORE1"
+                   unpurchased_animname="BEACHSHORE2" purchase_grid_col="-1"
+                   reverse_render="true"/>                        water's edge
+         <LandEdge filename="Beach" ... animname="BEACHBUILDAREA1"
+                   unpurchased_animname="BEACHBUILDAREA2"
+                   reverse_render="true"/>                        buildable sand
+
+       so the bottom (below-the-mountains) set — the coast that runs along the
+       west edge past town tile (0, 67) down to the map bottom — is exactly:
+
+         BEACHSHORE1/2      sand + wavy water's edge + animated C_Wave_* foam
+                            + seaweed                      20 frames, 20 blocks
+         BEACHBUILDAREA1/2  the buildable sand behind it, inland grass edge +
+                            rocks                          20 frames, 15 blocks
+
+       (…/2 = the duller UNPURCHASED-plot variant; BEACHBORDEROVERLAY is the
+       green cliff/rock map-BORDER cap from <AlternateLandSprite> — kept in the
+       manifest for context, not one of the two coast types; the UPPER set
+       above the mountains is a different asset, springfieldheightsnobeach
+       (beachshore1 / beach1 / beachmtnoverlay, repeat="6"), shown in its own
+       cards below and on the map card north of the seam.)
+
+       The art is the building-sprite bsv3 asset `Beach` (tutorialgame pack),
+       parsed by tools/gen_beach_tiles.py into
+       web/assets/city/beach-tiles.json. Unlike the pier/boardwalk tiles
+       (notes/09 §12) this art is NOT tile-space: it is PRE-SHEARED oblique
+       art blitted in screen space at 64 art px per town tile (the same
+       64 px/tile the billboards use), which is why the shoreline already runs
+       2:1 — so the grid here is a plain 64-px square grid and adds no second
+       shear. Both coast anims share the one bsv3 coordinate space, so
+       stacking them UNSHIFTED composites the whole coast band (harness:
+       beachPairRects) — no placement guesswork.
+
+       Earlier versions of this tab showed LowerMountainBeach /
+       LowerMountainBeachShoreline (Mountain03/Mountain04) instead. Those are
+       mountain-RIDGE props for the "Lower Mountain Beach" DISTRICT (the
+       Springfield Heights upland) — wrong art for this question, deleted.
+
+       Metadata lives in the HTML captions, never over the art: each canvas
+       paints only sea, grid, art, and a tile ruler in the dark band above. */
+    const BEACH_S = 64;                       // art px per town tile
+    const BEACH_RULER = 26;                   // dark band above the art
+    const BEACH_PAD = 16;                     // canvas gutter around the art
+    const BEACH_SEA = 'rgb(84,170,252)';      // terrain.js SEA_RGB
+    var BEACH_J = null, BEACH_FAILED = false;
+    var BEACH_IM = null, BEACH_IM_FAILED = false;
+    var BEACH_IMH = null, BEACH_IMH_FAILED = false;      // the Heights sheet
+    /* the coast is TWO sets: `pair`-style views for the lower (Beach) set and
+       `h_pair`-style views for the northern (springfieldheightsnobeach) one.
+       Each kind lists the manifest tile entries it paints, back to front. */
+    var BEACH_KINDS = {
+        shore: ['shore'], buildarea: ['buildarea'], pair: ['buildarea', 'shore'],
+        h_shore: ['h_shore'], h_beach: ['h_beach'], h_overlay: ['h_overlay'],
+        h_pair: ['h_beach', 'h_shore'],
+    };
+    function isBeachPair(kind) { return (BEACH_KINDS[kind] || []).length > 1; }
+    /* one view per card: kind = a key of BEACH_KINDS. `noVariant` is for cards
+       whose tile has no unpurchased art (the Mountain overlay): that card has no
+       sand button at all, so nothing may assume one exists. */
+    function newBeachView(kind, cvId, pre, noVariant) {
+        return {
+            kind: kind, cv: cvId, pre: pre,
+            zoom: 1, frame: 0, unpurchased: false,
+            grid: true, ruler: true, sea: true,
+            repeats: 1, pitch: 18, dir: 'y',
+            variantBtn: !noVariant,
+        };
+    }
+    var BSH = newBeachView('shore', 'cv-beachshore', 'bch-shore');
+    var BLD = newBeachView('buildarea', 'cv-beachbuild', 'bch-build');
+    var BST = newBeachView('pair', 'cv-beachpair', 'bch-pair');
+    var HSH = newBeachView('h_shore', 'cv-beachhshore', 'bch-hshore');
+    var HBD = newBeachView('h_beach', 'cv-beachhbeach', 'bch-hbeach');
+    var HMO = newBeachView('h_overlay', 'cv-beachhmtn', 'bch-hmtn', true);
+    var HST = newBeachView('h_pair', 'cv-beachhpair', 'bch-hpair');
+    var BEACH_VIEWS = [BSH, BLD, BST, HSH, HBD, HMO, HST];
+
+    function loadBeachManifest() {
+        if (typeof fetch !== 'function') { renderBeach(); return; }
+        fetch('../assets/city/beach-tiles.json')     // same idiom as the pier manifest
+            .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+            .then(function (ab) {
+                BEACH_J = JSON.parse(new TextDecoder('utf8').decode(new Uint8Array(ab)));
+                /* the fill pitch comes from the manifest, not a guess: the number
+                   of rows one strip actually paints (see beachPlaceSpan) */
+                if (BEACH_MAP && BEACH_J.tiles && BEACH_J.tiles.shore &&
+                        BEACH_J.tiles.shore.coverRows)
+                    BEACH_MAP.pitch = BEACH_J.tiles.shore.coverRows;
+                /* same for the Heights set, whose strip COUNT the file states
+                   outright (LandEdge repeat="6") */
+                if (BEACH_MAP && BEACH_J.tiles && BEACH_J.tiles.h_shore) {
+                    if (BEACH_J.tiles.h_shore.coverRows)
+                        BEACH_MAP.hpitch = BEACH_J.tiles.h_shore.coverRows;
+                    var hr = parseInt((BEACH_J.tiles.h_shore.landedge || {}).repeat, 10);
+                    if (hr > 0) BEACH_MAP.hinst = hr;
+                    /* its band card, likewise: the defaults are the FILE's
+                       repeat and the measured pitch, not lab guesses */
+                    if (HST) {
+                        HST.repeats = hr > 0 ? hr : 6;
+                        HST.pitch = BEACH_J.tiles.h_shore.coverRows || 17;
+                    }
+                }
+                /* the seam (where the lower fill stops) starts on the row the SAVE
+                   states — the south edge of Mountain03/LowerMountainBeach and
+                   Mountain04/LowerMountainBeachShoreline, the props the game puts
+                   where the ridge meets the water. The engine's type table splits its
+                   two beach ranges 16 rows north of that (manifest coast.seamUnverified:
+                   low.from), so that row stays a STEPPER away and is drawn as the
+                   second candidate rather than being the default. */
+                BEACH_MAP.start = beachSeamFromProps();
+                loadBeachSheet();
+            })
+            .catch(function () { BEACH_FAILED = true; renderBeach(); });
+    }
+    function loadBeachSheet() {
+        if (typeof Image === 'undefined') { renderBeach(); return; }
+        var im = new Image();
+        im.onload = function () { BEACH_IM = im; renderBeach(); };
+        im.onerror = function () { BEACH_IM_FAILED = true; renderBeach(); };
+        im.src = '../' + BEACH_J.sheet;
+        var h = BEACH_J.assets && BEACH_J.assets.heights;
+        if (!h) { renderBeach(); return; }
+        var im2 = new Image();
+        im2.onload = function () { BEACH_IMH = im2; renderBeach(); };
+        im2.onerror = function () { BEACH_IMH_FAILED = true; renderBeach(); };
+        im2.src = '../' + h.sheet;
+    }
+    /* which sheet + cell table an anim lives on — the two bsv3s are separate
+       files, so every blit has to ask the anim, not the card */
+    function beachSheetOf(name) {
+        var a = BEACH_J && name && BEACH_J.anims[name];
+        var asset = (a && a.asset) || 'beach';
+        if (asset === 'heights') {
+            return { im: BEACH_IMH, failed: BEACH_IMH_FAILED,
+                     cells: (BEACH_J.assets.heights || {}).cells,
+                     path: (BEACH_J.assets.heights || {}).sheet };
+        }
+        return { im: BEACH_IM, failed: BEACH_IM_FAILED, cells: BEACH_J.cells,
+                 path: BEACH_J.sheet };
+    }
+    /* the anims a card shows, in draw order (pair = buildarea behind shore) */
+    function beachAnims(S) {
+        return (BEACH_KINDS[S.kind] || ['shore']).map(function (n) {
+            var t = BEACH_J.tiles[n];
+            return (S.unpurchased && t.unpurchasedAnim) ? t.unpurchasedAnim : t.anim;
+        });
+    }
+    function beachFrameCount(S) {
+        return BEACH_J ? BEACH_J.anims[beachAnims(S)[0]].frames.length : 1;
+    }
+    function beachFrame(S, anim) {
+        var fr = BEACH_J.anims[anim].frames;
+        return fr[((S.frame % fr.length) + fr.length) % fr.length];
+    }
+    /* art px -> canvas px: the sheet bounds' top-left lands at the gutter
+       corner under the ruler band; one mapping for blits, grid and harness */
+    function beachBounds(S) {
+        var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        beachAnims(S).forEach(function (name) {
+            var b = BEACH_J.anims[name].bounds;
+            x0 = Math.min(x0, b[0]); y0 = Math.min(y0, b[1]);
+            x1 = Math.max(x1, b[0] + b[2]); y1 = Math.max(y1, b[1] + b[3]);
+        });
+        return [x0, y0, x1 - x0, y1 - y0];
+    }
+    function beachMap(S, ax, ay) {
+        var b = beachBounds(S);
+        return [BEACH_PAD + (ax - b[0]) * S.zoom,
+                BEACH_PAD + BEACH_RULER + (ay - b[1]) * S.zoom];
+    }
+    /* one bsv3 block -> its sheet crop + canvas rect: crop cell[1..4] of the
+       sheet drawn at the block's top-left, scaled |a|,|d|; a<0 mirrors about
+       the anchor so the stored x is the crop's RIGHT edge */
+    /* one bsv3 block -> its sheet crop + canvas rect: crop cell[1..4] of the
+       sheet drawn at the block's top-left, scaled |a|,|d|; a<0 mirrors about
+       the anchor so the stored x is the crop's RIGHT edge. (ax, ay) is where
+       the art's own (0,0) sits on the canvas and k = canvas px per art px. */
+    function beachRectAt(cell, blk, ax, ay, k) {
+        var mx = Math.abs(blk[3]), my = Math.abs(blk[6]);
+        return {
+            n: cell[0], sx: cell[1], sy: cell[2], sw: cell[3], sh: cell[4],
+            dx: ax + (blk[1] - (blk[3] < 0 ? cell[3] * mx : 0)) * k,
+            dy: ay + blk[2] * k, w: cell[3] * mx * k, h: cell[4] * my * k,
+        };
+    }
+    function beachBlockRect(cell, blk, S) {
+        var b = beachBounds(S);
+        return beachRectAt(cell, blk,
+            BEACH_PAD - b[0] * S.zoom, BEACH_PAD + BEACH_RULER - b[1] * S.zoom,
+            S.zoom);
+    }
+    /* the frame's blocks in canvas px (pure function of S — the harness
+       asserts the composite through these) */
+    function beachCardRects(S) {
+        var out = [];
+        beachAnims(S).forEach(function (name) {
+            var sh = beachSheetOf(name);
+            beachFrame(S, name).forEach(function (blk) {
+                var r = beachBlockRect(sh.cells[blk[0]], blk, S);
+                r.anim = name;
+                out.push(r);
+            });
+        });
+        return out;
+    }
+    /* the pair stacked: both anims share the bsv3 coordinate space, so the
+       same unshifted mapping composites the complete coast band */
+    function beachPairRects() { return beachCardRects(BST); }
+    /* the 64-px (1 town tile) grid, in ART px; caller maps through beachMap */
+    function beachGridLines(bounds) {
+        var x0 = bounds[0], y0 = bounds[1], x1 = bounds[0] + bounds[2], y1 = bounds[1] + bounds[3];
+        var out = [], x, y;
+        for (x = Math.ceil(x0 / BEACH_S) * BEACH_S; x <= x1 + 0.01; x += BEACH_S)
+            out.push([x, y0, x, y1]);
+        for (y = Math.ceil(y0 / BEACH_S) * BEACH_S; y <= y1 + 0.01; y += BEACH_S)
+            out.push([x0, y, x1, y]);
+        return out;
+    }
+    function renderBeachCard(S) {
+        var cv = $(S.cv), ctx = cv.getContext('2d');
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = '#101216';
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.font = '11px ui-monospace, Menlo, Consolas, monospace';
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
+        function note(msg, color) {
+            ctx.fillStyle = color || '#cfd6df';
+            ctx.fillText(msg, 12, 8);
+            return false;
+        }
+        if (BEACH_FAILED) return note('manifest failed to load: '
+            + 'assets/city/beach-tiles.json (run tools/gen_beach_tiles.py)');
+        if (!BEACH_J) return note('loading manifest…');
+        var want = beachSheetOf(beachAnims(S)[0]);
+        if (want.failed) return note('sheet failed to load: ' + want.path);
+        if (!want.im) return note('loading sheet…');
+        var b = beachBounds(S), k = S.zoom;
+        var aw = Math.ceil(b[2] * k), ah = Math.ceil(b[3] * k);
+        var need = { w: aw + 2 * BEACH_PAD, h: ah + 2 * BEACH_PAD + BEACH_RULER };
+        if (cv.width < need.w || cv.height < need.h) { cv.width = need.w; cv.height = need.h; }
+        /* LandEdge repeat: the strip tiles along the coast. The lower set is
+           repeat="-1" (stamp until the edge ends), the Heights set repeat="6";
+           the PITCH is still an open question in both cases (the art is 18
+           tiles wide, so 18 is the default here), and the step direction is a
+           2:1 screen step along the edge's own axis — steppers, not claims. */
+        var reps = Math.max(1, S.repeats | 0);
+        var lines = S.grid ? beachGridLines(b) : [];
+        for (var r = 0; r < reps; r++) {
+            var step = r * S.pitch * BEACH_S;                   // art px along the edge
+            var ox = S.dir === 'y' ? -step / 2 : step / 2, oy = step / 4;
+            var p0 = beachMap(S, b[0] + ox, b[1] + oy);
+            if (S.sea) {
+                ctx.fillStyle = BEACH_SEA;
+                ctx.fillRect(p0[0], p0[1], aw, ah);
+            }
+            if (S.grid) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+                for (var gi = 0; gi < lines.length; gi++) {
+                    var g = lines[gi], g0 = beachMap(S, g[0] + ox, g[1] + oy),
+                        g1 = beachMap(S, g[2] + ox, g[3] + oy);
+                    ctx.beginPath();
+                    ctx.moveTo(g0[0], g0[1]); ctx.lineTo(g1[0], g1[1]);
+                    ctx.stroke();
+                }
+            }
+            var anims = beachAnims(S);
+            for (var ai = 0; ai < anims.length; ai++) {
+                var sh = beachSheetOf(anims[ai]), blocks = beachFrame(S, anims[ai]);
+                for (var bi = 0; bi < blocks.length; bi++) {
+                    var blk = blocks[bi], cell = sh.cells[blk[0]];
+                    var q = beachBlockRect(cell, blk, S);
+                    ctx.drawImage(sh.im, q.sx, q.sy, q.sw, q.sh,
+                        q.dx + ox * k, q.dy + oy * k, q.w, q.h);
+                }
+            }
+        }
+        /* ruler last, in the dark band above the art: 64 px = 1 town tile */
+        var tiles = Math.min(24, Math.max(1, Math.round(b[2] / BEACH_S)));
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        for (var t = 0; t <= tiles; t++) {
+            var x = BEACH_PAD + t * BEACH_S * k;
+            ctx.beginPath();
+            ctx.moveTo(x, BEACH_PAD); ctx.lineTo(x, BEACH_PAD + 12);
+            ctx.stroke();
+            if (S.ruler && t % 2 === 0) {
+                ctx.fillStyle = '#8b93a0';
+                ctx.fillText(String(t), x + 2, 4);
+            }
+        }
+        /* readouts + button classes (HTML text, never on the art) */
+        var kinds = BEACH_KINDS[S.kind] || ['shore'];
+        var t = BEACH_J.tiles[kinds[kinds.length - 1]];
+        var info = beachAnims(S).map(function (name) {
+            var a = BEACH_J.anims[name];
+            return name + ' — ' + a.frames.length + ' frames × ' +
+                a.frames[0].length + ' blocks, bounds ' + a.bounds[2] + '×' +
+                a.bounds[3] + ' px = ' + (a.bounds[2] / BEACH_S).toFixed(1) +
+                ' tiles long';
+        }).join('   over   ');
+        $(S.pre + '-info').textContent =
+            'sheet ' + beachSheetOf(t.anim).path + ' · ' +
+            (BEACH_J.assets[(BEACH_J.anims[t.anim] || {}).asset || 'beach'] || {})
+                .pack + ' · ' +
+            BEACH_S + ' art px per town tile (grid = 1 tile) · ' + info +
+            ' · LandEdge ' + t.landedgeBlock + ': ' +
+            Object.keys(t.landedge).map(function (kk) {
+                return kk + '="' + t.landedge[kk] + '"';
+            }).join(' ') +
+            ' · unpurchased variant: ' + (t.unpurchasedAnim || '—');
+        $(S.pre + '-zoom-v').textContent = '×' + S.zoom;
+        var nf = beachFrameCount(S);
+        $(S.pre + '-frame-v').textContent = (((S.frame % nf) + nf) % nf) + ' / ' + nf;
+        if (S.variantBtn) {
+            $(S.pre + '-variant').textContent = 'sand: ' +
+                (S.unpurchased ? 'unpurchased' : 'purchased');
+            $(S.pre + '-variant').className = S.unpurchased ? 'on' : '';
+        }
+        $(S.pre + '-grid').className = S.grid ? 'on' : '';
+        $(S.pre + '-sea').className = S.sea ? 'on' : '';
+        $(S.pre + '-ruler').className = S.ruler ? 'on' : '';
+        if (isBeachPair(S.kind)) {
+            $(S.pre + '-repeats-v').textContent = String(S.repeats);
+            $(S.pre + '-pitch-v').textContent = String(S.pitch);
+            $(S.pre + '-dir').textContent = 'along: ' + S.dir;
+        }
+    }
+    function renderBeach() {
+        BEACH_VIEWS.forEach(renderBeachCard);
+        renderBeachPlace();
+    }
+    function bindBeachView(S) {
+        var p = S.pre;
+        bindStepper(p + '-zoom-minus', function () { S.zoom = Math.max(0.5, +(S.zoom - 0.5).toFixed(2)); renderBeachCard(S); });
+        bindStepper(p + '-zoom-plus', function () { S.zoom = Math.min(4, +(S.zoom + 0.5).toFixed(2)); renderBeachCard(S); });
+        bindStepper(p + '-frame-minus', function () { S.frame--; renderBeachCard(S); });
+        bindStepper(p + '-frame-plus', function () { S.frame++; renderBeachCard(S); });
+        if (S.variantBtn) {
+            bindStepper(p + '-variant', function () { S.unpurchased = !S.unpurchased; renderBeachCard(S); });
+        }
+        bindStepper(p + '-grid', function () { S.grid = !S.grid; renderBeachCard(S); });
+        bindStepper(p + '-sea', function () { S.sea = !S.sea; renderBeachCard(S); });
+        bindStepper(p + '-ruler', function () { S.ruler = !S.ruler; renderBeachCard(S); });
+        if (!isBeachPair(S.kind)) return;
+        bindStepper(p + '-repeats-minus', function () { S.repeats = Math.max(1, S.repeats - 1); renderBeachCard(S); });
+        bindStepper(p + '-repeats-plus', function () { S.repeats = Math.min(8, S.repeats + 1); renderBeachCard(S); });
+        bindStepper(p + '-pitch-minus', function () { S.pitch = Math.max(4, S.pitch - 1); renderBeachCard(S); });
+        bindStepper(p + '-pitch-plus', function () { S.pitch = Math.min(48, S.pitch + 1); renderBeachCard(S); });
+        bindStepper(p + '-dir', function () { S.dir = S.dir === 'y' ? 'x' : 'y'; renderBeachCard(S); });
+    }
+    BEACH_VIEWS.forEach(bindBeachView);
+    /* ---- map placement: the whole coast, filled --------------------------
+       The cards above show WHAT the two fixed coast tiles are; this one shows
+       WHERE they go — all of it, not a couple of samples. Sources, strongest
+       first:
+
+         landinfo.xml   <GridTypeMap base_type="grass"> is the engine's own
+                        per-cell land table:
+                          type="ocean"     x_end="-3"                  (sea)
+                          type="shoreline" x_start="-3" x_end="0"      (foam)
+                          type="beach"     x_start="0" x_end="4"  y_start="-16"
+                          type="beach"     x_start="0" x_end="12" y_end="-16"
+                          type="cliff"     x_start="12" x_end="16" y_end="-16"
+                        A range with only y_start (or only y_end) is UNBOUNDED
+                        the other way: the 4-tile-deep beach band has no y_end,
+                        so it is beach for the whole coast south of y=-16, and
+                        the 12-tile band + cliff north of y=-16 is the Heights
+                        (springfieldheightsnobeach) set — a different anim
+                        group, deferred. Published in the manifest as
+                        `gridtype` and drawn under the footprints (the `types`
+                        toggle) because it is the coverage claim itself.
+         landinfo.xml   LandEdge ... repeat="-1": stamp along the whole edge.
+                        The contrast is the proof — every edge of a KNOWN fixed
+                        length carries a finite repeat (the Heights beach 6, the
+                        MOUNTAINSTOWATER cap 1, Krustyland's fence 13 / 12 /
+                        parking lots 1-6), and the only repeat="-1" edges are
+                        the ones that run the full map: the MOUNTAINS ridge x2,
+                        the Mountains_Standard wall, and BOTH Beach strips. So
+                        the default here is FILL, not a sample of two: the pair
+                        is stepped end to end from y=-16 to the end of the
+                        ocean frame (y=512), 528 tiles / the 17 rows a strip
+                        paints = 32 strips. (manifest `coast`.)
+         terrain.js     the viewer's own west-coast model: sea from grid x
+                        seaFillX0 (-64) to seaFillX1 (0), coast y 0..512,
+                        SEA_RGB (84,170,252) — the same shoreline the pair
+                        straddles.
+         manifest       the OPAQUE footprint of each anim, measured off the
+                        sheet by tools/gen_beach_tiles.py (`anims[].tilebox`).
+                        Shore covers x -4..-1 (water side of the anchor
+                        column), buildarea 0..3 (inland) — the buildarea box
+                        matches the engine's own `beach` range x 0..4 tile for
+                        tile, which is why the anchor column is the shoreline.
+
+       So: the beach is NOT two patches. It is one continuous 4-tile-deep band
+       the width of the coast, and the card's default says so. What stays a
+      question is only the phase — how the repeats are phased along the coast
+       (the pitch stepper, default the 18-tile opaque span), the anchor column
+       (offX), and what LandEdge width="16" means (the measured band is ~8
+       tiles deep, so it stays a dashed claim).
+
+       `fit` sizes the zoom so the whole stretch fits the card (the coast is
+       528 tiles: at x1 that would be a 34k-px canvas); the zoom stepper turns
+       it off to inspect one section. `iso` uses the City View's own projection
+       (CAM.tileAffine, 2:1 oblique) and the pre-sheared art blits UNSHIFTED
+       because its own tile step is that projection's (+64,+32) px; off gives a
+       flat top-down grid, which reads better for a whole coast. */
+    const BEACH_CELL = 16;                        // top-down px per grid tile at ×1
+    const BEACH_BAND = 40;                        // text band above the map (labels only)
+    const BEACH_MAX_STRIPS = 96;                  // fill cap (3.5x the real coast)
+    const BEACH_GRASS = 'rgb(74,128,66)';         // road-lab.html canvas ground
+    var BEACH_TYPE_FILL = {                       // GridTypeRange tints
+        shoreline: 'rgba(150,205,235,0.16)',
+        beach: 'rgba(223,206,138,0.16)',
+        cliff: 'rgba(150,142,132,0.22)',
+    };
+    var BEACH_FIT = null;                         // the card's own canvas size
+    var BEACH_MAP = {
+        zoom: 0.75, fit: true, fill: true,
+        start: 0, end: 512, pitch: 17, copies: 2, offX: 0, offY: 0,
+        along: 'y', unpurchased: false,
+        iso: true, sea: true, grid: true, foot: true, claimed: true,
+        anchors: true, labels: true, types: true,
+        /* THE SPLIT: the southern set stops where the mountain ridge reaches the
+           water and the Heights set (springfieldheightsnobeach, LandEdge
+           repeat="6") covers the coast north of it. THE SEAM is that row, and it
+           is the lower set's own north anchor (`start` + offY) — one control, not
+           two. The default is MEASURED off the save, not taken from the type
+           table: the game itself puts Mountain03/LowerMountainBeach (16x16) and
+           Mountain04/LowerMountainBeachShoreline (6x16) at x -6..16 with their
+           south edge on row 0 (buildBuildings' box: y1 = py), i.e. the ridge foot
+           sits in rows -16..0 at the west end of the Mountains_Standard wall.
+           The type table's own split (GridTypeMap y=-16) is therefore still drawn
+           as the second candidate — the two sources bracket the row, so it stays
+           a stepper and both lines on the canvas say so.
+           `heights` draws the other set; `hmode` is the open question made
+           visible: 'replace' steps its strips NORTH of the seam (the two sets
+           MEET — both shores measure the same columns, so stacking them on the
+           same rows would be a fight for the same cells), 'over' draws them at
+           the LOWER set's anchors, which is what "is the upper set tiled OVER the
+           lower one?" looks like. */
+        heights: false, hinst: 6, hpitch: 17, hmode: 'replace',
+    };
+    /* the seam the SAVE states, read exactly as the Pixi viewer reads it
+       (__CV_BEACH.seamFromProps): Mountain03/LowerMountainBeach (16x16) and
+       Mountain04/LowerMountainBeachShoreline (6x16) are the props the game puts
+       where the ridge meets the water, and buildBuildings' box says y1 = py, so
+       their south edge IS the row. 0 is the documented fallback (the harness
+       boots this file without MAP_DATA). */
+    function beachSeamFromProps() {
+        var MD = (typeof window !== 'undefined' && window.MAP_DATA) || null;
+        if (!MD || !MD.buildings || !MD.binfo) return 0;
+        var best = null;
+        for (var i = 0; i < MD.buildings.length; i++) {
+            var b = MD.buildings[i], e = MD.binfo[b[0]];
+            if (!e) continue;
+            if (e[1] !== 'LowerMountainBeach' && e[1] !== 'LowerMountainBeachShoreline') continue;
+            if (best === null || b[7] < best) best = b[7];
+        }
+        return best === null ? 0 : best;
+    }
+    /* the seam = the row the lower set stops at == its north anchor */
+    function beachSeam() { return BEACH_MAP.start + BEACH_MAP.offY; }
+    /* the shipped default follows the save, exactly as the viewer's does; the
+       literal 0 above is the fallback for a page without MAP_DATA */
+    BEACH_MAP.start = beachSeamFromProps();
+    /* the anims the placement view paints for one instance (buildarea behind,
+       shore on top — the bsv3 draw order), honouring this card's variant */
+    function beachPlaceAnims() {
+        var k = BEACH_MAP.unpurchased ? 'unpurchasedAnim' : 'anim';
+        return [BEACH_J.tiles.buildarea[k], BEACH_J.tiles.shore[k]];
+    }
+    /* the northern (Heights) set's anims: its beach/cliff piece behind, its
+       shore on top — the same back-to-front rule as the lower pair */
+    function beachPlaceHAnims() {
+        if (!BEACH_J || !BEACH_J.tiles || !BEACH_J.tiles.h_shore) return [];
+        var k = BEACH_MAP.unpurchased ? 'unpurchasedAnim' : 'anim';
+        var t = BEACH_J.tiles;
+        return [t.h_beach[k] || t.h_beach.anim, t.h_shore[k] || t.h_shore.anim];
+    }
+    function beachHeightsOn() {
+        return !!(BEACH_MAP.heights && BEACH_J && BEACH_J.tiles &&
+                  BEACH_J.tiles.h_shore && BEACH_IMH);
+    }
+    /* one instance's span along the coast, in tiles: the number of grid rows the
+       art actually PAINTS (manifest `coverRows`, derived from the opaque box).
+       This is what the strips must be stepped by to tile the coast with no
+       gaps — the art reaches 17.1 tiles but fills only 17 rows, so a 18-tile
+       pitch would draw the coast with a 1-row gap every 18. */
+    function beachPlaceSpan() {
+        var t = BEACH_J && BEACH_J.tiles && BEACH_J.tiles.shore;
+        if (!t) return 17;
+        if (t.coverRows) return t.coverRows;
+        var b = BEACH_J.anims[t.anim].tilebox;          // pre-coverRows manifest
+        return Math.floor(b[3] - 0.5) - Math.ceil(b[1] - 0.5) + 1;
+    }
+    /* the same, for a given set — 'heights' measures ITS own shore art */
+    function beachPlaceSpanOf(set) {
+        if (set !== 'heights') return beachPlaceSpan();
+        var t = BEACH_J && BEACH_J.tiles && BEACH_J.tiles.h_shore;
+        if (!t) return 17;
+        if (t.coverRows) return t.coverRows;
+        var b = BEACH_J.anims[t.anim].tilebox;
+        return Math.floor(b[3] - 0.5) - Math.ceil(b[1] - 0.5) + 1;
+    }
+    function beachPlaceAnimsOf(set) {
+        return set === 'heights' ? beachPlaceHAnims() : beachPlaceAnims();
+    }
+    /* how many strips: fill (the engine's repeat="-1") or the manual count */
+    function beachPlaceCount() {
+        if (!BEACH_MAP.fill) return Math.max(1, BEACH_MAP.copies | 0);
+        var n = Math.ceil((BEACH_MAP.end - (BEACH_MAP.start + BEACH_MAP.offY)) /
+            Math.max(1, BEACH_MAP.pitch));
+        return Math.max(1, Math.min(BEACH_MAX_STRIPS, n));
+    }
+    function beachPlaceInstances() {
+        var n = beachPlaceCount(), out = [];
+        for (var i = 0; i < n; i++)
+            out.push([BEACH_MAP.offX + (BEACH_MAP.along === 'x' ? i * BEACH_MAP.pitch : 0),
+                BEACH_MAP.start + BEACH_MAP.offY +
+                (BEACH_MAP.along === 'y' ? i * BEACH_MAP.pitch : 0)]);
+        return out;
+    }
+    /* THE OTHER SET. landinfo.xml gives the Heights coast its own edges
+       (filename="springfieldheightsnobeach", repeat="6"), so north of the seam
+       the coast is not these tiles. `replace` puts strip i in the rows just
+       north of the seam — the two sets MEET, they do not stack (both shores
+       measure the same columns, tx -4..0, so stacking the same rows would be
+       the two of them fighting for the same cells). `over` draws the Heights
+       strips at the LOWER set's anchors instead, which is the way the question
+       "is the upper set tiled over the top of the lower one?" gets answered by
+       eye: the Heights art, being newer on top, would hide the lower band. */
+    function beachPlaceHInstances() {
+        if (!beachHeightsOn()) return [];
+        var n = Math.max(0, Math.min(24, BEACH_MAP.hinst | 0));
+        if (BEACH_MAP.hmode === 'over') return beachPlaceInstances().slice(0, n);
+        var out = [];
+        for (var i = 0; i < n; i++)
+            out.push([BEACH_MAP.offX,
+                beachSeam() - (i + 1) * BEACH_MAP.hpitch]);
+        return out;
+    }
+    function beachPlaceAll() {
+        return beachPlaceInstances().map(function (p) { return [p[0], p[1], 'lower']; })
+            .concat(beachPlaceHInstances().map(function (p) {
+                return [p[0], p[1], 'heights'];
+            }));
+    }
+    /* the grid window: the documented sea depth west of the shoreline, a
+       strip of land past the claimed width, and the coast stretch covered
+       (both sets, so turning the Heights layer on never clips it) */
+    function beachPlaceWin() {
+        var a = beachPlaceAll(), x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        a.forEach(function (p) {
+            x1 = Math.max(x1, p[0] + (p[2] === 'heights' ? 16 : 0));
+            y0 = Math.min(y0, p[1]);
+            y1 = Math.max(y1, p[1] + beachPlaceSpanOf(p[2]));
+        });
+        if (BEACH_MAP.fill) y1 = Math.max(y1, BEACH_MAP.end);
+        return { x0: -14, x1: Math.max(20, x1 + 20), y0: y0 - 8, y1: y1 + 14 };
+    }
+    function beachPlaceNeed(w) {
+        var s = CAM.scale({ zoom: BEACH_MAP.zoom });
+        var dx = w.x1 - w.x0, dy = w.y1 - w.y0;
+        return BEACH_MAP.iso
+            ? { w: Math.ceil((dx + dy) * CAM.TILE.hw * s) + 2 * BEACH_PAD,
+                h: Math.ceil((dx + dy) * CAM.TILE.hh * s) + 2 * (BEACH_BAND + BEACH_PAD) }
+            : { w: Math.ceil(dx * BEACH_CELL * BEACH_MAP.zoom) + 2 * BEACH_PAD,
+                h: Math.ceil(dy * BEACH_CELL * BEACH_MAP.zoom) + BEACH_BAND + 2 * BEACH_PAD };
+    }
+    /* the zoom that fits the window into the card (the canvas element's own
+       size, captured before the first resize) */
+    function beachPlaceFitZoom(w) {
+        var f = BEACH_FIT || { w: 1240, h: 760 };
+        var dx = w.x1 - w.x0, dy = w.y1 - w.y0, z;
+        if (BEACH_MAP.iso) {
+            z = Math.min((f.w - 2 * BEACH_PAD) / ((dx + dy) * CAM.TILE.hw * CAM.PX_PER_UNIT),
+                (f.h - 2 * (BEACH_BAND + BEACH_PAD)) /
+                ((dx + dy) * CAM.TILE.hh * CAM.PX_PER_UNIT));
+        } else {
+            z = Math.min((f.w - 2 * BEACH_PAD) / (dx * BEACH_CELL),
+                (f.h - BEACH_BAND - 2 * BEACH_PAD) / (dy * BEACH_CELL));
+        }
+        /* floor, never round: rounding UP would make the canvas one pixel wider
+           than the card and the coast would get clipped instead of fitted */
+        return Math.max(0.02, Math.min(3, Math.floor(z * 1e4) / 1e4));
+    }
+    /* grid tile -> canvas px for both views, + the ground affine and the art
+       scale (art px are screen px at 64 px/tile, so k = s/64 in iso mode) */
+    function beachPlaceView() {
+        var w = beachPlaceWin(), s = CAM.scale({ zoom: BEACH_MAP.zoom });
+        var cv = $('cv-beachmap'), A = null, P, k = s / BEACH_S;
+        if (BEACH_MAP.iso) {
+            var c = CAM.tileToWorld((w.x0 + w.x1) / 2, (w.y0 + w.y1) / 2);
+            A = CAM.tileAffine({ zoom: BEACH_MAP.zoom, x: c.x, y: c.y },
+                cv.width, cv.height);
+            P = function (tx, ty) {
+                return { x: A.a * tx + A.b * ty + A.c, y: A.d * tx + A.e * ty + A.f };
+            };
+        } else {
+            var cell = BEACH_CELL * BEACH_MAP.zoom;
+            P = function (tx, ty) {
+                return { x: BEACH_PAD + (tx - w.x0) * cell,
+                         y: BEACH_BAND + BEACH_PAD + (ty - w.y0) * cell };
+            };
+        }
+        return { win: w, s: s, k: k, A: A, P: P, cell: BEACH_CELL * BEACH_MAP.zoom,
+                 inv: BEACH_MAP.iso
+                    ? function (X, Y) {          // canvas px -> grid tiles (1/A)
+                        var u = (X - A.c) / s, v2 = (Y - A.f) / (s / 2);
+                        return { x: (u - v2) / 2, y: (u + v2) / 2 };
+                    }
+                    : function (X, Y) {
+                        return { x: (X - BEACH_PAD) / (BEACH_CELL * BEACH_MAP.zoom) + w.x0,
+                            y: (Y - BEACH_BAND - BEACH_PAD) / (BEACH_CELL * BEACH_MAP.zoom) + w.y0 };
+                    },
+                 need: beachPlaceNeed(w) };
+    }
+    /* the tile-space box the strips actually paint — used to keep on-map text
+       off the art: at whole-coast zoom one line of 11-px text is a dozen tiles
+       tall, so a label is only drawn where it cannot land on the band */
+    function beachPlaceFootBox() {
+        if (!BEACH_J) return null;
+        var a = beachPlaceAll();
+        if (!a.length) return null;
+        var o = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity };
+        a.forEach(function (p) {
+            beachPlaceAnimsOf(p[2]).forEach(function (name) {
+                var b = BEACH_J.anims[name].tilebox;
+                if (!b) return;
+                o.x0 = Math.min(o.x0, p[0] + b[0]);
+                o.x1 = Math.max(o.x1, p[0] + b[2]);
+                o.y0 = Math.min(o.y0, p[1] + b[1]);
+                o.y1 = Math.max(o.y1, p[1] + b[3]);
+            });
+        });
+        if (o.x0 === Infinity) return null;
+        return o;
+    }
+    function beachLabelFree(v, fb, x, y, txt, ctx) {
+        if (!fb) return true;
+        var m = ctx && ctx.measureText ? ctx.measureText(txt) : null;
+        var wpx = m && m.width ? m.width : 6.2 * String(txt).length;
+        var a = v.inv(x, y), b = v.inv(x + wpx, y + 11);
+        var tx0 = Math.min(a.x, b.x), tx1 = Math.max(a.x, b.x);
+        var ty0 = Math.min(a.y, b.y), ty1 = Math.max(a.y, b.y);
+        return !(tx1 > fb.x0 && tx0 < fb.x1 && ty1 > fb.y0 && ty0 < fb.y1);
+    }
+    /* which grid tiles an instance paints: a tile counts when its CENTRE
+       falls inside that anim's measured opaque box (manifest tilebox) */
+    function beachPlaceTilesAt(ax, ay, set) {
+        var out = [];
+        beachPlaceAnimsOf(set).forEach(function (name) {
+            var b = BEACH_J.anims[name].tilebox;
+            for (var tx = Math.ceil(b[0] - 0.5 + ax); tx <= Math.floor(b[2] - 0.5 + ax); tx++)
+                for (var ty = Math.ceil(b[1] - 0.5 + ay); ty <= Math.floor(b[3] - 0.5 + ay); ty++)
+                    out.push({ anim: name, x: tx, y: ty, set: set || 'lower' });
+        });
+        return out;
+    }
+    function beachPlaceTiles() {
+        var out = [];
+        beachPlaceAll().forEach(function (p) {
+            out = out.concat(beachPlaceTilesAt(p[0], p[1], p[2]));
+        });
+        return out;
+    }
+    /* the strip art as canvas rects (iso mode only — the top-down view has no
+       art, its footprints ARE the answer); pure function of state → the
+       harness asserts against it */
+    function beachPlaceRects() {
+        var out = [];
+        if (!BEACH_MAP.iso || !BEACH_J) return out;
+        var v = beachPlaceView();
+        beachPlaceAll().forEach(function (p, i) {
+            var o = v.P(p[0], p[1]);
+            beachPlaceAnimsOf(p[2]).forEach(function (name) {
+                var sh = beachSheetOf(name);
+                if (!sh.im) return;                 // that set's sheet still loading
+                beachFrame(BST, name).forEach(function (blk) {
+                    var r = beachRectAt(sh.cells[blk[0]], blk, o.x, o.y, v.k);
+                    r.anim = name; r.inst = i; r.set = p[2];
+                    out.push(r);
+                });
+            });
+        });
+        return out;
+    }
+    function beachPlaceTileRects() {
+        var v = beachPlaceView(), out = [];
+        beachPlaceTiles().forEach(function (t) {
+            // all four corners: in iso mode the tile is a diamond, and the
+            // (x,y)..(x+1,y+1) diagonal alone would miss its two side corners
+            var q = [v.P(t.x, t.y), v.P(t.x + 1, t.y), v.P(t.x + 1, t.y + 1), v.P(t.x, t.y + 1)];
+            out.push({ anim: t.anim, x: t.x, y: t.y, set: t.set,
+                       x0: Math.min.apply(null, q.map(function (p) { return p.x; })),
+                       y0: Math.min.apply(null, q.map(function (p) { return p.y; })),
+                       x1: Math.max.apply(null, q.map(function (p) { return p.x; })),
+                       y1: Math.max.apply(null, q.map(function (p) { return p.y; })) });
+        });
+        return out;
+    }
+    /* coast rows / instance tags are only printed when they do not collide:
+       one label per ~this many px along the coast */
+    function beachPlaceStride(P, along, minPx) {
+        var o = P(0, 0), d = P(0, along);
+        var px = Math.abs(d.x - o.x) + Math.abs(d.y - o.y);
+        return Math.max(1, Math.ceil(minPx / Math.max(1e-6, px)));
+    }
+    function renderBeachPlace() {
+        var cv = $('cv-beachmap'), ctx = cv.getContext('2d');
+        if (!BEACH_FIT) BEACH_FIT = { w: cv.width, h: cv.height };
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = '#101216';
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.font = '11px ui-monospace, Menlo, Consolas, monospace';
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
+        function note(msg, color) {
+            ctx.fillStyle = color || '#cfd6df';
+            ctx.fillText(msg, 8, 6);
+            return false;
+        }
+        if (BEACH_FAILED) return note('manifest failed to load: '
+            + 'assets/city/beach-tiles.json (run tools/gen_beach_tiles.py)');
+        if (!BEACH_J) return note('loading manifest…');
+        if (BEACH_IM_FAILED) return note('sheet failed to load: ' + BEACH_J.sheet);
+        if (!BEACH_IM) return note('loading sheet…');
+        if (!BEACH_J.anims[BEACH_J.tiles.shore.anim].tilebox)
+            return note('manifest has no tilebox — re-run tools/gen_beach_tiles.py');
+        var w = beachPlaceWin();
+        if (BEACH_MAP.fit) BEACH_MAP.zoom = beachPlaceFitZoom(w);
+        var need = beachPlaceNeed(w);
+        need.w = Math.min(need.w, BEACH_FIT.w); need.h = Math.min(need.h, BEACH_FIT.h);
+        if (cv.width !== need.w || cv.height !== need.h) {
+            cv.width = need.w; cv.height = need.h;
+        }
+        var v = beachPlaceView(), P = v.P;
+        var insts = beachPlaceAll();
+        var seamTagged = false;                     // the seam tag, if drawn
+        var lo = [], hh = [];                       // the two sets' instances
+        insts.forEach(function (p) { (p[2] === 'heights' ? hh : lo).push(p); });
+        var c = BEACH_J.coast || {}, low = c.lower || {}, hi = c.heights || {};
+        function quad(x0, y0, x1, y1, fill, stroke) {
+            var a = P(x0, y0), b = P(x1, y0), d = P(x1, y1), e = P(x0, y1);
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+            ctx.lineTo(d.x, d.y); ctx.lineTo(e.x, e.y);
+            ctx.closePath();
+            if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+            if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); }
+        }
+        /* 1. the coast as the viewer models it: sea west of grid x = 0, land
+              east of it (terrain.js seaFillX0..X1 / the canvas ground colour) */
+        quad(w.x0, w.y0, 0, w.y1, BEACH_MAP.sea ? BEACH_SEA : null);
+        quad(0, w.y0, w.x1, w.y1, BEACH_GRASS);
+        /* 2. the engine's OWN land table (landinfo.xml GridTypeRange), with the
+              unbounded bounds clamped to the window — this is the coverage
+              claim: the 4-tile beach band has no y_end, so it is beach the
+              whole way down */
+        if (BEACH_MAP.types && BEACH_J.gridtype) {
+            (BEACH_J.gridtype.ranges || []).forEach(function (r) {
+                var f = BEACH_TYPE_FILL[r.type];
+                if (!f) return;                       // ocean = the sea fill above
+                var a = Math.max(w.x0, r.x0 == null ? w.x0 : r.x0);
+                var b = Math.min(w.x1, r.x1 == null ? w.x1 : r.x1);
+                var y0 = Math.max(w.y0, r.y0 == null ? w.y0 : r.y0);
+                var y1 = Math.min(w.y1, r.y1 == null ? w.y1 : r.y1);
+                if (b > a && y1 > y0) quad(a, y0, b, y1, f);
+            });
+        }
+        /* 3. the grid (1 cell = 1 grid tile) with a stronger line every 8 */
+        if (BEACH_MAP.grid) {
+            var gx, gy;
+            for (gx = w.x0; gx <= w.x1; gx++) {
+                var a1 = P(gx, w.y0), a2 = P(gx, w.y1);
+                ctx.strokeStyle = gx % 8 ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.22)';
+                ctx.beginPath(); ctx.moveTo(a1.x, a1.y); ctx.lineTo(a2.x, a2.y); ctx.stroke();
+            }
+            for (gy = w.y0; gy <= w.y1; gy++) {
+                var b1 = P(w.x0, gy), b2 = P(w.x1, gy);
+                ctx.strokeStyle = gy % 8 ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.22)';
+                ctx.beginPath(); ctx.moveTo(b1.x, b1.y); ctx.lineTo(b2.x, b2.y); ctx.stroke();
+            }
+        }
+        /* 4. the tiles each instance paints (opaque-box coverage, derived).
+              Two tints per set so the two coasts never read as one band */
+        var tiles = beachPlaceTileRects();
+        /* a tile is a SHORE tile when it belongs to its own set's shore anim —
+           both sets have one, and the two tints are what tells the coasts apart */
+        function tsh(t) {
+            var s = BEACH_J.tiles[t.set === 'heights' ? 'h_shore' : 'shore'];
+            return !!s && (t.anim === s.anim || t.anim === s.unpurchasedAnim);
+        }
+        function him(t) { return t.set === 'heights'; }
+        if (BEACH_MAP.foot) {
+            tiles.forEach(function (t) {
+                quad(t.x, t.y, t.x + 1, t.y + 1, him(t)
+                    ? (tsh(t) ? 'rgba(171,71,188,0.34)'    // Heights shore
+                        : 'rgba(139,195,74,0.3)')          // Heights beach/cliff
+                    : (tsh(t) ? 'rgba(77,208,225,0.34)'     // lower shore
+                        : 'rgba(255,214,110,0.30)'));       // lower buildarea
+            });
+        }
+        /* 5. the LandEdge width="16" claim, dashed — the measured footprint is
+              ~8 tiles deep, so this is the attribute, NOT a second truth */
+        if (BEACH_MAP.claimed) {
+            ctx.save();
+            ctx.setLineDash([4, 3]);
+            quad(0, w.y0, 16, w.y1, null, '#ffb74d');
+            ctx.restore();
+        }
+        /* 6. the strip art itself, iso only (unshifted through the affine);
+              each rect comes with the sheet its anim lives on */
+        if (BEACH_MAP.iso) {
+            beachPlaceRects().forEach(function (r) {
+                var sh = beachSheetOf(r.anim);
+                if (!sh.im) return;
+                ctx.drawImage(sh.im, r.sx, r.sy, r.sw, r.sh, r.dx, r.dy, r.w, r.h);
+            });
+        }
+        /* 7. footprint outlines + anchor crosses on top of the art */
+        if (BEACH_MAP.foot) {
+            tiles.forEach(function (t) {
+                quad(t.x, t.y, t.x + 1, t.y + 1, null, him(t)
+                    ? (tsh(t) ? 'rgba(171,71,188,0.75)' : 'rgba(139,195,74,0.7)')
+                    : (tsh(t) ? 'rgba(77,208,225,0.75)' : 'rgba(255,214,110,0.7)'));
+            });
+        }
+        if (BEACH_MAP.anchors) {
+            insts.forEach(function (p) {
+                var o = P(p[0], p[1]), sp = P(p[0], p[1] + beachPlaceSpanOf(p[2]));
+                ctx.strokeStyle = p[2] === 'heights' ? '#ab47bc' : '#ff7043';
+                ctx.beginPath();
+                ctx.moveTo(o.x - 5, o.y); ctx.lineTo(o.x + 5, o.y);
+                ctx.moveTo(o.x, o.y - 5); ctx.lineTo(o.x, o.y + 5);
+                ctx.stroke();
+                ctx.strokeStyle = p[2] === 'heights' ? 'rgba(171,71,188,0.8)'
+                    : 'rgba(255,112,67,0.8)';
+                ctx.beginPath();
+                ctx.moveTo(o.x, o.y); ctx.lineTo(sp.x, sp.y);      // the along-span
+                ctx.stroke();
+            });
+        }
+        /* 8. the shoreline line, then the TWO candidate seam rows. The bright
+              dashed one is the live seam (the default measured off the Mountain03/
+              Mountain04 props); the faint one is where the engine's own type table
+              splits its two beach ranges (GridTypeMap y=-16). The props put the
+              ridge foot in rows -16..0, so the two sources bracket the row: which
+              one the game actually uses is what the start stepper is for, and both
+              lines say so rather than one of them being asserted. */
+        ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+        ctx.beginPath();
+        var s0 = P(0, w.y0), s1 = P(0, w.y1);
+        ctx.moveTo(s0.x, s0.y); ctx.lineTo(s1.x, s1.y);
+        ctx.stroke();
+        var gsplit = BEACH_J.coast && BEACH_J.coast.lower ? BEACH_J.coast.lower.from : null;
+        if (gsplit !== null && gsplit !== beachSeam() &&
+            gsplit > w.y0 && gsplit < w.y1) {
+            ctx.strokeStyle = 'rgba(196,160,255,0.35)';
+            ctx.save(); ctx.setLineDash([2, 5]);
+            ctx.beginPath();
+            var g0 = P(w.x0, gsplit), g1 = P(Math.min(w.x1, 16), gsplit);
+            ctx.moveTo(g0.x, g0.y); ctx.lineTo(g1.x, g1.y); ctx.stroke();
+            ctx.restore();
+            if (BEACH_MAP.labels) {
+                var gtag = 'GridTypeMap split y=' + gsplit + ' (the type table\'s own row)';
+                var gp = P(BEACH_MAP.iso ? w.x0 + 0.2 : -13.6, gsplit + 0.1);
+                if (beachLabelFree(v, beachPlaceFootBox(), gp.x, gp.y, gtag, ctx)) {
+                    ctx.fillStyle = 'rgba(196,160,255,0.7)';
+                    ctx.fillText(gtag, gp.x, gp.y);
+                }
+            }
+        }
+        if (beachSeam() > w.y0 && beachSeam() < w.y1) {
+            ctx.strokeStyle = 'rgba(196,160,255,0.85)';
+            ctx.save(); ctx.setLineDash([7, 4]);
+            ctx.beginPath();
+            var h0 = P(w.x0, beachSeam()), h1 = P(Math.min(w.x1, 16), beachSeam());
+            ctx.moveTo(h0.x, h0.y); ctx.lineTo(h1.x, h1.y); ctx.stroke();
+            ctx.restore();
+            if (BEACH_MAP.labels) {
+                /* the seam tag REPLACES the row tag at that row, and is subject
+                   to the same "never over the art" rule as every other label */
+                var stag = 'seam y=' + beachSeam() +
+                    ' (unverified) · north = Heights set';
+                var fp = P(BEACH_MAP.iso ? w.x0 + 0.2 : -13.6, beachSeam() + 0.1);
+                if (beachLabelFree(v, beachPlaceFootBox(), fp.x, fp.y, stag, ctx)) {
+                    ctx.fillStyle = '#c4a0ff';
+                    ctx.fillText(stag, fp.x, fp.y);
+                    seamTagged = true;
+                }
+            }
+        }
+        if (BEACH_MAP.labels) {
+            var fb = beachPlaceFootBox();
+            ctx.fillStyle = '#8b93a0';
+            var stepY = 16 * beachPlaceStride(P, 16, 64);
+            for (gy = Math.ceil(w.y0 / stepY) * stepY; gy <= w.y1; gy += stepY) {
+                if (seamTagged && gy === beachSeam()) continue;     // no double tag
+                var lp = P(BEACH_MAP.iso ? w.x0 + 0.2 : -13.6, gy + 0.1);
+                var tag = 'y' + gy;
+                if (beachLabelFree(v, fb, lp.x, lp.y, tag, ctx)) ctx.fillText(tag, lp.x, lp.y);
+            }
+            /* strip tags per set, decimated so they stay readable (one label per
+               ~96 px along the coast) and dropped where they would sit on art */
+            var lo = [], hh = [];
+            insts.forEach(function (p) { (p[2] === 'heights' ? hh : lo).push(p); });
+            function labelSet(list, isH) {
+                if (!list.length) return;
+                var pitch = Math.max(1, isH ? BEACH_MAP.hpitch : BEACH_MAP.pitch);
+                var st = beachPlaceStride(P, pitch, 96);
+                list.forEach(function (p, i) {
+                    if (i % st) return;
+                    var idx = isH ? Math.round((beachSeam() - p[1]) / pitch)
+                        : i;
+                    var lab = (isH ? 'H strip ' : 'strip ') + idx +
+                        ' (' + p[0] + ',' + p[1] + ')';
+                    var ip = P(BEACH_MAP.iso ? p[0] - 7.5 : -11.5, p[1] + 0.2);
+                    if (!beachLabelFree(v, fb, ip.x, ip.y, lab, ctx)) return;
+                    ctx.fillStyle = isH ? '#eaadff' : '#ffe86e';
+                    ctx.fillText(lab, ip.x, ip.y);
+                });
+            }
+            labelSet(lo, false);
+            labelSet(hh, true);
+        }
+        ctx.fillStyle = '#cfd6df';
+        ctx.fillText('grid tiles · ' + (BEACH_MAP.iso
+            ? '2:1 oblique through CAM (the viewer projection)'
+            : 'top-down (flat grid)')
+            + ' · sea west of grid x = 0 · white line = the shoreline', 8, 6);
+        ctx.fillStyle = '#8b93a0';
+        ctx.fillText('cyan/amber = the SOUTHERN set (Beach) · violet/green = the '
+            + 'NORTHERN set (springfieldheightsnobeach' + (BEACH_MAP.heights
+                ? ', ' + BEACH_MAP.hinst + ' strips, ' + BEACH_MAP.hmode + ')'
+                : ', off) · ') + 'orange cross = a strip anchor · dashed amber = '
+            + 'LandEdge width="16" claim · dashed violet = the seam', 8, 19);
+        /* readouts + captions (HTML text) */
+        var t2 = beachPlaceTiles();
+        function tilesOfSet(set) {
+            return t2.filter(function (t) { return t.set === set; });
+        }
+        $('bch-map-zoom-v').textContent = '×' + BEACH_MAP.zoom;
+        $('bch-map-start-v').textContent = String(BEACH_MAP.start);
+        $('bch-map-end-v').textContent = String(BEACH_MAP.end);
+        $('bch-map-pitch-v').textContent = String(BEACH_MAP.pitch);
+        $('bch-map-copies-v').textContent = BEACH_MAP.fill
+            ? 'auto ' + lo.length : String(BEACH_MAP.copies);
+        $('bch-map-offx-v').textContent = String(BEACH_MAP.offX);
+        $('bch-map-offy-v').textContent = String(BEACH_MAP.offY);
+        $('bch-map-along').textContent = 'along: ' + BEACH_MAP.along;
+        $('bch-map-variant').textContent = 'sand: ' + (BEACH_MAP.unpurchased ? 'unpurchased' : 'purchased');
+        $('bch-map-heights').className = BEACH_MAP.heights ? 'on' : '';
+        $('bch-map-hmode').textContent = 'mode: ' + BEACH_MAP.hmode;
+        $('bch-map-hinst-v').textContent = String(BEACH_MAP.hinst);
+        $('bch-map-hpitch-v').textContent = String(BEACH_MAP.hpitch);
+        ['iso', 'sea', 'grid', 'foot', 'claimed', 'anchors', 'labels', 'types',
+            'fill', 'fit'].forEach(function (kk) {
+            $(('bch-map-') + kk).className = BEACH_MAP[kk] ? 'on' : '';
+        });
+        $('bch-map-variant').className = BEACH_MAP.unpurchased ? 'on' : '';
+        var tb = BEACH_J.anims[BEACH_J.tiles.shore.anim].tilebox;
+        var bb = BEACH_J.anims[BEACH_J.tiles.buildarea.anim].tilebox;
+        var hb = BEACH_J.tiles.h_shore ? BEACH_J.anims[BEACH_J.tiles.h_shore.anim].tilebox : null;
+        $('bch-map-info').textContent =
+            (BEACH_MAP.fill
+                ? 'FILLS the SOUTHERN coast (LandEdge repeat="-1"): ' + lo.length
+                    + ' strips from the seam y=' + beachSeam() + ' south to y='
+                    + BEACH_MAP.end + ' = ' + tilesOfSet('lower').length
+                    + ' grid tiles, stepped by ' + BEACH_MAP.pitch + ' tiles along '
+                    + 'the coast (the ' + beachPlaceSpan() + ' rows one strip paints, '
+                    + 'so the band is contiguous: no 1-row gaps). NOT the whole coast: '
+                    + 'north of the seam the file stamps a DIFFERENT set.'
+                : lo.length + ' sample strip(s) of the southern set, '
+                    + tilesOfSet('lower').length + ' grid tiles')
+            + (hh.length ? ' · + ' + hh.length + ' NORTHERN strips (' + (hi.set || '?')
+                + ', LandEdge repeat="' + (hi.repeat || '?') + '") ' + BEACH_MAP.hmode
+                + ' north of the seam, stepped ' + BEACH_MAP.hpitch + ', '
+                + tilesOfSet('heights').length + ' grid tiles'
+                : ' · the northern set is OFF (toggle it to compare the two coasts)')
+            + ' · window x ' + w.x0 + '..' + w.x1 + ', y ' + w.y0 + '..' + w.y1
+            + ' at x' + BEACH_MAP.zoom + (BEACH_MAP.fit ? ' (fit)' : '')
+            + ' · THE SEAM: the default row is MEASURED off the save, not assumed — '
+            + 'Mountain03/LowerMountainBeach + Mountain04/LowerMountainBeachShoreline '
+            + 'are the props the game puts where the ridge meets the water, their south '
+            + 'edge is row ' + beachSeamFromProps() + ', so the ridge foot sits in rows '
+            + (beachSeamFromProps() - 16) + '..' + beachSeamFromProps() + ' at the west '
+            + 'end of the Mountains_Standard wall. The engine\'s own GridTypeRange rows '
+            + 'split at y=' + low.from + ' and the region table puts the mountain band at '
+            + 'SHMountains y -18..0 — a row 16 north of the props — so BOTH candidate '
+            + 'rows are drawn (bright dashed = the live seam y=' + beachSeam() +
+            ', faint = the type table\'s own) and the start stepper decides which one the '
+            + 'game used'
+            + ' · measured footprints: southern shore x ' + tb[0] + '..' + tb[2]
+            + ', buildarea x ' + bb[0] + '..' + bb[2] + ' (matches the engine\'s own '
+            + 'beach range x ' + (low.x ? low.x[0] + '..' + low.x[1] : '?')
+            + ' tile for tile)'
+            + (hb ? '; the northern shore measures the SAME columns x ' + hb[0] + '..'
+                + hb[2] + ', which is why the two sets are NEIGHBOURS rather than a '
+                + 'stack' : '')
+            + ' · coast y to 512 and shoreline x=0 from terrain.js seaFill · open: the '
+            + 'seam row, the repeat phase (pitch), the anchor column, width="16"';
+    }
+    function bindBeachPlace() {
+        var p = 'bch-map-';
+        bindStepper(p + 'zoom-minus', function () {
+            BEACH_MAP.fit = false;
+            BEACH_MAP.zoom = Math.max(0.02, +(BEACH_MAP.zoom - 0.25).toFixed(2)); renderBeachPlace();
+        });
+        bindStepper(p + 'zoom-plus', function () {
+            BEACH_MAP.fit = false;
+            BEACH_MAP.zoom = Math.min(3, +(BEACH_MAP.zoom + 0.25).toFixed(2)); renderBeachPlace();
+        });
+        bindStepper(p + 'start-minus', function () { BEACH_MAP.start -= 1; renderBeachPlace(); });
+        bindStepper(p + 'start-plus', function () { BEACH_MAP.start += 1; renderBeachPlace(); });
+        bindStepper(p + 'end-minus', function () { BEACH_MAP.end -= 1; renderBeachPlace(); });
+        bindStepper(p + 'end-plus', function () { BEACH_MAP.end += 1; renderBeachPlace(); });
+        bindStepper(p + 'pitch-minus', function () { BEACH_MAP.pitch = Math.max(1, BEACH_MAP.pitch - 1); renderBeachPlace(); });
+        bindStepper(p + 'pitch-plus', function () { BEACH_MAP.pitch = Math.min(64, BEACH_MAP.pitch + 1); renderBeachPlace(); });
+        bindStepper(p + 'copies-minus', function () { BEACH_MAP.fill = false; BEACH_MAP.copies = Math.max(1, BEACH_MAP.copies - 1); renderBeachPlace(); });
+        bindStepper(p + 'copies-plus', function () { BEACH_MAP.fill = false; BEACH_MAP.copies = Math.min(96, BEACH_MAP.copies + 1); renderBeachPlace(); });
+        bindStepper(p + 'offx-minus', function () { BEACH_MAP.offX -= 1; renderBeachPlace(); });
+        bindStepper(p + 'offx-plus', function () { BEACH_MAP.offX += 1; renderBeachPlace(); });
+        bindStepper(p + 'offy-minus', function () { BEACH_MAP.offY -= 1; renderBeachPlace(); });
+        bindStepper(p + 'offy-plus', function () { BEACH_MAP.offY += 1; renderBeachPlace(); });
+        bindStepper(p + 'along', function () { BEACH_MAP.along = BEACH_MAP.along === 'y' ? 'x' : 'y'; renderBeachPlace(); });
+        bindStepper(p + 'variant', function () { BEACH_MAP.unpurchased = !BEACH_MAP.unpurchased; renderBeachPlace(); });
+        /* the northern set: on/off, replace-vs-over, how many (its LandEdge
+           repeat is 6), and its own pitch (17 rows, measured like the lower one) */
+        bindStepper(p + 'heights', function () { BEACH_MAP.heights = !BEACH_MAP.heights; renderBeachPlace(); });
+        bindStepper(p + 'hmode', function () {
+            BEACH_MAP.hmode = BEACH_MAP.hmode === 'replace' ? 'over' : 'replace';
+            renderBeachPlace();
+        });
+        bindStepper(p + 'hinst-minus', function () { BEACH_MAP.hinst = Math.max(0, BEACH_MAP.hinst - 1); renderBeachPlace(); });
+        bindStepper(p + 'hinst-plus', function () { BEACH_MAP.hinst = Math.min(24, BEACH_MAP.hinst + 1); renderBeachPlace(); });
+        bindStepper(p + 'hpitch-minus', function () { BEACH_MAP.hpitch = Math.max(1, BEACH_MAP.hpitch - 1); renderBeachPlace(); });
+        bindStepper(p + 'hpitch-plus', function () { BEACH_MAP.hpitch = Math.min(64, BEACH_MAP.hpitch + 1); renderBeachPlace(); });
+        ['iso', 'sea', 'grid', 'foot', 'claimed', 'anchors', 'labels', 'types',
+            'fill', 'fit'].forEach(function (kk) {
+            bindStepper(p + kk, function () { BEACH_MAP[kk] = !BEACH_MAP[kk]; renderBeachPlace(); });
+        });
+    }
+    bindBeachPlace();
+
     renderAll();
     loadPack();                              // inspector sheet (async; no-op in harness)
     loadWaterPack();                         // water tab sheet + wave atlas
@@ -2445,7 +3700,10 @@
     loadDirtPack(DIRTR);                     // dirt tab sheet
     loadBridgeImgs();                        // bridge tab art (async; no-op in harness)
     loadPierManifest();                      // pier tab manifest + sheet (async; sync in harness)
-    setTab('tab-sheet');                     // default tab
+    loadBeachManifest();                     // beach tab LandEdge tiles (async; sync in harness)
+    var hashTab = '';
+    try { hashTab = location.hash.slice(1); } catch (e) { /* headless harness */ }
+    setTab(TABS.indexOf(hashTab) >= 0 ? hashTab : 'tab-sheet');   // #tab-align etc.
 
     // exposed for the smoke harness
     window.__LAB = {
@@ -2470,6 +3728,34 @@
         pierAutoState: pierAutoState, pierFocus: pierFocus,
         getPierManifest: function () { return PIER_J; },
         PIER_SHEET_S: PIER_SHEET_S, PIER_SHEET_T: PIER_SHEET_T,
+        BSH: BSH, BLD: BLD, BST: BST, HSH: HSH, HBD: HBD, HMO: HMO, HST: HST,
+        renderBeach: renderBeach,
+        renderBeachCard: renderBeachCard, formatBeachRef: formatBeachRef,
+        beachAnims: beachAnims, beachFrame: beachFrame, beachBounds: beachBounds,
+        beachMap: beachMap, beachBlockRect: beachBlockRect,
+        beachCardRects: beachCardRects, beachPairRects: beachPairRects,
+        beachGridLines: beachGridLines, beachFrameCount: beachFrameCount,
+        getBeachManifest: function () { return BEACH_J; },
+        getBeachSheet: function () { return BEACH_IM; },
+        getBeachSheetH: function () { return BEACH_IMH; },
+        beachSheetOf: function (n) { return beachSheetOf(n); },
+        beachSeam: beachSeam, beachSeamFromProps: beachSeamFromProps,
+        beachPlaceHInstances: beachPlaceHInstances, beachPlaceAll: beachPlaceAll,
+        beachPlaceSpanOf: beachPlaceSpanOf, beachPlaceHAnims: beachPlaceHAnims,
+        BEACH_S: BEACH_S, BEACH_RULER: BEACH_RULER, BEACH_PAD: BEACH_PAD,
+        BEACH_MAP: BEACH_MAP, renderBeachPlace: renderBeachPlace,
+        beachPlaceAnims: beachPlaceAnims, beachPlaceSpan: beachPlaceSpan,
+        beachPlaceCount: beachPlaceCount, beachPlaceFitZoom: beachPlaceFitZoom,
+        beachPlaceStride: beachPlaceStride, beachPlaceFootBox: beachPlaceFootBox,
+        beachLabelFree: beachLabelFree,
+        beachPlaceInstances: beachPlaceInstances, beachPlaceWin: beachPlaceWin,
+        beachPlaceNeed: beachPlaceNeed, beachPlaceView: beachPlaceView,
+        beachPlaceTilesAt: beachPlaceTilesAt, beachPlaceTiles: beachPlaceTiles,
+        beachPlaceRects: beachPlaceRects, beachPlaceTileRects: beachPlaceTileRects,
+        BEACH_CELL: BEACH_CELL, BEACH_BAND: BEACH_BAND,
+        BEACH_MAX_STRIPS: BEACH_MAX_STRIPS, BEACH_TYPE_FILL: BEACH_TYPE_FILL,
+        getBeachFit: function () { return BEACH_FIT; },
+        setBeachFit: function (o) { BEACH_FIT = o; },
         setTab: setTab, getTab: function () { return activeTab; },
     };
 })();

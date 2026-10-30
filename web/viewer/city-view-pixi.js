@@ -39,12 +39,12 @@
        ?v= of this script in index.html) whenever the pipeline regenerates
        them — otherwise the browser keeps the previous render (e.g. a
        building's old snowy art) whatever the pool says */
-    var ASSET_V = '?v=20261029.5';
+    var ASSET_V = '?v=20261030.7';
     // Bump whenever city/*.png art changes — the sprites, filmstrip atlases
     // and stack sheets all load through cityUrl(), and a stale cached PNG
     // against fresh city-anims.json sub-rects draws sparse water from wrong
     // shelf spots (the "water attached incorrectly" report, round 6).
-    var MANIFEST_V = '?v=20261030.6';           // city-sprites/-anims.json
+    var MANIFEST_V = '?v=20261030.7';           // city-sprites/-anims.json
     function cityUrl(p) { return B + 'assets/city/' + p + ASSET_V; }
 
     var stage = $('stage');
@@ -619,25 +619,50 @@
        paints the list reversed — its C_Shadow block, listed last, is the
        tile diamond and goes down first), each block a sheet crop rect, a
        float top-left and a 2x2 matrix in 100-tier sheet px.
-       Placement re-uses the sheet-cell transform: box space = sheet px / 4
-       in the 127x66 sheet box whose inscribed diamond IS the tile, so one
-       block is one sprite at anchor 0.5 / rotation 45deg / scale
-       (SHEET_SX, SHEET_SY) / 4, centred at the same linear box->tile map
-       the pass sprites use: (ux, uy) -> (cx + ux - uy, cy + ux + uy).
-       The calibration (ox, oy) comes from C_Shadow, which fills its crop
-       exactly with the diamond; the deck crops sit ~30 px ABOVE it (the
-       deck is elevated), so calibrating on them would sink the tile.
+       Placement (2026-10-30.23): 1:1 art px (ART.S per tile unit, the
+       building scale), with the frame ORIGIN pinned to the cell's front
+       corner (x0, y1) — the same pivot rule as every building sprite. That
+       puts the deck's top surface on the cell itself, which is what the game
+       does: registered against the full-res in-game export (by the buildings
+       around it, not by the deck), the BarnacleBayMarina brush L lands on its
+       save cells to within 0.2 tile at this placement, and was 0.75 tile
+       (~48 art px) too high under the .21 "leg-ring ground corner" rule.
+       Rules tried and measured wrong: centring C_Shadow on the cell (.19,
+       ~70 px too high) and the leg-ring ground corner (.21/.22, ~50 px too
+       high). The old 127x66 box mapping also stretched the art (x1.008,
+       y0.97).
        State rule (art-derived — the binary's setter was not pinned, notes/09
        §12): the Normal_* states pick their legs by which lower edge faces
        water — PostLeft iff the lower-LEFT neighbour (tx, ty+1) is water,
        PostRight iff (tx+1, ty) is. */
+    /* art-px nudge of every brush frame, for registration sweeps:
+       ?pierDx=&pierDy= (screen-aligned art px, +y = down) */
+    var PIER_NUDGE = (function () {
+        var n = { x: 0, y: 0 };
+        try {
+            var q = new URLSearchParams(location.search);
+            if (isFinite(parseFloat(q.get('pierDx')))) n.x = parseFloat(q.get('pierDx'));
+            if (isFinite(parseFloat(q.get('pierDy')))) n.y = parseFloat(q.get('pierDy'));
+        } catch (e) { /* no URL (headless harness) */ }
+        return n;
+    })();
+    /* live nudge for the Road Lab "marina align" tab (it embeds this page):
+       moves every brush frame together by (dx, dy) screen-aligned art px and
+       rebuilds the ground so the sprites pick it up. Returns the live value */
+    window.__CV_PIER_NUDGE = function (dx, dy) {
+        if (isFinite(dx) && isFinite(dy)) {
+            PIER_NUDGE.x = +dx; PIER_NUDGE.y = +dy;
+            if (started) { buildGround(); pierOver = null; markDirty(); }
+        }
+        return { x: PIER_NUDGE.x, y: PIER_NUDGE.y };
+    };
     var PIERART_KEY = 'mrsnrub.cityview.pierart';
     var pierArtOn = true;                         // ships ON: fills alone are unreadable
     var PIER = null;                              // assets/city/pier-tiles.json
     var pierRecs = [];
     (function () {
         if (typeof fetch !== 'function') return;
-        fetch(B + 'assets/city/pier-tiles.json')
+        fetch(B + 'assets/city/pier-tiles.json?v=20261030.23')
             .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
             .then(function (j) {
                 PIER = j;
@@ -692,52 +717,751 @@
         var sheet = B + a.sheet;
         if (!texFor(sheet)) return null;
         var blocks = a.states[pierState(a, tx, ty, occ, big)], out = [];
-        /* box -> tile map from the live camera: box px are SCREEN-aligned
-           (the frame is a billboard whose deck is raised straight up), so
-           scale the 127x66 box onto the cell's screen diamond and pull that
-           back through the inverse of the ground matrix's linear part. Same
-           result as a fixed 45deg rotation under the default ORIENT, but it
-           stays upright under Rotate/Mirror too. The ratio is
+        /* art px -> tile map from the live camera: art px are SCREEN-aligned
+           (the frame is a billboard, like any building), so scale them by the
+           building blit's screen-px-per-art-px and pull that back through the
+           inverse of the ground matrix's linear part — the parent is in tile
+           space. Stays upright under Rotate/Mirror; the ratio is
            zoom-independent; setOrient rebuilds the ground. */
         var A = CAM.tileAffine(cam, VW, VH);
         var det = A.a * A.e - A.b * A.d;
         var i00 = A.e / det, i01 = -A.b / det, i10 = -A.d / det, i11 = A.a / det;
-        var kx = big * (Math.abs(A.a) + Math.abs(A.b)) / 127,   // screen px per box px
-            ky = big * (Math.abs(A.d) + Math.abs(A.e)) / 66;
+        var K = CAM.scale(cam) / ART.S;                     // screen px per art px
+        var px = tx, py = ty + big;                         // the cell's front corner (x0, y1)
         for (var i = 0; i < blocks.length; i++) {
             var k = blocks[i], sx = k.m[0], sy = k.m[3];
             var t = subTex(sheet, k.c[0], k.c[1], k.c[2], k.c[3]);
             if (!t) continue;
             var s = new PIXI.Sprite(t);
             s.anchor.set(0.5);
-            /* drawn-block centre in box px; a<0 mirrors about the anchor, so
-               x is the block's RIGHT edge there */
-            var bx = (k.p[0] + (sx >= 0 ? 1 : -1) * k.c[2] * Math.abs(sx) / 2) / 4 + a.calib.ox;
-            var by = (k.p[1] + (sy >= 0 ? 1 : -1) * k.c[3] * Math.abs(sy) / 2) / 4 + a.calib.oy;
-            var ex = (bx - 63.5) * kx, ey = (by - 33) * ky;      // screen offset
-            var fx = sx * kx / 4, fy = sy * ky / 4;              // sheet px -> screen
+            /* drawn-block centre in art px from the frame origin; a<0 mirrors
+               about the anchor, so x is the block's RIGHT edge there */
+            var bx = k.p[0] + (sx >= 0 ? 1 : -1) * k.c[2] * Math.abs(sx) / 2;
+            var by = k.p[1] + (sy >= 0 ? 1 : -1) * k.c[3] * Math.abs(sy) / 2;
+            /* from the frame origin, which sits on the front corner */
+            var ex = (bx + PIER_NUDGE.x) * K, ey = (by + PIER_NUDGE.y) * K;
+            var fx = sx * K, fy = sy * K;                        // art px -> screen
             s.setFromMatrix(new PIXI.Matrix(i00 * fx, i10 * fx, i01 * fy, i11 * fy,
-                tx + big / 2 + i00 * ex + i01 * ey, ty + big / 2 + i10 * ex + i11 * ey));
+                px + i00 * ex + i01 * ey, py + i10 * ex + i11 * ey));
             s.visible = false;
             parent.addChild(s);
             arr.push(s);
             out.push(s);
         }
+        out.blocks = blocks;                                // the over pass re-blits these
         return out.length ? out : null;
     }
     function applyPierMode() {
-        /* brush art: the opaque C_Shadow block covers the whole diamond, so
-           the flat fill only has to stop bleeding past its tile (same trick
-           applyDirtMode uses) */
+        /* brush art: the frame paints the deck, its posts and the shadow it
+           casts on the water, so with the art on the flat type fill goes
+           entirely — the shadow is not on the cell (see buildPierCell), and a
+           fill left under it shows as a plank-coloured sliver */
         for (var i = 0; i < pierRecs.length; i++) {
             var r = pierRecs[i];
             var vis = pierArtOn && !!pierTexReady(r.tn) && !terrain.hidden[r.tn];
             for (var k = 0; k < r.art.length; k++) r.art[k].visible = vis;
-            r.fill.width = r.fill.height = vis ? 1 : 1 + BLEED;
+            for (k = 0; k < r.fills.length; k++) {
+                r.fills[k].visible = !vis && !terrain.hidden[r.tn];
+                r.fills[k].width = r.fills[k].height = 1 + BLEED;
+            }
         }
         var b = $('btn-pierart');
         if (b) b.classList.toggle('on', pierArtOn && !!pierTexReady('boardwalk'));
     }
+    /* ---- fixed beach coast sets (landinfo.xml LandEdge art, 2026-10-30) ------
+       The beach is not paintable: landinfo.xml stamps it from <LandEdge> blocks,
+       and the west coast has TWO of them, one per side of the mountain band.
+       Below the ridge the coast stamps filename="Beach" (BEACHSHORE1 /
+       BEACHBUILDAREA1, repeat="-1" = stamp until the edge ends); the Springfield
+       Heights coast NORTH of it stamps filename="springfieldheightsnobeach"
+       (beach1 / beachshore1 / beachmtnoverlay, repeat="6" = SIX strips then
+       stop). tools/gen_beach_tiles.py parses both bsv3s into
+       assets/city/beach-tiles.json; the art is PRE-SHEARED oblique (64 art px =
+       1 town tile, +y along the coast, +x inland), so each block is a billboard
+       blitted in screen space at its instance's anchor tile.
+       PLACEMENT IS THE FILE'S, read literally (2026-10-30.16):
+         - the anchor is the land's own origin, TILE (0, 0). The save's props
+           are in that same space — Mountain03/LowerMountainBeach sits at x 0..16
+           rows -16..0, Mountain04/LowerMountainBeachShoreline at x -6..0, the
+           beach chairs and towels at x 0..3 — so the shoreline is x 0 here
+           (GridTypeMap: shoreline -3..0, beach 0..4). The terrain's sea fill
+           now ends on that same x 0 (terrain.js SEA_TILE); it used to end 12
+           tiles further west, and anchoring on it put the coast out to sea.
+         - offsetx/offsety count 16-tile LAND BLOCKS, not tiles
+           (LandBlockPosition y="-7" is the same unit): the lower set's
+           offsety="-1" starts it at y -16 and repeat="-1" runs it to the land's
+           south end; the Heights set's offsety="-7" starts it at y -112 and
+           repeat="6" x width 16 ends it at -16 — exactly where the lower set
+           begins, on Mountain03's north edge, and exactly GridTypeMap's split
+           between its two beach ranges. The step is the edge's own width (16);
+           the art paints 17 rows, so neighbours overlap by one, drawn far end
+           first.
+         - hasBackground: Heights beach1 asks the engine for a solid EEDDCC fill
+           13.5 x 16 tiles at x -0.5 UNDER each strip. The beach1 art is only
+           cliff, rocks and sand patches on top of that fill, which is why the
+           Heights coast read as grass with sand blotches until it was drawn.
+         - only <LandSprite> edges are stamped: BEACHBORDEROVERLAY lives in
+           <AlternateLandSprite> (the pre-v28 land), so it stays in the manifest
+           for reference and off the map.
+       Static frame 0 everywhere (the wave loop is not ported — same choice as
+       the road art and the pier brush). */
+    var BEACHSETS_KEY = 'mrsnrub.cityview.beachsets';
+    var BEACHART_KEY = 'mrsnrub.cityview.beachart';
+    /* v2: the v1 params (seam/pitch steppers, the sea-fill anchor) would land
+       the coast back where it was — a stale save must not override the file */
+    var BEACHP_KEY = 'mrsnrub.cityview.beach.params.v2';
+    var beachSetsOn = true;                 // ships ON: the footprints ARE the question
+    var beachArtOn = false;                 // the art is the loud one — opt in
+    var BEACH = null, beachFailed = false;
+    var BEACH_S = 64;                       // art px per town tile (manifest pxPerTile)
+    var BEACH_MAX_STAMPS = 64;              // fill cap, and a hostile manifest cap
+    var BEACH_LAND_END = 700;               // fallback: landinfo Region "Springfield" y2
+    var beachP = {
+        ax: 0, ay: 0, block: 16, fill: true, copies: 4,
+        heights: true, hinst: 6, bg: true, alpha: 0.34,
+        lattice: true, edgeAt: 0, useOffsets: true,
+        north: true, sky: true
+    };
+    /* back to front — the manifest's own pair order (road-lab BEACH_KINDS).
+       `north` is the `Land` set: the shoreline up the coast past the Heights,
+       the mountain row across the top of the land, and its water-end rocks
+       (nearer the viewer than the row, so after it) */
+    var BEACH_KINDS = {
+        lower: ['buildarea', 'shore', 'border'],
+        heights: ['h_beach', 'h_shore', 'h_overlay'],
+        north: ['n_shore', 'n_mountains', 'n_mtnwater']
+    };
+    var BEACH_TINT = {
+        shore: 0x8bc34a, buildarea: 0xe0a64b, border: 0xce93d8,
+        h_shore: 0x4dd0e1, h_beach: 0xf48fb1, h_overlay: 0xb0bec5,
+        n_shore: 0x26a69a, n_mountains: 0x8d6e63, n_mtnwater: 0x9575cd
+    };
+    /* past the mountain row is off the land, and the game covers it with a
+       flat wall of cloud. Read off the in-game full-map export
+       (mapdump/registration/calib-export.png, mapped to tiles through the
+       g2e homography): #EFFFFF everywhere outside the land, its edge a
+       straight iso line with small puffs and a blue-grey rim on the land
+       side. Along the north it runs 16 rows BEHIND the mountain row's foot
+       (y -128 — the export reads -124..-136 through the homography's
+       north-edge drift, and -16 is the row's own bgOffsetY in its Snow
+       variant), so it cuts across the back of the mountains; along the east
+       it starts on the land's own edge (x 592). It is drawn OVER the
+       mountain art, as the game draws it. The Land sheet's C_Cloud_* crops
+       are the clouds INSIDE the mountain art, not this wall. */
+    var BEACH_CLOUD = 0xefffff;             // export-sampled cloud white
+    var BEACH_CLOUD_RIM = 0xbac7dd;         // export-sampled rim on the land side
+    var BEACH_CLOUD_BACK = 16;              // rows behind the mountain row's foot
+    var BEACH_PUFF_STEP = 1.5;              // puff pitch along the edge (tiles)
+    var BEACH_RIM = 0.22;                   // rim depth on the land side (tiles)
+    /* the instance records + the art pool (child order IS painter order, so the
+       pool refills from 0 every frame like the scene pool) */
+    var beachInsts = [], beachArtPool = [], beachArtN = 0;
+    /* Mountain03/Mountain04's NORTH edge, read off the save: the landmark the
+       two sets should meet on. They are ridge PROPS (the Lower Mountain Beach
+       district), not beach tiles — here only as the check they are. */
+    function beachSeamFromProps() {
+        var best = null;
+        for (var i = 0; i < M.buildings.length; i++) {
+            var b = M.buildings[i], e = M.binfo[b[0]];
+            if (!e) continue;
+            if (e[1] !== 'LowerMountainBeach' && e[1] !== 'LowerMountainBeachShoreline') continue;
+            var y0 = b[7] - b[4];                           // buildBuildings' box: y0 = py - h
+            if (best === null || y0 < best) best = y0;
+        }
+        return best === null ? 0 : best;
+    }
+    (function () {
+        try {
+            beachSetsOn = localStorage.getItem(BEACHSETS_KEY) !== '0';
+            beachArtOn = localStorage.getItem(BEACHART_KEY) === '1';
+            var p = JSON.parse(localStorage.getItem(BEACHP_KEY) || 'null');
+            if (p) for (var k in beachP) if (p[k] !== undefined) beachP[k] = p[k];
+        } catch (e) { /* private mode */ }
+    })();
+    (function () {
+        if (typeof fetch !== 'function') return;
+        fetch(B + 'assets/city/beach-tiles.json')
+            .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+            .then(function (j) {
+                BEACH = j;
+                for (var k in j.assets) {           // three sheets: beach, heights, land
+                    ALOAD.artKnown++; ALOAD.strips++;
+                    texFor(B + j.assets[k].sheet);
+                }
+                /* texFor only STARTS the loads: rebuild once both have decoded
+                   (or died), else the coast keeps only its tints */
+                (function settle() {
+                    for (var k2 in j.assets) {
+                        var u = B + j.assets[k2].sheet;
+                        if (!texFor(u) && !texDead(u)) { setTimeout(settle, 100); return; }
+                    }
+                    beachBuild();
+                    markDirty();
+                })();
+            })
+            .catch(function () { beachFailed = true; });
+    })();
+    function beachSave() {
+        try { localStorage.setItem(BEACHP_KEY, JSON.stringify(beachP)); } catch (e) { /* private mode */ }
+    }
+    /* the land's origin, which every LandEdge offset counts from: tile (0, 0),
+       nudged by the ax/ay steppers for A/B-ing against the map */
+    function beachAnchorX() { return beachP.ax | 0; }
+    function beachAnchorY() { return beachP.ay | 0; }
+    /* the terrain's sea edge — a reference line, drawn only if it drifts off the anchor */
+    function beachShoreX() { return terrain.seaFillX1 - terrain.ox; }
+    /* the land's frame in tiles (LandBlockPosition + LandBlockSize x 16) */
+    function beachLandBox() {
+        var b = (BEACH && BEACH.landBlocks) || { tiles: 16, x: -3, y: -7, w: 40, h: 64 };
+        var u = b.tiles || 16;
+        return { x0: b.x * u, y0: b.y * u, x1: (b.x + b.w) * u, y1: (b.y + b.h) * u };
+    }
+    /* where a repeat="-1" edge ends: the land's south edge (Region Springfield) */
+    function beachLandEnd() {
+        var r = BEACH && BEACH.regions, i;
+        if (r) for (i = 0; i < r.length; i++)
+            if (r[i].name === 'Springfield' && isFinite(r[i].y1)) return r[i].y1;
+        return BEACH_LAND_END;
+    }
+    function beachTile(kind) { return (BEACH && BEACH.tiles && BEACH.tiles[kind]) || null; }
+    function beachAnim(name) { return (BEACH && BEACH.anims && BEACH.anims[name]) || null; }
+    function beachAnimName(kind) { var t = beachTile(kind); return t ? t.anim : null; }
+    function beachAssetOf(name) {
+        var a = beachAnim(name), k = (a && a.asset) || 'beach';
+        return (BEACH && BEACH.assets && BEACH.assets[k]) || null;
+    }
+    function beachSheetReady(name) {
+        var a = beachAssetOf(name);
+        return !!a && !!texFor(B + a.sheet);
+    }
+    /* one bsv3 block -> sheet crop + rect in ART px, relative to the anchor
+       tile's top-left (a<0 mirrors about the anchor, so the stored x is the
+       crop's RIGHT edge). k=1 here: the draw pass scales by screen px per art px
+       — identical to road-lab's beachRectAt(cell, blk, 0, 0, k) */
+    function beachBlocks(name) {
+        var a = beachAnim(name), sh = beachAssetOf(name), out = [];
+        if (!a || !sh || !a.frames || !a.frames.length) return out;
+        for (var i = 0; i < a.frames[0].length; i++) {
+            var blk = a.frames[0][i], c = sh.cells[blk[0]];
+            if (!c) continue;
+            var mx = Math.abs(blk[3]), my = Math.abs(blk[6]);
+            out.push({
+                url: B + sh.sheet, n: c[0], sx: c[1], sy: c[2], sw: c[3], sh: c[4],
+                dx: blk[1] - (blk[3] < 0 ? c[3] * mx : 0), dy: blk[2],
+                w: c[3] * mx, h: c[4] * my
+            });
+        }
+        return out;
+    }
+    /* the tiles an anim PAINTS for one instance: a tile counts when its CENTRE
+       falls inside the measured opaque box (manifest tilebox) — the same rule as
+       road-lab's beachPlaceTilesAt, so the two views agree tile for tile.
+       Flat [x0,y0,x1,y1,...]; a contiguous rectangle by construction. */
+    function beachTilesOf(name, ax, ay) {
+        var a = beachAnim(name), out = [];
+        if (!a || !a.tilebox) return out;
+        var b = a.tilebox;
+        for (var tx = Math.ceil(b[0] - 0.5 + ax); tx <= Math.floor(b[2] - 0.5 + ax); tx++)
+            for (var ty = Math.ceil(b[1] - 0.5 + ay); ty <= Math.floor(b[3] - 0.5 + ay); ty++)
+                out.push(tx, ty);
+        return out;
+    }
+    /* ---- stamping: EVERY anim gets its own <LandEdge> stamp list -----------
+       landinfo.xml stamps each piece of a set separately and each one carries its
+       own repeat/width/offset (the manifest keeps them per kind as `landedge`):
+         repeat="-1"  stamp until the edge ends — BEACHSHORE1, BEACHBUILDAREA1
+         repeat="6"   six stamps then stop       — Heights beachshore1, beach1
+         repeat="1"   ONE stamp                  — Heights beachmtnoverlay
+       Stamp i of a direction="y" edge sits at
+         (offsetx * block, offsety * block + i * step)
+       from the land origin, and of a direction="x" edge (the Land set's
+       MOUNTAINS row) at (offsetx * block + i * step, offsety * block). `step`
+       is width + padding: MOUNTAINS is width 16 + padding 32 = 48, which is
+       what both <AlternateLandSprite> rows sum to too (39+9, 48+0) — the
+       mountain art is 56 tiles wide, so neighbours overlap by 8. A repeat="-1"
+       y edge runs to the land's south edge, an x edge to its east edge.
+       `block` (16) is the land-block unit the offsets count in. `offsets` off
+       drops the file's offsets for A/B-ing; `edgeAt` nudges the repeat="1"
+       overlay along the coast. */
+    function beachEdge(kind) {
+        var t = beachTile(kind), e = (t && t.landedge) || {};
+        function num(v, d) { var n = parseFloat(v); return isFinite(n) ? n : d; }
+        var blk = Math.max(1, beachP.block | 0);
+        return {
+            anim: t ? t.anim : null,
+            sprite: !t || !t.landedgeBlock || t.landedgeBlock === 'LandSprite',
+            repeat: num(e.repeat, -1),
+            dir: e.direction === 'x' ? 'x' : 'y',
+            width: Math.max(1, num(e.width, 16)),
+            step: Math.max(1, num(e.width, 16) + num(e.padding, 0)),
+            offX: beachP.useOffsets ? num(e.offsetx, 0) * blk : 0,
+            offY: beachP.useOffsets ? num(e.offsety, 0) * blk : 0,
+            /* the engine's solid fill under the strip (tiles, from the anchor) */
+            bg: e.hasBackground === 'true' && e.bgColor ? {
+                color: parseInt(String(e.bgColor).slice(0, 6), 16),
+                x: num(e.bgOffsetX, 0), y: num(e.bgOffsetY, 0),
+                w: num(e.bgWidth, 0), h: num(e.bgHeight, 0)
+            } : null
+        };
+    }
+    function beachStampsOf(set) {
+        var kinds = BEACH_KINDS[set] || [], out = [];
+        for (var j = 0; j < kinds.length; j++) {
+            var kind = kinds[j], ed = beachEdge(kind), list = [], i;
+            if (!ed.anim || !ed.sprite) continue;
+            var x0 = beachAnchorX() + ed.offX, y0 = beachAnchorY() + ed.offY;
+            var alongX = ed.dir === 'x';
+            var n = ed.repeat >= 0 ? ed.repeat
+                : alongX ? Math.ceil((beachLandBox().x1 - x0) / ed.step)
+                    : (beachP.fill || set !== 'lower') ? Math.ceil((beachLandEnd() - y0) / ed.step)
+                        : Math.max(1, beachP.copies | 0);
+            if (set === 'heights') n = Math.min(n, Math.max(0, beachP.hinst | 0));
+            n = Math.min(BEACH_MAX_STAMPS, Math.max(0, n));
+            var blocks = beachBlocks(ed.anim);
+            var nudge = ed.repeat === 1 && set === 'heights' ? (beachP.edgeAt | 0) : 0;
+            for (i = 0; i < n; i++) {
+                var ax = alongX ? x0 + i * ed.step : x0;
+                var ay = alongX ? y0 : y0 + i * ed.step + nudge;
+                list.push({ ax: ax, ay: ay, set: set, kind: kind, anim: ed.anim,
+                            blocks: blocks, bg: ed.bg, tiles: beachTilesOf(ed.anim, ax, ay) });
+            }
+            /* far end first: +x runs up-screen (farther) and +y down-screen
+               (nearer) on the shipped camera, so depth is ay - ax */
+            list.sort(function (p, q) { return (p.ay - p.ax) - (q.ay - q.ax); });
+            out = out.concat(list);
+        }
+        return out;
+    }
+    /* where each set starts and ends along the coast (labels + the harness) */
+    function beachSpan(set) {
+        var lo = Infinity, hi = -Infinity;
+        for (var i = 0; i < beachInsts.length; i++) {
+            var r = beachInsts[i];
+            if (r.set !== set || beachEdge(r.kind).repeat === 1) continue;
+            if (r.ay < lo) lo = r.ay;
+            if (r.ay + beachEdge(r.kind).step > hi) hi = r.ay + beachEdge(r.kind).step;
+        }
+        return lo === Infinity ? null : [lo, hi];
+    }
+    /* rebuild the stamp records: params, the manifest, an ORIENT press or a
+       fresh terrain all land here */
+    function beachBuild() {
+        beachInsts = [];
+        if (!BEACH) return;
+        /* the Land set first: the mountain row is the farthest thing on the
+           map, and the Heights cliff art rises up-screen over its foot */
+        if (beachP.north) beachInsts = beachStampsOf('north');
+        beachInsts = beachInsts.concat(beachStampsOf('lower'));
+        if (beachP.heights) beachInsts = beachInsts.concat(beachStampsOf('heights'));
+    }
+    function beachArtTake(url, sx, sy, w, h) {
+        /* NO placeholder: a stretched UNIT texture is a solid rectangle over the
+           coast (the exact failure the Road Lab's black canvases had). A block
+           whose sheet has not decoded simply does not draw this frame. */
+        var t = subTex(url, sx, sy, w, h);
+        if (!t) return null;
+        var s = beachArtPool[beachArtN];
+        if (!s) {
+            s = new PIXI.Sprite();
+            s.anchor.set(0);
+            beachArtC.addChild(s);
+            beachArtPool.push(s);
+        }
+        if (s.__tex !== t) { s.texture = t; s.__tex = t; }
+        s.visible = false;
+        beachArtN++;
+        return s;
+    }
+    /* the cloud wall's edge in tiles: north of y `north`, east of x `east` */
+    function beachCloudEdge() {
+        var ed = beachEdge('n_mountains');
+        return { north: beachAnchorY() + ed.offY - BEACH_CLOUD_BACK,
+                 east: beachLandBox().x1 };
+    }
+    /* the wall, clipped to the visible tile rect T: two tile-space rects
+       (north band, east band), then along each inner edge a thin continuous
+       rim strip and a row of small irregular puffs — rim-coloured ones nudged
+       toward the land, white ones on the line — which is the export's soft
+       wavy edge rather than a row of scallops */
+    function beachCloudDraw(P, box, k, T) {
+        var E = beachCloudEdge(), g = beachCloudG, m = 4;
+        var x0 = T.x0 - m, x1 = T.x1 + m, y0 = T.y0 - m, y1 = T.y1 + m;
+        var r0 = 40 * k;                                   // ~0.55 tile across the screen
+        function puffs(pts, dx, dy, col, rs) {
+            for (var i = 0; i < pts.length; i++) {
+                var p = P(pts[i][0] + dx, pts[i][1] + dy);
+                g.circle(p[0], p[1], r0 * pts[i][2] * rs).fill({ color: col, alpha: 1 });
+            }
+        }
+        function hash(n) { n = (n * 2654435761) >>> 0; return (n % 1000) / 1000; }
+        var drew = false;
+        if (y0 < E.north) {                                 // north band
+            g.poly(box(x0, y0, x1, Math.min(y1, E.north)), true).fill({ color: BEACH_CLOUD, alpha: 1 });
+            drew = true;
+        }
+        if (x1 > E.east && y1 > E.north) {                  // east band
+            g.poly(box(Math.max(x0, E.east), Math.max(y0, E.north), x1, y1), true)
+                .fill({ color: BEACH_CLOUD, alpha: 1 });
+            drew = true;
+        }
+        if (!drew) return;
+        var st = BEACH_PUFF_STEP, nPts = [], ePts = [], t, w = BEACH_RIM;
+        /* each puff: a jitter ACROSS the edge too, so the line wanders */
+        if (E.north >= y0 - 2 && E.north <= y1 + 2) {
+            for (t = Math.floor(x0 / st) * st; t <= Math.min(x1, E.east); t += st) {
+                var hn = Math.round(t / st);
+                nPts.push([t + 0.6 * hash(hn + 31), E.north - 0.15 + 0.3 * hash(hn + 97),
+                           0.6 + 0.9 * hash(hn)]);
+            }
+            g.poly(box(x0, E.north, Math.min(x1, E.east), E.north + w), true)
+                .fill({ color: BEACH_CLOUD_RIM, alpha: 1 });
+        }
+        if (E.east >= x0 - 2 && E.east <= x1 + 2) {
+            for (t = Math.max(E.north, Math.floor(y0 / st) * st); t <= y1; t += st) {
+                var he = Math.round(t / st) + 7919;
+                ePts.push([E.east + 0.15 - 0.3 * hash(he + 97), t + 0.6 * hash(he + 31),
+                           0.6 + 0.9 * hash(he)]);
+            }
+            g.poly(box(E.east - w, Math.max(y0, E.north), E.east, y1), true)
+                .fill({ color: BEACH_CLOUD_RIM, alpha: 1 });
+        }
+        /* land side: +y of the north edge, -x of the east edge */
+        puffs(nPts, 0, w, BEACH_CLOUD_RIM, 1);
+        puffs(ePts, -w, 0, BEACH_CLOUD_RIM, 1);
+        puffs(nPts, 0, 0, BEACH_CLOUD, 1);
+        puffs(ePts, 0, 0, BEACH_CLOUD, 1);
+    }
+    function beachHideRest() {
+        for (var i = beachArtN; i < beachArtPool.length; i++) beachArtPool[i].visible = false;
+    }
+    /* the per-frame pass: footprints + seam rows in beachG (ground level, under
+       the buildings), art billboards in beachArtC, labels in beachTxtC above
+       everything. Screen-space like drawGrid/drawMarkers: project, never shear
+       a container, so Rotate/Mirror keep the labels upright */
+    function beachDraw(A, s, T) {
+        beachG.clear();
+        beachBgG.clear();
+        beachCloudG.clear();
+        beachArtN = 0;
+        beachLab.begin();
+        if (!BEACH || (!beachSetsOn && !beachArtOn)) {
+            beachHideRest(); beachLab.end(); return;
+        }
+        var k = s / BEACH_S;                               // screen px per art px
+        function P(x, y) { return [A.a * x + A.b * y + A.c, A.d * x + A.e * y + A.f]; }
+        function mv(x, y) { var p = P(x, y); beachG.moveTo(p[0], p[1]); }
+        function ln(x, y) { var p = P(x, y); beachG.lineTo(p[0], p[1]); }
+        function box(x0, y0, x1, y1) {
+            var a = P(x0, y0), b = P(x1, y0), c = P(x1, y1), d = P(x0, y1);
+            return [a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]];
+        }
+        var i, j, t, st, tl, x0, y0, x1, y1;
+        for (i = 0; i < beachInsts.length; i++) {
+            st = beachInsts[i]; tl = st.tiles;
+            if (!tl.length) continue;
+            x0 = y0 = Infinity; x1 = y1 = -Infinity;
+            for (t = 0; t < tl.length; t += 2) {
+                if (tl[t] < x0) x0 = tl[t];
+                if (tl[t] > x1) x1 = tl[t];
+                if (tl[t + 1] < y0) y0 = tl[t + 1];
+                if (tl[t + 1] > y1) y1 = tl[t + 1];
+            }
+            if (x1 + 1 < T.x0 || x0 > T.x1 || y1 + 1 < T.y0 || y0 > T.y1) continue;
+            if (beachSetsOn) {
+                /* one quad per stamp (the tile set is a solid rectangle), then
+                   the 1-tile lattice once it is big enough to read */
+                beachG.poly(box(x0, y0, x1 + 1, y1 + 1), true)
+                    .fill({ color: BEACH_TINT[st.kind], alpha: beachP.alpha });
+                if (beachP.lattice && k >= 0.5) {
+                    for (var tx = x0; tx <= x1 + 1; tx++) { mv(tx, y0); ln(tx, y1 + 1); }
+                    for (var ty = y0; ty <= y1 + 1; ty++) { mv(x0, ty); ln(x1 + 1, ty); }
+                    beachG.stroke({ width: 1, color: BEACH_TINT[st.kind], alpha: 0.5 });
+                }
+            }
+            if (beachArtOn && beachP.bg && st.bg) {
+                /* the engine's hasBackground fill: a flat tile-space rect
+                   under the strip (beachBgG is beachArtC's bottom child) */
+                var g = st.bg;
+                beachBgG.poly(box(st.ax + g.x, st.ay + g.y, st.ax + g.x + g.w, st.ay + g.y + g.h), true)
+                    .fill({ color: g.color, alpha: 1 });
+            }
+            if (beachArtOn && beachSheetReady(st.anim)) {
+                var o = P(st.ax, st.ay), bs = st.blocks;
+                for (var q = 0; q < bs.length; q++) {
+                    var bl = bs[q];
+                    var X = o[0] + bl.dx * k, Y = o[1] + bl.dy * k,
+                        W = bl.w * k, H = bl.h * k;
+                    if (!bl.sw || !bl.sh) continue;
+                    if (X + W < 0 || Y + H < 0 || X > VW || Y > VH) continue;
+                    var sp = beachArtTake(bl.url, bl.sx, bl.sy, bl.sw, bl.sh);
+                    if (!sp) continue;              // sheet not decoded yet
+                    sp.visible = true;
+                    /* A Sprite's matrix SCALES its texture frame (the drawn box
+                       is frame * matrix), and beachArtC is on the stage, so the
+                       local space here is screen px. The linear part is
+                       therefore target px PER FRAME PX, not the target size:
+                       passing W/H drew every crop sw x sh times too big (an
+                       87x62 shore cell became ~7,500 px, the 669x384 Heights
+                       overlay ~447,000 px) — one opaque slab over the whole
+                       map, which is the "massive tile" complaint. The Road Lab
+                       never showed it because ctx.drawImage takes the source
+                       rect and the dest rect separately, so the same W/H are
+                       sizes there. */
+                    sp.setFromMatrix(new PIXI.Matrix(W / bl.sw, 0, 0, H / bl.sh, X, Y));
+                }
+            }
+        }
+        beachHideRest();
+        if (beachArtOn && beachP.sky && beachP.north) beachCloudDraw(P, box, k, T);
+        /* the seam the file implies (the lower set's first row, which is also
+           where the Heights set's six strips end), Mountain03/04's north edge
+           off the save as its check, and the terrain's modelled shoreline */
+        if (beachSetsOn) {
+            var xA = beachAnchorX() - 8, xB = beachAnchorX() + 24;
+            var lo = beachSpan('lower'), hi = beachSpan('heights'), ridge = beachSeamFromProps();
+            if (lo) {
+                mv(xA, lo[0]); ln(xB, lo[0]);
+                beachG.stroke({ width: 2, color: 0xf4d03f, alpha: 0.95 });
+            }
+            if (hi) {
+                mv(xA, hi[0]); ln(xB, hi[0]);
+                beachG.stroke({ width: 1, color: 0xf4d03f, alpha: 0.6 });
+            }
+            var sh = beachShoreX();
+            if (sh !== beachAnchorX() && lo) {
+                mv(sh, hi ? hi[0] : lo[0]); ln(sh, lo[1]);
+                beachG.stroke({ width: 1, color: 0x00e5ff, alpha: 0.5 });
+            }
+            /* what is actually on the map, per piece: the repeat the FILE states,
+               so a piece that is not being stamped once (or filled, or six) is
+               visible as text rather than a wall of art */
+            function counts(set) {
+                var m = {}, order = BEACH_KINDS[set] || [], k;
+                for (i = 0; i < beachInsts.length; i++)
+                    if (beachInsts[i].set === set)
+                        m[beachInsts[i].kind] = (m[beachInsts[i].kind] || 0) + 1;
+                var s = [];
+                for (j = 0; j < order.length; j++) {
+                    k = order[j];
+                    if (!beachTile(k) || !beachEdge(k).sprite) continue;
+                    s.push(k + '×' + (m[k] || 0) + '(r=' + beachEdge(k).repeat + ')');
+                }
+                return s.join(' ');
+            }
+            if (lo) {
+                var p1 = P(beachAnchorX() - 2, lo[0]);
+                beachLab.put('seam y=' + lo[0] + ' (Mountain03/04 north edge y=' + ridge + ')',
+                    p1[0], p1[1] - 13);
+                var p3 = P(beachAnchorX() - 2, lo[0] + 6);
+                beachLab.put('lower: Beach · ' + counts('lower') + ' · y ' + lo[0] + '..' + lo[1] +
+                    ' · anchor tile x ' + beachAnchorX() +
+                    (beachP.useOffsets ? '' : ' · offsets OFF'), p3[0], p3[1]);
+            }
+            var nm = beachInsts.filter(function (r) { return r.kind === 'n_mountains'; });
+            if (nm.length) {
+                var p5 = P(nm[0].ax + 2, nm[0].ay + 2);
+                beachLab.put('north edge: Land · ' + counts('north') + ' · y ' + nm[0].ay +
+                    ' · x ' + nm[0].ax + '..' + (nm[nm.length - 1].ax + beachEdge('n_mountains').step),
+                    p5[0], p5[1]);
+            }
+            if (hi) {
+                var p4 = P(beachAnchorX() - 2, hi[0] + 6);
+                beachLab.put('north: springfieldheightsnobeach · ' + counts('heights') +
+                    ' · y ' + hi[0] + '..' + hi[1] + (beachP.bg ? ' · bg sand' : ''),
+                    p4[0], p4[1]);
+            }
+        }
+        beachLab.end();
+    }
+    function applyBeachMode() {
+        if (beachG) beachG.visible = beachSetsOn || beachArtOn;
+        if (beachArtC) beachArtC.visible = beachArtOn;
+        if (beachCloudG) beachCloudG.visible = beachArtOn;
+        var b1 = $('btn-beachsets');
+        if (b1) b1.classList.toggle('on', beachSetsOn);
+        var b2 = $('btn-beachart');
+        if (b2) {
+            b2.classList.toggle('on', beachArtOn && !!(BEACH && beachSheetReady(beachAnimName('shore'))));
+            b2.textContent = beachArtOn ? 'Beach art·on' : 'Beach art';
+        }
+    }
+    window.__CV_BEACH = {
+        params: beachP,
+        manifest: function () { return BEACH; },
+        failed: function () { return beachFailed; },
+        seamFromProps: beachSeamFromProps,
+        instances: function () {
+            return beachInsts.map(function (r) {
+                return { ax: r.ax, ay: r.ay, set: r.set, kind: r.kind, anim: r.anim };
+            });
+        },
+        counts: function () {
+            var m = {};
+            for (var i = 0; i < beachInsts.length; i++)
+                m[beachInsts[i].kind] = (m[beachInsts[i].kind] || 0) + 1;
+            return m;
+        },
+        tiles: function (set, kind) {
+            var out = [];
+            for (var i = 0; i < beachInsts.length; i++) {
+                if (set && beachInsts[i].set !== set) continue;
+                if (kind && beachInsts[i].kind !== kind) continue;
+                out = out.concat(beachInsts[i].tiles);
+            }
+            return out;
+        },
+        rects: function (s) {
+            var A = CAM.tileAffine(cam, VW, VH), k = (s || CAM.scale(cam)) / BEACH_S, out = [];
+            for (var i = 0; i < beachInsts.length; i++) {
+                var r = beachInsts[i];
+                var o = [A.a * r.ax + A.b * r.ay + A.c,
+                         A.d * r.ax + A.e * r.ay + A.f];
+                for (var q = 0; q < r.blocks.length; q++) {
+                    var bl = r.blocks[q];
+                    out.push({ anim: r.anim, kind: r.kind, cell: bl.n, set: r.set,
+                               x: o[0] + bl.dx * k, y: o[1] + bl.dy * k,
+                               w: bl.w * k, h: bl.h * k });
+                }
+            }
+            return out;
+        },
+        state: function () {
+            return { sets: beachSetsOn, art: beachArtOn, insts: beachInsts.length,
+                     seam: (beachSpan('lower') || [null])[0], ridge: beachSeamFromProps(),
+                     lower: beachSpan('lower'), heights: beachSpan('heights'),
+                     anchor: beachAnchorX(), anchorY: beachAnchorY(), shore: beachShoreX(),
+                     offsets: beachP.useOffsets, edgeAt: beachP.edgeAt };
+        },
+        cloudEdge: function () { return beachCloudEdge(); },
+        rebuild: function () { beachBuild(); markDirty(); },
+        set: function (k, v) { beachP[k] = v; beachSave(); beachBuild(); applyBeachMode(); markDirty(); }
+    };
+    /* ---- beach tune panel: A/B steppers against the file's own placement
+       (each one defaults to what landinfo.xml states) ------------------- */
+    function bindBeachUI() {
+        if ($('btn-beachsets')) $('btn-beachsets').addEventListener('click', function () {
+            beachSetsOn = !beachSetsOn;
+            try { localStorage.setItem(BEACHSETS_KEY, beachSetsOn ? '1' : '0'); } catch (e) { /* private mode */ }
+            applyBeachMode(); markDirty();
+        });
+        if ($('btn-beachart')) $('btn-beachart').addEventListener('click', function () {
+            beachArtOn = !beachArtOn;
+            try { localStorage.setItem(BEACHART_KEY, beachArtOn ? '1' : '0'); } catch (e) { /* private mode */ }
+            applyBeachMode(); markDirty();
+        });
+        if ($('btn-beachtune')) $('btn-beachtune').addEventListener('click', function () {
+            var p = $('beachtune');
+            if (!p) return;
+            var show = p.style.display === 'none' || p.style.display === undefined;
+            p.style.display = show ? '' : 'none';
+            $('btn-beachtune').classList.toggle('on', show);
+            markDirty();
+        });
+        var panel = $('beachtune');
+        if (!panel || !document.createElement) { applyBeachMode(); return; }
+        var nums = {}, tgls = [];
+        function row(label) {
+            var r = document.createElement('div');
+            r.className = 'trow';
+            var l = document.createElement('span');
+            l.className = 'tlab';
+            l.textContent = label;
+            r.appendChild(l);
+            panel.appendChild(r);
+            return r;
+        }
+        function btn(txt, fn, tip) {
+            var b = document.createElement('button');
+            b.className = 'tbtn';
+            b.textContent = txt;
+            if (tip) b.setAttribute('data-tip', tip);
+            b.addEventListener('click', fn);
+            return b;
+        }
+        function paint() {
+            for (var k in nums)
+                nums[k].textContent = k === 'ax'
+                    ? beachP.ax + '  (tile x ' + beachAnchorX() + ')'
+                    : String(beachP[k]);
+            for (var i = 0; i < tgls.length; i++) tgls[i].textContent = tgls[i].label();
+            beachSave();
+            beachBuild();
+            applyBeachMode();
+            markDirty();
+        }
+        function stepper(label, key, step, min, max, tip) {
+            var r = row(label);
+            var v = document.createElement('span');
+            v.className = 'tval';
+            r.appendChild(btn('\u2212', function () {
+                beachP[key] = Math.max(min, +(beachP[key] - step).toFixed(2)); paint();
+            }, tip));
+            r.appendChild(v);
+            nums[key] = v;
+            r.appendChild(btn('+', function () {
+                beachP[key] = Math.min(max, +(beachP[key] + step).toFixed(2)); paint();
+            }, tip));
+        }
+        function toggle(rowEl, key, name, kind, tip) {
+            var b = btn(name, function () {
+                if (kind === 'cycle') beachP[key] = beachP[key] === 'replace' ? 'over' : 'replace';
+                else if (kind === 'alpha')
+                    beachP[key] = beachP[key] >= 0.7 ? 0.14 : +(beachP[key] + 0.1).toFixed(2);
+                else beachP[key] = !beachP[key];
+                paint();
+            }, tip);
+            b.label = kind === 'cycle'
+                ? function () { return name + ': ' + beachP[key]; }
+                : kind === 'alpha'
+                    ? function () { return name + ': ' + beachP[key]; }
+                    : function () { return name + ': ' + (beachP[key] ? 'ON' : 'off'); };
+            tgls.push(b);
+            rowEl.appendChild(b);
+            return b;
+        }
+        stepper('anchor x', 'ax', 1, -24, 24,
+            'shift the whole coast east/west of the land origin. 0 = tile x 0, the frame the save\'s props live in (Mountain04/LowerMountainBeachShoreline ends on x 0, the beach chairs stand on x 0..3) and where the terrain\'s sea ends; when the two differ the sea edge is drawn as a cyan line');
+        stepper('anchor y', 'ay', 1, -64, 64,
+            'shift the whole coast along the shore. 0 = the land origin every LandEdge offset counts from');
+        stepper('block', 'block', 1, 1, 32,
+            'tiles per LandEdge offset unit: the offsets count 16-tile land blocks (lower offsety -1 = y -16, Heights offsety -7 = y -112). 1 reads them as plain tiles, which is how the coast was misplaced before');
+        stepper('strips', 'copies', 1, 1, 64,
+            'strip count with the lower fill off (isolates one repeat)');
+        stepper('h inst', 'hinst', 1, 0, 24,
+            'how many of the Heights set\'s repeat="6" strips to draw (0 hides the set)');
+        stepper('edge y', 'edgeAt', 1, -200, 200,
+            'nudge the repeat="1" Heights mountain overlay along the coast from where the file puts it');
+        toggle(row('lower fill'), 'fill', 'fill to land end', false,
+            'repeat="-1" = stamp until the edge ends: fill from y -16 to the land\'s south edge (Region Springfield y2)');
+        toggle(row('north set'), 'heights', 'heights set', false,
+            'draw the springfieldheightsnobeach coast at all');
+        toggle(row('north edge'), 'north', 'mountain row', false,
+            'the `Land` LandEdges across the top of the land: MOUNTAINS (direction x from y -112, every 48 tiles to the land\'s east edge x 592), MOUNTAINSTOWATER where the row meets the sea, SHORELINE2 up the coast behind it');
+        toggle(row('clouds'), 'sky', 'cloud wall', false,
+            'the flat wall of cloud the game puts over everything off the land (read off the in-game full-map export): north of y -128, 16 rows behind the mountain row\'s foot, so it covers the back of the ridge, and east of the land\'s edge x 592');
+        toggle(row('bg sand'), 'bg', 'bg fill', false,
+            'the solid EEDDCC fill Heights beach1 asks for (hasBackground, 13.5 x 16 tiles at x -0.5): without it the Heights beach is grass with sand patches');
+        toggle(row('landinfo offs'), 'useOffsets', 'offsets', false,
+            'apply each LandEdge\'s own offsetx/offsety (lower offsety="-1", Heights offsety="-7") — off lands every piece on the origin row instead, to A/B the file\'s offsets against the map');
+        toggle(row('lattice'), 'lattice', 'tile lattice', false,
+            '1-tile grid inside the tinted footprints (once the zoom is readable)');
+        toggle(row('tint'), 'alpha', 'alpha', 'alpha',
+            'footprint tint opacity (cycles 0.14 .. 0.74)');
+        row('go').appendChild(btn('\u2316 seam', function () {
+            var lo = beachSpan('lower');
+            centerOnTile(beachAnchorX() + 4, (lo ? lo[0] : beachAnchorY()) + 4);
+            if (cam.zoom < 0.6) cam.zoom = 0.8;
+            markDirty();
+        }, 'centre the view where the two sets meet (Mountain03)'));
+        row('reset').appendChild(btn('file values', function () {
+            beachP.ax = 0; beachP.ay = 0; beachP.block = 16; beachP.edgeAt = 0;
+            beachP.useOffsets = true; beachP.fill = true; beachP.heights = true;
+            beachP.hinst = 6; beachP.bg = true; beachP.north = true; beachP.sky = true;
+            paint();
+        }, 'back to the placement landinfo.xml states'));
+        paint();
+    }
+
     applySeasonMode();
     if ($('btn-season')) $('btn-season').addEventListener('click', function () {
         var modes = ['base'], i;
@@ -1909,7 +2633,20 @@
        view survives an ORIENT change, which is persisted too). The Canvas
        page never reads this key, so the two pages stay independent. */
     var CAM_KEY = 'mrsnrub.cityview.cam';
+    /* ?camTx=&camTy=&camZ= opens on that view and never writes it back, so
+       an embedding page (Road Lab marina align) can frame its own spot
+       without moving the user's saved City View camera */
+    var CAM_URL = (function () {
+        var x = parseFloat(QP.get('camTx')), y = parseFloat(QP.get('camTy')),
+            z = parseFloat(QP.get('camZ'));
+        return (isFinite(x) && isFinite(y)) ? { tx: x, ty: y, zoom: isFinite(z) && z > 0 ? z : 1 } : null;
+    })();
+    window.__CV_CAM = function () {
+        var t = CAM.worldToTile(cam.x, cam.y);
+        return { tx: t.x, ty: t.y, zoom: cam.zoom };
+    };
     function saveCam() {
+        if (CAM_URL) return;
         try {
             var t = CAM.worldToTile(cam.x, cam.y);
             localStorage.setItem(CAM_KEY, JSON.stringify(
@@ -1917,6 +2654,12 @@
         } catch (e) { /* private mode */ }
     }
     function restoreCam() {              // true if a saved view was applied
+        if (CAM_URL) {
+            var wu = CAM.tileToWorld(CAM_URL.tx, CAM_URL.ty);
+            cam.x = wu.x; cam.y = wu.y; cam.zoom = CAM_URL.zoom;
+            cam.vx = 0; cam.vy = 0;
+            return true;
+        }
         try {
             var s = JSON.parse(localStorage.getItem(CAM_KEY));
             if (s && isFinite(s.tx) && isFinite(s.ty) &&
@@ -2252,7 +2995,8 @@
     var started = false;
     var UNIT, DISC, groundC, fillC, featC, avenC, terrFlatS, buildFlatS, grassTil,
         grassFillS, seaFillS, sceneG, fragG, propG, walkG, gridG, markG, outG,
-        txtGrid, txtMark, bridgeG, raisedG, bridgeNearG;
+        txtGrid, txtMark, bridgeG, raisedG, bridgeNearG,
+        beachG, beachArtC, beachBgG, beachCloudG, beachTxtC, beachLab;
     var pool = [], pn = 0;
     /* bridge decals, one pool per layer: [0] far row in bridgeG (under the
        raised road art), [1] near row in bridgeNearG (over it) */
@@ -2334,6 +3078,16 @@
 
         sceneG = new PIXI.Container();      // pooled prisms/billboards/dots
 
+        /* the two fixed beach coast sets: footprints at ground level (under the
+           buildings, so a prism reads as being ON the beach), art billboards
+           just above them, labels with the readouts up top */
+        beachG = new PIXI.Graphics();
+        beachArtC = new PIXI.Container();
+        beachBgG = new PIXI.Graphics();     // hasBackground fills, under every art sprite
+        beachCloudG = new PIXI.Graphics();  // the cloud wall past the land, OVER the coast art
+        beachArtC.addChild(beachBgG);
+        beachTxtC = new PIXI.Container();
+
         walkG = new PIXI.Graphics();
         gridG = new PIXI.Graphics();
         markG = new PIXI.Graphics();
@@ -2349,6 +3103,9 @@
         app.stage.addChild(groundC);
         app.stage.addChild(fragG);
         app.stage.addChild(propG);
+        app.stage.addChild(beachG);         // coast footprints + seam rows
+        app.stage.addChild(beachArtC);      // coast art, over the footprints
+        app.stage.addChild(beachCloudG);    // cloud wall over the back of the mountain row
         app.stage.addChild(bridgeG);
         app.stage.addChild(raisedG);
         app.stage.addChild(bridgeNearG);
@@ -2359,6 +3116,10 @@
         app.stage.addChild(mc);
         app.stage.addChild(tc);
         app.stage.addChild(outG);
+        app.stage.addChild(beachTxtC);      // beach readouts, above everything
+        beachLab = txtPool(beachTxtC, { fontFamily: 'monospace', fontSize: 11,
+                                        fill: '#f4d03f', stroke: '#0a0e16',
+                                        strokeThickness: 3 });
     }
     function txtPool(container, style) {
         var arr = [], n = 0;
@@ -2786,15 +3547,24 @@
             var up = CAM.oriented(p.tx, p.ty), uq = CAM.oriented(q.tx, q.ty);
             return (up[0] + up[1]) - (uq[0] + uq[1]) || up[0] - uq[0];
         });
+        /* every tile's flat fill, by its 4x4 cell: the cell's frame owns all
+           sixteen (applyPierMode hides them together when the art shows) */
+        var cellFills = {};
+        for (i = 0; i < pierCells.length; i++) {
+            var cf = pierCells[i], ck = cf.tn + ':' + (cf.tx & ~3) + ',' + (cf.ty & ~3);
+            (cellFills[ck] = cellFills[ck] || []).push(cf.fill);
+        }
         for (i = 0; i < pierCells.length; i++) {
             var pc = pierCells[i];
             /* the brushes are 4x4 cells on the land's cell lattice (town
                x = -48 + 4c, y = -112 + 4r): one frame per cell, at its
-               origin tile; the other 15 tiles keep only their fills */
+               origin tile */
             if ((pc.tx & 3) || (pc.ty & 3)) continue;
             var art = buildPierCell(featC, pc.tn, pc.tx, pc.ty, pc.occ, pc.arr, 4);
-            if (art) pierRecs.push({ art: art, tn: pc.tn, fill: pc.fill });
+            if (art) pierRecs.push({ art: art, tn: pc.tn, tx: pc.tx, ty: pc.ty,
+                                     fills: cellFills[pc.tn + ':' + pc.tx + ',' + pc.ty] || [pc.fill] });
         }
+        pierOver = null;                    // the over pass re-derives against the new cells
         applySheetMode();
         applyTypeVisibility();
         applyWaterMode();
@@ -3048,6 +3818,7 @@
         /* --- ground-level overlays (under the buildings) ------------------- */
         drawFrags(T);
         drawProposed(T);
+        beachDraw(A, s, T);                 // fixed coast sets (tints + art)
 
         /* --- scene pool ---------------------------------------------------- */
         pn = 0;
@@ -3077,6 +3848,156 @@
             ? '  ·  hover ' + hoverTile[0] + ',' + hoverTile[1] : '');
     }
 
+    /* ---- brush cells IN FRONT of a building (2026-10-30.25) -----------------
+       The brush art lives in the ground layer, under every building. That is
+       right for whatever stands ON a deck (the Squidport shops), but wrong for
+       a building the deck lies wholly in front of: BarnacleBayMarina's own
+       dock ends at x = -8, the brush cell x -12..-8 butts against it on the
+       viewer's side, and the marina's dock end (side face, legs, shadow) was
+       painted over that cell's deck. In game the cell covers it.
+       A single scalar depth key cannot serve both cases, so the cells keep
+       their ground copy and, where needed, are BLITTED AGAIN in the scene pool
+       right after the last building they are in front of:
+         * "in front" is the iso separating-axis test on oriented footprints
+           (cell.u0 >= B.u1 or cell.v0 >= B.v1), and only counts when the
+           two drawn rects overlap on screen (world-space bounds);
+         * a cell redrawn late drags every brush cell in front of it that it
+           overlaps along (else its C_Shadow lands on a nearer deck);
+         * a building already drawn that stands ON or in front of a redrawn
+           cell and overlaps it is emitted again after the cells.
+       Derived lazily (needs the sprite manifest), again on every ground
+       rebuild (ORIENT changes rebuild the ground). */
+    var pierOver = null;                // { at: {bIdx: [rec..]}, re: {bIdx: [b..]}, cells, conflicts }
+    var PIER_OVER_ON = QP.get('pierOver') !== '0';
+    function obox(x0, y0, x1, y1) {     // oriented box of a tile rect
+        var a = CAM.oriented(x0, y0), b = CAM.oriented(x1, y1);
+        return { u0: Math.min(a[0], b[0]), u1: Math.max(a[0], b[0]),
+                 v0: Math.min(a[1], b[1]), v1: Math.max(a[1], b[1]) };
+    }
+    function inFront(p, q) {            // p wholly in front of q
+        return p.u0 >= q.u1 - 1e-9 || p.v0 >= q.v1 - 1e-9;
+    }
+    function wOverlap(p, q) {
+        return p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1;
+    }
+    function bldWorldRect(b) {
+        var sp = b.slug ? spriteEntry(b.slug) : null, S = ART.S;
+        var w = CAM.tileToWorld(b.px + ART.ax, b.py + ART.ay);
+        if (sp) {
+            var ax = Math.max(sp.anchor[0], sp.w - sp.anchor[0]);
+            return { x0: w.x - ax / S, x1: w.x + ax / S,
+                     y0: w.y - sp.anchor[1] / S, y1: w.y + (sp.h - sp.anchor[1]) / S };
+        }
+        var r = CAM.tileRectToWorldRect(b);
+        return { x0: r.x0, x1: r.x1, y0: r.y0 - b.hgt, y1: r.y1 };
+    }
+    function cellWorldRect(rec) {
+        var bl = rec.art.blocks, S = ART.S, x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+        for (var i = 0; i < bl.length; i++) {
+            var k = bl[i], w = k.c[2] * Math.abs(k.m[0]), h = k.c[3] * Math.abs(k.m[3]);
+            var l = k.m[0] < 0 ? k.p[0] - w : k.p[0], t = k.m[3] < 0 ? k.p[1] - h : k.p[1];
+            x0 = Math.min(x0, l); x1 = Math.max(x1, l + w);
+            y0 = Math.min(y0, t); y1 = Math.max(y1, t + h);
+        }
+        var f = CAM.tileToWorld(rec.tx, rec.ty + 4);
+        return { x0: f.x + (x0 + PIER_NUDGE.x) / S, x1: f.x + (x1 + PIER_NUDGE.x) / S,
+                 y0: f.y + (y0 + PIER_NUDGE.y) / S, y1: f.y + (y1 + PIER_NUDGE.y) / S };
+    }
+    function derivePierOver() {
+        var out = { at: {}, re: {}, cells: 0, conflicts: 0 };
+        if (!PIER_OVER_ON || !pierRecs.length) return out;
+        var C = [], i, j, b;
+        for (i = 0; i < pierRecs.length; i++) {
+            var r = pierRecs[i];
+            C.push({ rec: r, ob: obox(r.tx, r.ty, r.tx + 4, r.ty + 4),
+                     wr: cellWorldRect(r), after: -1 });
+        }
+        /* buildings near any brush cell (cheap prefilter on tile distance) */
+        var bx0 = 1e9, bx1 = -1e9, by0 = 1e9, by1 = -1e9;
+        for (i = 0; i < C.length; i++) {
+            bx0 = Math.min(bx0, C[i].rec.tx); bx1 = Math.max(bx1, C[i].rec.tx + 4);
+            by0 = Math.min(by0, C[i].rec.ty); by1 = Math.max(by1, C[i].rec.ty + 4);
+        }
+        var near = [];
+        for (i = 0; i < buildings.length; i++) {
+            b = buildings[i];
+            if (b.x1 < bx0 - 24 || b.x0 > bx1 + 24 || b.y1 < by0 - 24 || b.y0 > by1 + 24) continue;
+            near.push({ i: i, b: b, ob: obox(b.x0, b.y0, b.x1, b.y1), wr: bldWorldRect(b) });
+        }
+        for (i = 0; i < C.length; i++)
+            for (j = 0; j < near.length; j++)
+                if (inFront(C[i].ob, near[j].ob) && wOverlap(C[i].wr, near[j].wr) &&
+                    near[j].i > C[i].after) C[i].after = near[j].i;
+        /* a late cell drags the overlapping cells in front of it along
+           (C is in ground draw order, back to front: one forward sweep
+           propagates, repeat until stable) */
+        for (var pass = 0, moved = 1; moved && pass < 64; pass++) {
+            moved = 0;
+            for (i = 0; i < C.length; i++) {
+                if (C[i].after < 0) continue;
+                for (j = 0; j < C.length; j++) {
+                    if (j === i || C[j].after >= C[i].after) continue;
+                    if (inFront(C[j].ob, C[i].ob) && wOverlap(C[j].wr, C[i].wr)) {
+                        C[j].after = C[i].after; moved = 1;
+                    }
+                }
+            }
+        }
+        for (i = 0; i < C.length; i++) {      // ground order kept within a slot
+            if (C[i].after < 0) continue;
+            (out.at[C[i].after] = out.at[C[i].after] || []).push(C[i].rec);
+            out.cells++;
+            /* buildings drawn BEFORE the slot that stand on / in front of the
+               cell and overlap it: emit them again after the cells */
+            for (j = 0; j < near.length; j++) {
+                var n = near[j];
+                if (n.i >= C[i].after || !wOverlap(C[i].wr, n.wr)) continue;
+                if (inFront(C[i].ob, n.ob)) continue;          // genuinely behind it
+                var lst = out.re[C[i].after] = out.re[C[i].after] || [];
+                if (lst.indexOf(n.b) < 0) { lst.push(n.b); out.conflicts++; }
+            }
+        }
+        for (var key in out.re)                // re-emit in the scene's own order
+            out.re[key].sort(function (p, q) { return buildings.indexOf(p) - buildings.indexOf(q); });
+        return out;
+    }
+    window.__CV_PIER_OVER = function () {          // harness/console probe
+        var o = derivePierOver(), slots = [];
+        for (var k in o.at) slots.push({ after: buildings[k].slug, at: +k,
+            cells: o.at[k].map(function (r) { return r.tn + '@' + r.tx + ',' + r.ty; }),
+            reemit: (o.re[k] || []).map(function (b) { return b.slug; }) });
+        return { recs: pierRecs.length, cells: o.cells, reemit: o.conflicts, slots: slots };
+    };
+    function emitPierOver(slot, A, s, k) {
+        var list = pierOver.at[slot];
+        if (list) {
+            var K = s / ART.S;
+            for (var i = 0; i < list.length; i++) {
+                var r = list[i];
+                if (!(pierArtOn && pierTexReady(r.tn) && !terrain.hidden[r.tn])) continue;
+                var sheet = B + pierAsset(r.tn).sheet, bl = r.art.blocks;
+                var fx = r.tx, fy = r.ty + 4;
+                var Px = A.a * fx + A.b * fy + A.c, Py = A.d * fx + A.e * fy + A.f;
+                for (var j = 0; j < bl.length; j++) {
+                    var kb = bl[j], t = subTex(sheet, kb.c[0], kb.c[1], kb.c[2], kb.c[3]);
+                    if (!t) continue;
+                    var w = kb.c[2] * Math.abs(kb.m[0]), h = kb.c[3] * Math.abs(kb.m[3]);
+                    var l = kb.m[0] < 0 ? kb.p[0] - w : kb.p[0];
+                    var tp = kb.m[3] < 0 ? kb.p[1] - h : kb.p[1];
+                    var x = Px + (l + PIER_NUDGE.x) * K, y = Py + (tp + PIER_NUDGE.y) * K;
+                    if (x > VW + 4 || y > VH + 4 || x + w * K < -4 || y + h * K < -4) continue;
+                    emitSpr(t, x, y, w * K, h * K, kb.m[0] < 0);
+                }
+            }
+        }
+        var re = pierOver.re[slot];
+        for (var q = 0; re && q < re.length; q++) {
+            var b = re[q];
+            if (objHidden[b.cat] || hiddenObjs[b.hkey]) continue;
+            if (!(artMode && citySprites && emitBuilding(b, k, A))) emitBlock(b, A, s);
+        }
+    }
+
     /* ---- scene pass: buildings + people in ONE depth-ordered pool ----------- */
     function renderScene(A, s, T, lod) {
         var i, b;
@@ -3085,7 +4006,16 @@
             var art = !!artMode && !!citySprites;
             var k = s / ART.S;
             var mgn = art ? 6 : 2;
+            if ((!pierOver || pierOver.recs !== pierRecs || pierOver.spr !== citySprites) &&
+                (citySprites || !artMode)) {
+                pierOver = derivePierOver();
+                pierOver.recs = pierRecs;       // a new ground build or sprite
+                pierOver.spr = citySprites;     // manifest re-derives
+                DIAG.pierOver = { cells: pierOver.cells, reemit: pierOver.conflicts };
+            }
+            var po = pierOver && (pierOver.cells ? pierOver : null);
             for (i = 0; i < buildings.length; i++) {
+                if (po && i && (po.at[i - 1] || po.re[i - 1])) emitPierOver(i - 1, A, s, k);
                 b = buildings[i];
                 if (objHidden[b.cat] || hiddenObjs[b.hkey]) continue;
                 if (b.x1 < T.x0 - mgn || b.x0 > T.x1 + mgn ||
@@ -3093,6 +4023,7 @@
                 if (art && emitBuilding(b, k, A)) continue;
                 emitBlock(b, A, s);
             }
+            if (po && buildings.length) emitPierOver(buildings.length - 1, A, s, k);
         }
         if (!objHidden.people) {
             var artC = !!artMode && !!charMan;
@@ -4343,6 +5274,7 @@
         recomputeManhOff();
         terrFlatDirty = true; bFlatDirty = true;
         buildGround();                         // re-place the tile-space ground
+        beachBuild();                          // coast anchors read terrain
         if (lastPreset) lastPreset();          // re-frame the preset in the new projection
         updateOrientReadout();
         markDirty();
@@ -4886,6 +5818,7 @@
         buildGround();
         buildLegend();
         buildObjLegend();
+        bindBeachUI();
         buildStats();
         resize();
         if (restoreCam()) {

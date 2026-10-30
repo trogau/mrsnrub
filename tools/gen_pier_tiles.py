@@ -96,6 +96,8 @@ def build():
                 'transform (rot 45, scale sqrt2/127 x sqrt2/66) / 4',
         'calib': 'ox,oy offset the crop top-left so C_Shadow fills the box, '
                  'whose inscribed diamond is the tile',
+        'placement': 'the viewer pins each frame ORIGIN to its cell\'s front '
+                     'corner (x0, y1) at 1:1 art px, like a building pivot',
         'states': STATES,
         'assets': {},
     }

@@ -71,6 +71,17 @@
        full-map export = (84,170,252) (notes/06 §10). Painted as one
        parallelogram under the wave marks; see Terrain#seaFill*. */
     var SEA_RGB = [84, 170, 252];
+    /* The west sea in TOWN TILE coords, from gamescripts landinfo.xml
+       (Springfield LandInfo):
+         x1   0   GridTypeMap: ocean x < -3, shoreline -3..0 — the water
+                  runs under the beach shore strip's foam to x 0
+         x0 -80   LandBlockPosition x=-3 blocks, plus the two
+                  NumExtraViewableBlocks left: (-3 - 2) * 16
+         y0 -160  the northernmost coast strip, LandEdge SHORELINE2
+                  offsety="-10" (16-tile blocks), north of the Heights
+         y1 704   Region Ocean y2=700, out to the 16-tile block the last
+                  lower beach strip ends on */
+    var SEA_TILE = { x0: -80, x1: 0, y0: -160, y1: 704 };
     var TYPE_STYLE = {
         ocean:    { c: [120, 190, 255] },   /* wave-mark placeholder: the
             solid base (SEA_RGB) carries the RE'd export blue; the game's
@@ -252,14 +263,20 @@
            the coast spans y 0..512 (the frame's long axis), and the
            wave marks (cols 2..26) sit on the water via seaColOffset.
            SEA base blue sampled from the export = (84,170,252).
-           Documented knobs; re-tune edges with the M4 landmark
-           calibration. */
+           FRAME FIX (2026-10-30.17): those prop numbers are TOWN TILE
+           coords (the save's own frame), but seaFill* are stored as grid
+           (town + ox/oy) like every layer and every reader subtracts
+           ox/oy — so the old defaults (-64..0, 0..512) drew the sea at
+           tile x -76..-12, y -136..376: the shoreline 12 tiles out from
+           the beach and the water stopping short of Skull Island and the
+           Cursed Ship. The defaults are now landinfo.xml's own bounds in
+           TILE coords, converted once here (SEA_TILE). */
         this.seaFill = opts.seaFill !== false;
         this.seaColOffset = opts.seaColOffset != null ? opts.seaColOffset : -33;  // grid x = frame col + this
-        this.seaFillX0 = opts.seaFillX0 != null ? opts.seaFillX0 : -64;           // water's offshore edge
-        this.seaFillX1 = opts.seaFillX1 != null ? opts.seaFillX1 : 0;             // shoreline
-        this.seaFillY0 = opts.seaFillY0 != null ? opts.seaFillY0 : 0;             // coast start (grid)
-        this.seaFillY1 = opts.seaFillY1 != null ? opts.seaFillY1 : 512;           // coast end (grid)
+        this.seaFillX0 = opts.seaFillX0 != null ? opts.seaFillX0 : SEA_TILE.x0 + this.ox;  // water's offshore edge
+        this.seaFillX1 = opts.seaFillX1 != null ? opts.seaFillX1 : SEA_TILE.x1 + this.ox;  // shoreline
+        this.seaFillY0 = opts.seaFillY0 != null ? opts.seaFillY0 : SEA_TILE.y0 + this.oy;  // coast start (grid)
+        this.seaFillY1 = opts.seaFillY1 != null ? opts.seaFillY1 : SEA_TILE.y1 + this.oy;  // coast end (grid)
         /* Road sheet art (2026-10-17, M4 fix): the REAL in-game base
            tiles from web/assets/dlc/roadrivertiles-50/images/
            roadtilesheet.png. The 512x512 sheet is a plane tiling of

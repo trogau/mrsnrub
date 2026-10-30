@@ -1,5 +1,732 @@
 # Changelog
 
+## 2026-10-30.25
+
+- **Brush cells in front of a building now draw over it.** The boardwalk
+  and pier art lived only in the ground layer, under every building. So
+  BarnacleBayMarina's dock end (side face, legs, blue shadow) was painted
+  over the brush cell x −12..−8 that butts against it, and the boardwalk
+  read as sitting lower than the marina's planks. The user confirmed this
+  with the Road Lab align tool: the position is close, and "the bottom of
+  the marina tiles is overlaying the top of the boardwalk tiles".
+- **New scene pass.** Cells keep their ground copy and are blitted again in
+  the scene pool, right after the last building they lie wholly in front
+  of. Rules:
+  - "In front" is the iso separating-axis test on oriented footprints, and
+    counts only when the drawn rects overlap.
+  - A late cell takes the overlapping cells in front of it along, so no
+    `C_Shadow` lands on a nearer deck.
+  - Buildings already drawn that stand on or in front of a late cell are
+    emitted again after it.
+  - In this save: 188 cells, 12 building re-emits.
+- **Result:** at nudge 0, the brush L's top and front edges now run flush
+  into the marina dock. The user's hand nudge of (0, +32) now leaves a
+  visible step down. That nudge was compensating for the overlap, which
+  matches the `.23` export measurement. The Squidport, ornate pier and
+  pirate dock were checked off vs on. Only the joins changed (for example,
+  the pirate dock's end now covers the island's surf), and no deck covers
+  a shop.
+- `?pierOver=0` turns the pass off for A/B comparison.
+  `window.__CV_PIER_OVER()` lists which cells go after which building.
+  `DIAG.pierOver` holds the counts. `city-view-pixi.js?v=80`.
+  `smoke-pier-tiles` pins the pass.
+- Evidence: `m4-boardwalk-marina-zorder.png` (off / on / on + your +32);
+  `m4-boardwalk-zorder-squidport-check.png` (off / on / changed pixels).
+
+## 2026-10-30.25
+
+- **City sprites: fixed 0x0303 bsv3 files whose cell index is 1-based** — the
+  shattered-building sprites (LavaMachine, Hangar, Football Field + flipped,
+  Japanese Cherry Tree, and their winter variants).
+  - Cause: a minority of 0x0303 building-sprite files number their local
+    cells from 1, not 0. Parsed 0-based, every block drew the NEXT cell's
+    crop and the last one was dropped, so the composite came out as
+    displaced, mis-cropped fragments (LavaMachine was 11 off-register crops
+    with its 12th piece missing; Hangar lost its building entirely).
+  - `parse_bsv3` now shifts the pool to 0-based only when the distinct ci
+    set is exactly {1..n_cells} — the files that merely never USE cell 0
+    (pimentogrove, secretdrycleaners, secrettailorshop, hammockdistrict)
+    are genuinely 0-based and were verified to render correctly untouched;
+    a blanket shift duplicated their facades. Evidence pairs:
+    `mapdump/registration/m4-bsv3ci-*.png`. All 3,476 0x0103 files scanned
+    clean (no shift needed).
+  - The five slugs' PNGs + `city-sprites.json` entries were regenerated
+    via `sprites --slug` (LavaMachine now 12/12 blocks, 1388x1175).
+  - `ASSET_V`/`MANIFEST_V` -> `?v=20261030.7`, `city-view-pixi.js?v=80`.
+
+## 2026-10-30.24
+
+- **Road Lab: new "marina align" tab** for registering the ocean brushes by
+  hand.
+  - It embeds the live City View, framed on BarnacleBayMarina with its brush
+    L, the sea and the beach.
+  - Its controls move every boardwalk and pier frame together in
+    screen-aligned art px:
+    - ◀ ▲ ▼ ▶ buttons, with a step of 1–32 px;
+    - arrow keys, and shift+arrows for 4 steps;
+    - dx / dy fields and a reset;
+    - an A/B toggle (B key) that flips between 0,0 and your nudge.
+  - The readout is copyable JSON with:
+    - `pierDx` / `pierDy`;
+    - the tile-space equivalent;
+    - the viewer version and camera;
+    - a `viewer/index.html?pierDx=…&pierDy=…&camTx=…` URL that reproduces
+      it;
+    - free-text notes.
+  - Open it directly with `road-lab.html#tab-align`.
+- **Viewer hooks for it:**
+  - `window.__CV_PIER_NUDGE(dx, dy)` sets the nudge and rebuilds the
+    ground.
+  - `window.__CV_CAM()` returns the live camera.
+  - `?camTx=&camTy=&camZ=` opens on a given view and never saves it, so the
+    embedded view leaves your own saved City View camera alone.
+- `city-view-pixi.js?v=79`, `road-lab.js?v=34`.
+
+## 2026-10-30.23
+
+- **Boardwalk / ornate-pier placement re-derived from the game; reverts
+  `.21`/`.22`.** The `.21` "leg-ring ground corner" offset drew every brush
+  deck ~48 art px too HIGH. The frame origin now pins to the cell's front
+  corner `(x0, y1)` at 1:1 art px, the same pivot rule as every building
+  sprite. That puts the deck's top surface on its own save cells.
+- **How it was measured, independent of the deck:** viewer renders were
+  registered to the full-res in-game export using the building sprites
+  only, which fixes scale and offset. Then both images' deck pixels were
+  classified (plank vs water), projected into tile space, and matched.
+  - BarnacleBayMarina brush L, before: needs (−0.75, +0.75) tiles, i.e.
+    +48 art px down.
+  - After: (0, 0). A direct masked match of the deck pixels agrees to
+    within 1 export px (~7 art px).
+  - The marina building alone registers within 1 export px of all the other
+    buildings, so the reference is sound.
+  - The Squidport is too occluded by shops to pin the vertical, but its
+    cross-deck shift is consistent with this placement.
+- **Still different from the game at the marina join (draw order, not
+  position):** the viewer paints brush cells in the ground layer, under
+  every building. So the end of BarnacleBayMarina's own dock (side face,
+  two legs, blue shadow) is drawn over the brush deck that butts against
+  it. In game the brush cell in front covers it and the planks run
+  through. Not changed here.
+- `gen_pier_tiles.py` drops `ground_of` and the manifest `ground` field.
+  The viewer drops `pierGround`. Fetch `?v=20261030.23`,
+  `city-view-pixi.js?v=78`. `smoke-pier-tiles` now pins the origin rule,
+  rejects any ground offset, and checks the deck top spans one cell diamond
+  ending at the origin row.
+- Evidence: `mapdump/registration/m4-boardwalk-marina-firstprinciples.png`
+  (game | `.22` | `.23`, same registration).
+
+## 2026-10-30.22
+
+- **The `.21` boardwalk fix could silently not apply.** The viewer fetched
+  `assets/city/pier-tiles.json` with no cache-buster and read the new
+  `ground` corner with a `{0, 0}` fallback. A browser holding the cached
+  pre-`.21` manifest therefore drew exactly the `.20` placement, still ~51
+  art px too low, even with the new JS. Two fixes:
+  - The viewer now derives the ground corner itself (`pierGround`) from the
+    leg-ring blocks it already has, using the same fit as
+    `gen_pier_tiles.ground_of`. It no longer depends on the manifest field.
+  - The manifest fetch carries `?v=20261030.21`.
+- Verified by rendering with `ground` stripped from the manifest: the result
+  is pixel-identical to the fresh render, and differs from the `.20` render
+  on ~178k px. `smoke-pier-tiles` checks the viewer's derivation equals the
+  generator's for both assets, and that the fetch is versioned.
+  `city-view-pixi.js?v=77`.
+
+## 2026-10-30.21
+
+- **Correction to `.20`: the boardwalk and ornate-pier tiles were then drawn
+  ~51 art px too LOW.** Pinning the frame's bsv3 origin to the cell's front
+  corner was wrong, because that origin is not the frame's ground point.
+  Where the brush L's top arm runs into the end of BarnacleBayMarina's dock
+  (one continuous row in game), the brush deck sat visibly below the marina's.
+- **The ground point is measured off the art.** Each `C_PierWave*` ring is
+  where a leg meets the water, and the legs stand on the cell's two front
+  edges. So the rings lie on two 2:1 lines, and where those lines meet is
+  the cell's front corner at the waterline. `gen_pier_tiles.py` fits it per
+  asset (manifest `ground`):
+  - boardwalk: (−3.1, +50.5) art px from the frame origin, from 4 rings
+  - ornate pier: (+1.3, +59.0), from 6 rings
+  - The viewer pins that point to the cell's front corner (x0, y1), at
+    1:1 art px.
+- **This falls between the two earlier rules:** the old shadow-centred
+  placement was ~12 px too high (C_Shadow is the deck's drop shadow, whose
+  bottom vertex is ~17 px below the post feet), and `.20` was ~51 px too low.
+- A sweep against the in-game export could not decide this. The export is
+  too soft at this scale, and its edge and pixel scores disagreed. The
+  post-foot construction did, and the brush deck now meets the marina dock
+  at the same height.
+- `?pierDx=&pierDy=` (art px) nudges every brush frame for registration
+  sweeps. It ships at 0.
+- `smoke-pier-tiles` pins the ground-corner rule. For each asset it also
+  re-derives the corner from the leg rings (every ring within 8 px of its
+  2:1 edge) and checks it sits below the origin and above the shadow's bottom
+  vertex. Reverting to the origin pin fails it. The other harnesses are green.
+  `city-view-pixi.js?v=76`. Evidence (replaces the `.20` sheet):
+  `mapdump/registration/m4-boardwalk-marina-join.png` shows old / new / `.20`
+  at the arm-to-dock join, and old vs new blended 50% with the in-game export.
+
+## 2026-10-30.20
+
+- **City View: boardwalk and ornate-pier brush tiles were drawn about one
+  tile-height too high.** At BarnacleBayMarina the brush L ran under the
+  marina's own dock at a different deck height, where the in-game export
+  (`mapdump/registration/m4-barnacle-bay-ingame-export.png`) has the two
+  flush, closing a square around the inner water.
+- **Cause:** `buildPierCell` centred each frame's `C_Shadow` block on its 4×4
+  cell. `C_Shadow` is not the cell, though. It is the drop shadow the raised
+  deck casts on the water, so it sits lower on screen than the deck's
+  footprint. The frame's bsv3 origin is ~65 art px below the shadow's centre,
+  while a 4×4 cell's front corner is 128 px below the cell's centre, so every
+  tile drew ~63 art px too high (16 px at zoom 0.26). A masked template match
+  against the export, measuring brush vs marina, put the error at +10..+18 px
+  down before the fix and −2..−6 px after; that measurement is noisy because
+  animated characters and waves fall into the masks.
+- **Fix:** brush frames now use the building rule, the same one that places
+  the marina. The bsv3 origin pins to the cell's front corner (x0, y1) at
+  1:1 art px (`CAM.scale / ART.S`). This also drops the old 127×66 box
+  mapping, which stretched the art ×1.008 in x and ×0.97 in y. Applies to
+  every boardwalk and ornate-pier tile. Squidport and the OrnatePier building
+  in the Heights were checked by eye and join flush too.
+- With the shadow no longer covering the cell, the flat type-colour fills
+  would show under the deck. Each cell's frame now owns all 16 tile fills
+  (it used to own only its origin tile's), and `applyPierMode` hides them
+  while the art is shown.
+- `smoke-pier-tiles` pins the building-rule placement, the per-cell fills,
+  and the shadow/origin geometry for both assets (the origin is ~65 art px
+  below the shadow centre). Pinning back at the cell centre fails it. The
+  other harnesses are green. `city-view-pixi.js?v=75`. Evidence:
+  `mapdump/registration/m4-boardwalk-marina-join.png`: the in-game export
+  registered onto the viewer by the marina sprite, then 50% blended with
+  the before and after renders. Before, the brush L ghosts as a second copy
+  offset up the screen; after, it overlays the in-game deck.
+- Not changed: the manifest's `calib` (no longer read by the viewer; still
+  pinned by the harness as the shadow-derived value) and the Road Lab's
+  brush tabs, which keep their own box mapping.
+
+## 2026-10-30.19
+
+- **City View: past the land is a solid wall of cloud, not a sky with
+  scattered clouds.** The `.18` look was wrong. The `C_Cloud_*` crops on the
+  Land sheet are the clouds *inside* the mountain art, and the game paints no
+  sky. Read off the in-game full-map export
+  (`mapdump/registration/calib-export.png`, mapped to town tiles through
+  `g2e-homog.json`), the wall is:
+  - **Fill:** flat `#EFFFFF` over everything off the land, sampled from the
+    export.
+  - **Edge:** a straight iso line with small irregular puffs and a thin
+    `#BAC7DD` rim on the land side.
+  - **North edge:** y −128, 16 rows behind the mountain row's foot, so it
+    cuts across the back of the ridge and only the front rows of peaks show.
+    The export reads −124..−136 there because of the homography's drift
+    this far north, and 16 is the row's own `bgOffsetY` in its Snow variant.
+  - **East edge:** the land's own edge, x 592 (the export reads 595..600 near
+    the north end).
+  - **Coverage:** it covers the sea in the north-west corner too.
+  - **Draw order:** it is drawn over the mountain art, as the game draws it,
+    in its own Graphics (`beachCloudG`) stacked right above `beachArtC`.
+  - The A2CEE2 sky, the cloud lattice and the cloud-sprite cap are gone.
+- Tune panel: "cloud wall" toggle (the `sky` param). `smoke-beach-viewer` has
+  122 checks: the wall edge at (−128, 592), the stage order, white bands +
+  rim + puffs drawn as vectors with no sprites, culling, the east band, and
+  the toggles. Mutation runs (wall on the row's foot, wall not stacked above
+  the art, east edge moved) each fail. `smoke-road-lab`, `smoke-camera`,
+  `smoke-pier-tiles`, `smoke-spec-view` and `smoke-city-view-dom` are green.
+  `city-view-pixi.js?v=74`. Evidence:
+  `mapdump/registration/m4-land-cloud-wall.png` (export vs viewer, and
+  `.18` vs now).
+- Not done: the export also shows the same cloud over **unexpanded land**
+  inside the map (the two white blobs east of the town). That depends on
+  which land the save has bought, which this layer doesn't read.
+
+## 2026-10-30.18
+
+- **City View: the mountain row across the north edge of the land, with
+  sky and clouds beyond it.** landinfo.xml's live `<LandSprite>` stamps it
+  from `filename="Land"` (`land.bsv3`, `tutorialgame-100`). This is now a
+  third LandEdge set, `north`, next to the two beach sets:
+  - `MOUNTAINS`: `direction="x"`, `offsety="-7"`, so y −112, which is where
+    the Heights beach ends and the land's top edge
+    (`LandBlockPosition y="-7"`). It uses `repeat="-1"` and steps along x by
+    width 16 + padding 32 = 48. That is what both `<AlternateLandSprite>`
+    rows sum to (39+9, 48+0), and the art is 56 tiles wide, so neighbours
+    overlap by 8. Thirteen stamps cover x 0..624, past the land's east edge
+    at x 592 (`LandBlockSize x="40"`). The art is 46 rows of peaks with its
+    own clouds.
+  - `MOUNTAINSTOWATER`: one stamp, where the row meets the sea.
+  - `SHORELINE2`: `offsety="-10"`, `repeat="3"`, so the coast at
+    y −160..−112 behind the row.
+  - The set draws first, as the farthest thing on the map. Within a kind,
+    stamps now sort far-first by `ay − ax`, which is unchanged for the
+    y-direction beach edges.
+- **Past the row the land stops.** The game's camera halts two blocks beyond
+  it (`NumExtraViewableBlocks up="2"`), so the file never says what is
+  there. This viewer's camera does not stop, so it paints that ground as
+  sky: `A2CEE2`, the background landinfo gives the ridge in its Snow=1
+  variant, plus the Land sheet's own whole clouds (`C_Cloud_06/07/08`) on a
+  fixed jittered 14-tile lattice, capped at 300 sprites. The sky starts 8
+  rows north of the row's foot, because the art's ragged tree line otherwise
+  showed sky through it like a river along the land's edge.
+- `gen_beach_tiles.py`:
+  - Reads `<LandEdge>`s that have `<Requirement>` children. It takes the
+    default-season (Snow=0) `MOUNTAINS` and keeps the snow variant's colour
+    as `snowBgColor`.
+  - Ships the Land anims as frame 0 only (`framesTotal` 132). The full
+    cloud loop would have taken the manifest from 124 KB to 581 KB; it is
+    131 KB.
+  - Skips the friends-map card anims.
+  - Adds `landBlocks` (the land's block frame) to the manifest.
+- Tune panel: mountain row and sky + clouds toggles. `smoke-beach-viewer`
+  has 120 checks, including the row's y −112 / 48-stride / east-edge
+  placement, the water-end and shoreline stamps, draw order, the sky rects,
+  and the clouds coming from whole `C_Cloud` crops. Three mutation runs
+  (stride without padding, sky without the inset, Land set drawn last) each
+  fail. `smoke-road-lab`'s manifest pin now lists the Land tiles and anims.
+  All other harnesses are green. `city-view-pixi.js?v=73`. Evidence:
+  `mapdump/registration/m4-land-mountain-row.png`.
+- Not added: `Mountains_Standard` "neutral" (`direction="x"`,
+  `offsetx="20"`, `faded`, `useStreamer`), the ridge between the town and
+  the Heights east of x 320. Also, the land's east edge (x 592) is still
+  plain grass.
+
+## 2026-10-30.17
+
+- **The sea fill was drawn 12 tiles west and 136 rows north of the coast.**
+  terrain.js stores `seaFillX0..Y1` in grid coordinates (town + `ox`/`oy`),
+  like every layer, and every reader subtracts `ox`/`oy`. But the default
+  numbers (−64..0, 0..512) were measured in town-tile coordinates, the save's
+  prop frame. So the water landed at tile x −76..−12, y −136..376. That left a
+  grass band between the water and the beach shore strip's foam, a grass
+  channel at Mountain03/04, and Skull Island, the Cursed Ship and the
+  southern coast sitting on grass.
+- The defaults are now landinfo.xml's own bounds, written in town tiles
+  (`SEA_TILE`) and converted to grid once:
+  - **x0 −80:** `LandBlockPosition x="-3"` plus the two
+    `NumExtraViewableBlocks` to the left, × 16 tiles.
+  - **x1 0:** GridTypeMap's shoreline −3..0.
+  - **y0 −160:** the northernmost coast strip, `SHORELINE2 offsety="-10"`
+    (16-tile blocks).
+  - **y1 704:** `Region Ocean y2="700"`, rounded out to the 16-tile block the
+    last lower beach strip ends on.
+  - **Result:** the sea's shoreline is the same tile x 0 the beach strips
+    anchor on, so the cyan "sea model" reference line no longer appears.
+- `smoke-camera`'s "shoreline stays west of the road grid" compared a grid
+  value with a tile number. It now compares in town tiles: shoreline 0 vs the
+  road layer's x0 = 4. A new check pins the landinfo bounds. `smoke-beach-viewer`
+  now requires the sea to meet the anchor at x 0 and to span y −112..704.
+  Restoring the old defaults fails 2 checks in each harness. `terrain.js?v=16`
+  in both `viewer/index.html` and the deprecated `city-view.html` (the shared
+  module). Evidence: `mapdump/registration/m4-ocean-seafill-frame.png`
+  (before/after at the Heights, the seam, the lower beach and wide) and
+  `m4-ocean-seafill-south.png`.
+- Unchanged: the boardwalk/pier brush layers. The generator ships their
+  points already in grid coordinates, and they line up with the Squidport
+  props. The Road Lab's quoted "sea −64..0, coast 0..512" text and the
+  manifest's `coast.coastY1: 512` note still carry the old numbers.
+
+## 2026-10-30.16
+
+- **City View beach placement now follows landinfo.xml literally. Both coast
+  sets were off, along the coast and across it.**
+  - **Along the coast:** `offsetx`/`offsety` count **16-tile land blocks**,
+    not tiles (the same unit as `LandBlockPosition y="-7"`). The lower `Beach`
+    set (`offsety="-1"`, `repeat="-1"`) therefore starts at **y −16** and runs
+    to the land's south edge (Region Springfield y2 = 700). The Heights
+    `springfieldheightsnobeach` set (`offsety="-7"`, `repeat="6"`, width 16)
+    runs **y −112..−16**. The two meet at −16, which is Mountain03's north edge
+    (read off the save as an independent check) and GridTypeMap's split between
+    its two beach ranges. The old code read the offsets as tiles (lower −1,
+    Heights −109) and stepped by 17, so the strips drifted a row per repeat.
+    The step is now the edge's own `width` (16); the art paints 17 rows, so
+    neighbours overlap by one row, drawn far end first.
+  - **Across it:** the anchor is the land origin, **tile x 0**, the frame the
+    save's props use. Mountain04/LowerMountainBeachShoreline ends at x 0, and
+    the beach chairs and towels stand on x 0..3. The `.14` fix anchored on the
+    terrain's sea fill (`seaFillX1 − ox` = −12), which put the sand 12 tiles out
+    to sea. The cyan line still marks that modelled sea edge, as a reference.
+- **The Heights beach was missing its sand.** Its `beach1` LandEdge carries
+  `hasBackground="true" bgColor="EEDDCCFF" bgWidth="13.5" bgHeight="16"
+  bgOffsetX="-0.5"`: a solid fill the engine paints under each strip. The
+  `beach1` art itself is only the cliff, rocks and sand patches on top of that
+  fill. `gen_beach_tiles.py` now keeps the `bg*` attributes in the manifest,
+  and the viewer draws the fill in `beachBgG`, the bottom child of `beachArtC`
+  (toggle: tune panel → bg fill).
+- `BEACHBORDEROVERLAY` is no longer stamped: it exists only under
+  `<AlternateLandSprite>` (the pre-v28 land), not the live `<LandSprite>`.
+- The tune panel replaces the seam/pitch/mode steppers with A/B knobs against
+  the file: anchor x/y, `block` (1 reproduces the old misreading), bg fill,
+  offsets, and a "file values" reset. Params moved to a `.v2` storage key so a
+  saved v1 seam/pitch cannot pull the coast back to where it was.
+- `smoke-beach-viewer` pins the new rule: the y −16 / −112 starts, 16-row
+  steps, the meet on Mountain03, the anchor at x 0, the save's beach chairs on
+  buildarea tiles, gap-free shore rows, and six EEDDCC bg quads. Two mutation
+  runs confirm the checks bite: offsets read as tiles fails 8 checks, and the
+  old sea-fill anchor fails 6. 108 checks pass. `smoke-road-lab`,
+  `smoke-pier-tiles`, `smoke-spec-view`, `smoke-camera` and
+  `smoke-city-view-dom` are still green. Evidence:
+  `mapdump/registration/m4-beach-landedge-blocks.png` (before/after for the
+  Heights, the seam and the lower beach). `city-view-pixi.js?v=72`.
+- Not changed: the terrain's sea fill still ends at tile x −12, so a grass
+  band shows between the water and the shore art at x −4. The Road Lab's
+  map-placement card still uses its own seam/pitch model.
+
+## 2026-10-30.15
+
+- **City View beach art fix — the real "massive tile": every art crop was being
+  drawn `cell_w × cell_h` times too large.** Turning on **Beach art** put a
+  single opaque slab over the map, and this is the cause. A PIXI `Sprite`'s
+  matrix *scales its texture frame* (the drawn box is frame × matrix), and the
+  coast art lives in `beachArtC`, which sits directly on the stage — so the
+  local space is screen px and the matrix must be **target px per frame px**.
+  `beachDraw` was passing the destination size instead: `Matrix(W, 0, 0, H, X, Y)`
+  where `W = cell_w × scale`. So an 87×62 shore cell drew ~7,500 px wide, a
+  312×165 buildarea cell ~97,000 px, and the Heights mountain overlay's
+  669×384 cell **~447,000 px** — one crop covering hundreds of screens. Now
+  `Matrix(W / bl.sw, 0, 0, H / bl.sh, X, Y)`; the widest sprite on the whole
+  coast at zoom 1 is 669 px, exactly the art. This is also why the Road Lab
+  never showed it: `ctx.drawImage` takes the source rect and the destination
+  rect separately, so the same `W`/`H` are sizes there and only there.
+  Sibling layers were checked and are fine — `emitQuad` may pass a size because
+  its texture is the 1×1 unit quad, and the pier art already passes scale
+  factors (`fx = sx * kx / 4`, "sheet px -> screen").
+- **Why the harness missed it, and the check that now covers it:** every art
+  check compared the *intended* rect (`probe().rects()`), which was always
+  right — nothing measured what PIXI would actually paint. The harness now
+  multiplies each blit's matrix back up by its texture frame and asserts it
+  equals the intended rect per sprite, plus a magnitude pin (no blit may exceed
+  the widest art cell). Both fail loudly on the old line, verified by
+  re-running with it restored.
+- The `2026-10-30.14` entry above (anchor column inland by `terrain.ox`) was a
+  real, separate bug — the footprints did land on the town — but it was **not**
+  what made the art read as one massive tile. Both are fixed; the anchor stays
+  as that entry describes. 99 checks; `smoke-road-lab`, `smoke-pier-tiles`,
+  `smoke-spec-view`, `smoke-camera` still green. `city-view-pixi.js?v=71`.
+
+## 2026-10-30.14
+
+- **City View beach fix — the whole coast was being painted 12 tiles inland,
+  down the middle of the town.** This is the second "the beach art is one
+  massive tile that covers most of the map" report; the scale was not the
+  problem this time, the **anchor column** was. The beach's anchor is the
+  shoreline column (landinfo's GridTypeMap puts `beach` at x 0..4 with the
+  shoreline at −3..0, and the art's own opaque boxes agree), but those are
+  terrain **grid** columns — the number the Road Lab works in, which is why its
+  map card looked right at 0. The City View draws in **tile** space, where grid
+  x becomes tile x through terrain's grid→tile offset (the same subtraction the
+  sea fill itself does: `seaFillX0..X1 - ox`). The shoreline is therefore tile
+  **x = seaFillX1 − ox = −12**, so anchoring at plain `0` moved the entire coast
+  12 tiles inland: a sand strip and a 14-tile-deep cliff slab sitting on the
+  town lawn, which is what read as one huge tile. `beachAnchorX()` now resolves
+  against `terrain.seaFillX1 - terrain.ox`; **`anchor x` is the shift from that
+  shoreline** (0 = the sand straddles the water) and its readout shows the
+  resolved tile column. Measured at the rest camera, art coverage of the
+  viewport at the town centre drops from 48.5% to 23.9%. The rows were never
+  affected — the seam is measured off the save's props, which are already in
+  tile space — which is why the seams looked right while the art did not.
+  Evidence: `mapdump/registration/m4-beach-anchor-shoreline.png` (before/after
+  at the coast and in the Heights stretch).
+- Also verified the art scale itself rather than assuming it: every anim's
+  opaque span, measured off the sheets and reduced through the tile basis
+  `u=(64,−32)`, `v=(64,32)`, equals its manifest `tilebox` to two decimals
+  (`beachShore1` 4.30 × 17.05 vs 4.30 × 17.04, `heights.Beach1` 14.46 × 16.42
+  vs 14.45 × 16.41), the pre-sheared art runs along the 1:2 oblique, and a
+  16-tile-long edge piece is the same size class as the 16×16-tile mountain
+  props in the same pack — so 64 art px per town tile stands, and the pack's
+  4× `/4` box-space convention (the pier manifest) does not apply here.
+- The harness gained pins for the conversion so this cannot regress silently:
+  the anchor equals `seaFillX1 - ox` (−12) with `ax` at 0, the buildarea
+  footprint starts **on** the shoreline column with the sand west of it, no
+  footprint lands east of tile x 6 (that is the town), `anchor x` dials the
+  coast, and the draw passes now frame the camera on the coast instead of the
+  origin. 97 checks; `smoke-road-lab`, `smoke-pier-tiles`, `smoke-spec-view`,
+  `smoke-camera` still green. `city-view-pixi.js?v=70`.
+
+## 2026-10-30.13
+
+- **City View beach art fix — the two `repeat="1"` pieces were being stamped on
+  every strip, which read as one massive tile over the map.** Turning on
+  **Beach art** showed a giant slab rather than a coast of strips. Cause: the
+  viewer attached all three parts of a set to every strip, so the pieces that
+  landinfo stamps ONCE for the whole edge were repeated —
+  `BEACHBORDEROVERLAY` (`width="48"`, `repeat="1"`) 23× and the Heights
+  `beachmtnoverlay` 6×. That overlay is two crops of **669×384** and **574×382
+  art px**, so six copies blanket the coast. `beachBuild()` now builds a stamp
+  list **per anim from its own `<LandEdge>` record** (`tiles[kind].landedge`,
+  already in the manifest): `repeat="-1"` fills to the end of the modelled
+  coast, `repeat="6"` gives six, `repeat="1"` gives one — whole-coast art block
+  count 1367 → 1049, `h_overlay` 12 crops → 2, `border` 322 → 14. The Road
+  Lab's map card never showed this because it only stamps the shore/buildarea
+  pair. Within a kind the stamps now also draw far-end-first, so the 1-row
+  overlap neighbouring strips have at a 17-tile pitch lays down in the right
+  order.
+- **The file's own placement offsets are applied (and A/B-able).** Each
+  `<LandEdge>` carries `offsetx`/`offsety` — lower set `offsety="-1"`, Heights
+  set `offsety="-7"` — and those are now added to each stamp's anchor (the art
+  boxes were measured without them), so the lower shore band sits at rows
+  -1..389 and the six Heights strips at -24…-109 by default. A new
+  **`offsets`** toggle in the beach tune panel ignores them (everything lands on
+  the plain seam grid) for comparing the file's offsets against the map, the
+  same way `seam` stays a stepper.
+- **New `edge y` stepper** for the two single-stamp pieces: the file says they
+  are stamped once but not which end of the edge they sit at, so it dials them
+  from the seam. The on-map labels now name every piece with the repeat it was
+  stamped at — `lower: Beach · buildarea×23(r=-1) shore×23(r=-1) border×1(r=1)`
+  — so a mis-stamped piece reads as text instead of hiding under a wall of art,
+  and `h inst` is now "how many of the file's 6 to draw".
+- Also moved `BEACH_MAX_STAMPS` up with the other beach constants (it was
+  declared below the boot `fetch` block, so a synchronous load — the harness's —
+  built an empty coast), and the harness gained checks for all of the above:
+  per-anim repeat drives the counts, the two `repeat="1"` pieces are one stamp
+  (`h_overlay` is 2 crops, not 12), offsets apply per anim and the toggle
+  removes them, `hinst` dials the set down without touching the file's repeat,
+  `edgeAt` moves the single stamps, and a manifest forced to `repeat="-1"` fills
+  whatever the kind. 93 checks; `smoke-road-lab`, `smoke-pier-tiles`,
+  `smoke-spec-view`, `smoke-camera` still green. `city-view-pixi.js?v=69`.
+
+## 2026-10-30.12
+
+- **City View (Pixi) — the two fixed beach coast sets are now on the map, as
+  footprints and as art.** New beach layer in `web/viewer/city-view-pixi.js`
+  draws the coast the way `landinfo.xml`+the measured art describe it, reading
+  the same `web/assets/city/beach-tiles.json` the Road Lab uses: the **lower**
+  set (`Beach` — `beachShore1`/`beachBuildArea1`/`beachBorderOverlay`,
+  `repeat="-1"`, stepped by the 17 rows one strip actually paints) filled from
+  the seam south to the end of the coast, and the **Springfield Heights** set
+  (`springfieldheightsnobeach` — `heights.BeachShore1`/`heights.Beach1`/
+  `heights.BeachMtnOverlay`, `repeat="6"`) replacing it north of the seam.
+  Three viewbar toggles in `web/viewer/index.html`: **Beach sets** (the tile
+  footprints + seam/shoreline reference lines, drawn at ground level under the
+  buildings) and **Beach art** (the oblique sheet billboards, drawn as a static
+  frame 0 like the road and pier art), both remembered in `localStorage`
+  (`mrsnrub.cityview.beachsets` / `.beachart`), plus **Beach tune** which opens
+  the new `#beachtune` panel. Nothing is painted by the user and nothing is
+  read from the save — the sets are fixed, exactly like the pier and river art.
+- **`#beachtune` — the open questions are steppers, not guesses.** Seam row,
+  the two strip pitches, the Heights repeat, the fill end, an inland `anchor x`
+  offset and a `mode: replace / over` switch, so the two things the file does
+  not settle can be walked against the real map: which row the southern fill
+  stops at, and whether the northern shore sits *in place of* the lower one
+  (default) or *tiled over the top of* it. `mode: over` exists precisely to
+  test the "tiled OVER the top?" reading: the two shores' opaque boxes measure
+  the same tile columns, which is what argued against a stack. Params persist in
+  `localStorage` under `mrsnrub.cityview.beach.params`; `window.__CV_BEACH`
+  exposes `instances()/tiles()/rects()/state()/set()/rebuild()/seamFromProps()`
+  for the console.
+- **The seam default is now MEASURED, off the props that sit where the ridge
+  meets the water.** Both the viewer and the Road Lab seed the seam from
+  `Mountain03`/`LowerMountainBeach` (16×16) and `Mountain04`/
+  `LowerMountainBeachShoreline` (6×16) in the save — their south edge is row 0,
+  so the ridge foot occupies rows -16..0 at the west end of the
+  `Mountains_Standard` wall. The engine's own `GridTypeMap` split (`y=-16`, 16
+  rows north of the props) is no longer the default but is still drawn as the
+  **second candidate** row (faint dashed, labelled `GridTypeMap split y=-16`),
+  because the two sources only bracket the answer. `BEACH_MAP.start` in the Lab
+  is seeded by the new `beachSeamFromProps()`, exported on `window.__LAB`.
+- **New harness `tools/smoke-beach-viewer.cjs` (83 checks).** Four layers: the
+  manifest itself, source greps on the viewer (no `ctx.fillRect`, art after the
+  props, footprints under the buildings, cache-busters), a behavioural
+  slice-and-run that boots the real beach block under a fake Pixi and asserts
+  the geometry — seam 0 from the props, 23 southern + 6 Heights strips, the
+  shore covers every row from the seam to the sea with **no 1-row gaps** (and
+  that an 18-pitch *would* gap it), every block rect brackets its measured
+  opaque box in tile space, and the blit inverts through the shipped camera
+  affine to exactly `tile_basis(art px)` — then the page/CSS wiring and
+  viewer-vs-Lab parity on the same manifest. It also pins two failure modes
+  already paid for: a sheet that has not decoded draws **no** art (a stretched
+  placeholder is a solid rectangle over the coast — the Lab's black-canvas bug),
+  and the art pool is reused rather than grown across frames.
+- **Style/cache:** `#beachtune` added to `web/css/city-view.css` in its own
+  column left of `#arttune` (both can be open at once), reusing that panel's
+  row/button selectors; busters bumped to `city-view-pixi.js?v=68`,
+  `city-view.css?v=15`, `road-lab.js?v=33`. The deprecated Canvas page
+  (`web/city-view.html`, `web/js/city-view.js`) is untouched.
+
+- **Road Lab beach tab — CORRECTED: the lower beach set does NOT run the whole
+  coast (it stops at the mountains).** `.10` above answered "does the beach run
+  the whole way up and down?" with *yes, filled end to end*; that was wrong for
+  the north end. `landinfo.xml` decides the set by `<LandEdge filename=…>` and
+  there are **two** files: the coast below the mountain ridge stamps
+  `filename="Beach"` (`BEACHSHORE1`/`BEACHBUILDAREA1`, `repeat="-1"`,
+  `offsety="-1"`), while the Springfield Heights coast north of it stamps
+  `filename="springfieldheightsnobeach"` (`beachshore1`/`beach1`/
+  `beachmtnoverlay`, `repeat="6"`, `offsety="-7"`, `beach1 bgColor="EEDDCCFF"`).
+  So `repeat="-1"` fills the **southern** stretch only — from the seam where the
+  ridge meets the water (the `Mountain03` asset) south to `y = 512`; north of
+  that row a different asset takes over. `GridTypeRange` is the land-*type*
+  table, not the art-set table, so it can no longer be cited as proof of
+  coverage by set. The `coast.lower` fill, the caption and
+  `formatBeachRef()`'s `place:` block now say "the SOUTHERN coast" and mark the
+  seam as **a claim, not a measurement** (`coast.seamUnverified`,
+  `seamUnverified: true` in the manifest): the type ranges split at `y = −16`
+  and the region table puts the mountain band at `SHMountains y −18..0`, both of
+  which say "the mountains meet the coast about here", but the exact row is not
+  pinned against the map — hence a stepper, and the canvas labels the dashed
+  line `(unverified)`.
+- **Road Lab beach tab — the other coast: the Heights set is built in.** Four
+  new cards (*Northern shore*, *Northern beach + cliff*, *Mountain-at-the-water
+  stamp*, *Northern coast band*) paint `beachshore1` / `beach1` /
+  `beachmtnoverlay` from their **own** sheet, and the map-placement card can
+  draw the whole split. `tools/gen_beach_tiles.py` parses both bsv3s
+  (`ASSETS`, `load_asset`, `pack_dir(asset)`) and publishes them as
+  **`assets.{beach,heights}`** (each with its own `pack`/`sheet`/`bsv3`/`cells`)
+  plus **`tiles.{h_shore,h_beach,h_overlay}`**; those anims are namespaced
+  **`heights.*`** because the two files both carry a case-insensitive
+  `beachshore1`. New manifest keys: **`regions[]`** (the `<Region>` bands —
+  `SHMountains y −18..0` between `Springfield y 4..700` and `SH y −108..−18`),
+  **`coast.twoSets`** and **`coast.heights`** (`set`, `repeat`, `offsety`, `x`,
+  `pitchTiles`). The answer to "is the other beach tiled OVER the current
+  tiles?" is in the measured art: the Heights `BeachShore1` opaque box is
+  `x −4.17…−0.01`, `y 0…17.02` — the **same columns** the lower shore covers —
+  so north of the seam it **replaces** those tiles rather than occupying extra
+  columns; whether anything is also painted over them at the join is
+  unverified, which is what the card's **`mode: replace` / `mode: over`**
+  toggle makes visible (`over` stamps its strips at the lower set's anchors).
+  Only `beachmtnoverlay` (`repeat="1"`) and `BEACHBORDEROVERLAY` are true
+  overlays. `road-lab.js` loads a second image (`BEACH_IMH`) and asks the anim
+  which sheet a crop comes from (`beachSheetOf`), the placement model gained
+  `beachSeam()` (the lower set's own north anchor, so one stepper moves the
+  seam), `beachPlaceHInstances`, `beachPlaceAll`, `beachPlaceSpanOf`,
+  `beachPlaceHAnims`, and `heights`/`hinst`/`hpitch`/`hmode` state with steppers
+  (defaults from the file: 6 strips from `repeat="6"`, pitch 17 from its
+  measured `coverRows`); the two coasts get different footprint tints (cyan /
+  amber south, violet / green north) and their own anchor colours, labels and
+  caption counts. The Heights set is **off** until asked for, and turning it on
+  or off never disturbs the southern fill.
+- **Fixed: the whole beach tab rendered as black rectangles.** The Mountain-overlay
+  card has no unpurchased sand, so it has no `sand:` button — but `bindBeachView`
+  bound one for every card, and `bindStepper` did `$(id).addEventListener(…)`, so
+  the missing `#bch-hmtn-variant` threw a `TypeError` out of the init loop and
+  **took the page's script down with it**: no canvas ever got past its `#101216`
+  clear. Cards now carry a `variantBtn` flag (the reader and the binder both skip
+  the control when it is absent), `bindStepper` warns on the console instead of
+  throwing, and the smoke harness no longer conjures elements the page doesn't
+  have — `getElementById` there now returns `null` for any id
+  `web/viewer/road-lab.html` doesn't declare, with a check that the list stays
+  empty, so a control the code asks for can no longer be missing in silence. The
+  same edit also **revives the Heights band card's** `repeats` / `pitch` /
+  `along` steppers: the pair-only bindings were gated on `kind === 'pair'`, so
+  the `h_pair` card's buttons existed but were never wired.
+- **Beach evidence for review.** `tools/gen_beach_tiles.py --evidence` composites
+  the Heights anims and their coast band (`heights.Beach1` behind,
+  `heights.BeachShore1` on top) → `mapdump/registration/m4-beach-coastband-heights.png`
+  (sand at the water with a rocky ridge rising inland) and
+  `m4-beach-heights.*.png`; `tools/gen_beach_place_preview.py` is rewritten for
+  the two-set model — a seam column (the six Heights strips meeting the last
+  rows of the southern fill), four southern columns and one oblique section
+  straddling the seam with the real art of **both** sheets →
+  `mapdump/registration/m4-beach-placement-preview.png`.
+- **Harness.** `tools/smoke-road-lab.cjs` grew to 316 checks: the manifest
+  carries both sets (finite `repeat="6"` vs `-1`, `offsety` `-7` vs `-1`), the
+  two shores measure the same columns ("neighbours, not a stack"), the seam is
+  published as unverified, each Heights card blits its own sheet with real
+  crops, the six northern strips land contiguous north of the seam and meet it,
+  `mode: over` re-uses the lower anchors, the northern art can only come from
+  its own cells table, `fit` grows the window north, steppers clamp, the variant
+  toggle swaps both coasts, and the old whole-coast claim is asserted **absent**
+  from the caption, the canvas labels and the reference block. Cache-buster
+  `road-lab.js?v=31`. Still inspection only: no Pixi viewer, deprecated Canvas
+  page or database changes.
+
+## 2026-10-30.10
+
+*Superseded in part by `2026-10-30.11`: the "filled end to end / the whole coast"
+answer below is true only of the **southern** (below-the-mountains) set — north of
+the seam the coast is a different asset.*
+
+- **Road Lab beach tab — the coast is FILLED, not two patches.** The placement
+  card's question "does the beach run the whole way up and down the coast?" is
+  now answered by the engine's own data instead of by the steppers. Two pieces
+  of evidence, both published in the manifest: (1)
+  `landinfo.xml <GridTypeMap base_type="grass">` is the engine's per-cell land
+  table, and the lower coast band
+  `<GridTypeRange type="beach" x_start="0" x_end="4" y_start="-16"/>` has **no
+  `y_end`** — a range bounded on one side only is unbounded the other way, so
+  the 4-tile-deep beach band is beach from `y = -16` to the end of the ocean
+  frame (`y = 512`, `terrain.js seaFillY1`); north of that split is a *wider*
+  band (`beach` `x 0..12` + `cliff` `x 12..16`, both `y_end="-16"`) belonging to
+  the deferred `springfieldheightsnobeach` set. The measured buildarea footprint
+  (`x 0…3`) matches that range tile for tile. (2) `LandEdge repeat="-1"` means
+  *stamp along the whole edge*: every edge of a known fixed length carries a
+  finite repeat (the Heights beach 6, the `MOUNTAINSTOWATER` cap 1, Krustyland's
+  fence 13/12, its parking lots 1–6), and the only `repeat="-1"` edges are the
+  full-map ones — the `MOUNTAINS` ridge ×2, the `neutral` Mountains_Standard
+  wall, and **both** Beach strips. So the card defaults to **fill**: 32 strips
+  end to end over `y −16…512` = **4352** grid tiles, one continuous band. New
+  manifest keys from `tools/gen_beach_tiles.py`: **`gridtype`** (the ranges,
+  missing bounds kept as `null`), **`coast`** (`repeat`, an `autoRepeat` note,
+  the 16-edge `edgeInventory` the contrast is read from, and the derived
+  `lower {from, to, x, tiles, pitchTiles, strips}`), and per-tile
+  **`coverRows`**. `coverRows` also fixed the model: the art reaches 18 tiles
+  along the coast but only *paints* **17 rows**, so the old 18-tile pitch drew
+  the coast with a 1-row gap at every strip join — the default pitch is now the
+  painted rows, and the harness proves both halves (17 → no gaps, 18 → 31 gaps).
+  The card gained `coast from`/`coast to` steppers, a **fill coast** toggle
+  (the `strips` steppers take over from it, capped at `BEACH_MAX_STRIPS`), a
+  **land types** toggle that draws the `GridTypeRange` bands under the
+  footprints, a dashed violet **Heights split** line, on-map strip labels that
+  drop out rather than land on the band, and a **fit** mode that sizes the zoom
+  to the whole 528-tile stretch (at ×1 that would be a 34k-px canvas);
+  `beachPlaceFitZoom` now **floors** the zoom — rounding up made the canvas a
+  pixel wider than the card and clipped the coast it was meant to show.
+  `formatBeachRef()`'s `place:` block carries the contract
+  (`fill`/`repeat`/`coastFrom`/`coastTo`/`strips`/`pitchTiles`/`coverRows`/
+  `artSpanTiles`/`anchorColumn`/`coveredTiles` plus the `GridTypeMap` quote).
+  Cache-buster `road-lab.js?v=30`; `tools/smoke-road-lab.cjs` rewritten for the
+  fill model (292 checks: the range is unbounded south, every `repeat="-1"`
+  edge is a full-map edge, 32 strips cover every coast row with 4 shore + 4
+  buildarea tiles and no overlaps, strip 31 is strip 0 stepped by 31 × pitch
+  through the same affine, fit fits both ends on one canvas, the steppers and
+  the ten toggles drive it). Evidence for review: `tools/gen_beach_place_preview.py`
+  now draws the whole coast as four top-down columns (`y −24…520`, first column
+  starting north of the split) plus one oblique section with the real art →
+  `mapdump/registration/m4-beach-placement-preview.png`. Still inspection only,
+  and the repeat *phase*, the anchor column and what `width="16"` means stay
+  open questions; no Pixi viewer, deprecated Canvas page or database changes.
+
+## 2026-10-30.9
+
+- **Road Lab beach tab — a map-placement card (where those tiles get
+  applied).** The fourth card on the **beach** tab draws the west coast as the
+  viewer already models it — sea from grid `x −64…0` in `terrain.js`
+  `SEA_RGB`/`seaFill*`, coast `y 0..512`, land east of it — and stamps the
+  shore + buildarea pair on top, so the question "which tiles get the beach?"
+  is answered on screen instead of in prose. Which grid tiles get painted is
+  **derived from the art, not claimed**: `tools/gen_beach_tiles.py` now
+  measures each anim's **opaque** pixel footprint and maps it into grid tiles
+  through the ground basis (`camera.js` ORIENT `{1,−1,1}` at 64 px/unit, so
+  tile `(tx,ty)` → screen `(64(tx+ty), 32(ty−tx))` px), publishing it as
+  **`anims[].tilebox`** plus a top-level `basis` note (a stale manifest without
+  it shows a "re-run `tools/gen_beach_tiles.py`" note instead of crashing).
+  That measurement is
+  what places the strips: the shore covers the 4 tiles **water-side** of its
+  anchor column (`x −4…−1`), the buildarea the 4 tiles **inland** (`x 0…3`),
+  both 17–18 tiles along the coast — i.e. the anchor column **is** the
+  shoreline, exactly where `terrain.js` puts it. `iso` (default) draws the
+  whole view through the City View's own projection (`CAM.tileAffine`), and
+  the pre-sheared art blits through it **unshifted** because the art's own
+  tile step equals that projection's `(+64, +32)` px step; off gives a flat
+  top-down grid for reading a long stretch of coast. Painted tiles are cyan
+  (shore) / amber (buildarea) diamonds with the anchor cross and its
+  along-coast span on top; `LandEdge width="16"` is drawn as a **dashed
+  claim**, not a second truth, because the measured band is only ~8 tiles
+  deep. Open questions stay steppers rather than facts: anchor column/row
+  (default the eye-witness `(0, 67)`), the along-coast `pitch` (default the
+  18-tile art length, pending the real `repeat="-1"` rule), `copies`, and the
+  inland/along nudge. New `bch-map-*` controls (`web/viewer/road-lab.html`
+  `cv-beachmap`, `road-lab.js?v=28`); `renderBeach()` paints it in the shared
+  pass, `formatBeachRef()` gained a **`place:`** block
+  (`shorelineX`/`sea`/`coastY`/`anchorTile`/`pitchTiles`/`spanTiles`/
+  `coveredTiles`), and `tools/smoke-road-lab.cjs` grew ~25 placement checks
+  (opaque-box straddle of the shoreline column, 136 tiles per instance / 272
+  for the default pair with no overlap, the canonical 2:1 affine and
+  `k === zoom`, the second instance being the first stepped by `pitch`
+  through the same matrix, footprint diamonds being 2:1, top-down dropping
+  the art but keeping the footprints, labels staying off the art, the
+  `place:` literal). Evidence for review:
+  **`tools/gen_beach_place_preview.py`** draws the same two views outside the
+  browser → `mapdump/registration/m4-beach-placement-preview.png` (top-down +
+  oblique, same numbers as the card). Still inspection only — no Pixi viewer,
+  deprecated Canvas page or database changes.
+
 ## 2026-10-30.8
 
 - **Asset Explorer is now a PHP page over a SQLite index (no more

@@ -32,6 +32,8 @@ function ctxStub() {
         save() {}, restore() {}, translate() {}, rotate() {}, scale() {},
         clip() { clipCalls++; }, drawImage() { drawImageCalls++; }, setTransform() {},
         putImageData() {}, createImageData(w, h) { return { data: new Uint8ClampedArray(w * h * 4), width: w, height: h }; },
+        setLineDash(v) { (this._dashes = this._dashes || []).push(v); },
+        getLineDash() { return this._dashes || []; },
         transform() {},
         set font(v) {}, set textAlign(v) {}, set textBaseline(v) {},
         fillStyle: '', strokeStyle: '', lineWidth: 1,
@@ -54,6 +56,15 @@ function el(id) {
                 self._labels.push({ t: String(t), x: x, y: y, w: String(t).length * 6.2, h: 11 });
             };
             c.scale = function (a, b) { (self._scales = self._scales || []).push([a, b]); };
+            // record the stroke colour of every stroke() so a check can tell the
+            // bright live-seam line from the faint type-table candidate
+            c.stroke = function () {
+                (self._strokes = self._strokes || []).push(String(self.__strokeStyle || ''));
+            };
+            Object.defineProperty(c, 'strokeStyle', {
+                get() { return self.__strokeStyle; },
+                set(v) { self.__strokeStyle = v; },
+            });
             c.transform = function (a, b, cc, d, e, f) {
                 (self._xforms = self._xforms || []).push([a, b, cc, d, e, f]);
             };
@@ -85,7 +96,7 @@ const presets = ['current', 'hair', 'narrow', 'mid', 'midwide', 'wide', 'oneside
     b._attr['data-preset'] = p;
     return b;
 });
-const tabBtns = [['tab-sheet', 'tab-btn-sheet'], ['tab-water', 'tab-btn-water'], ['tab-dirt', 'tab-btn-dirt'], ['tab-dirt2', 'tab-btn-dirt2'], ['tab-bw', 'tab-btn-bw'], ['tab-pier', 'tab-btn-pier'], ['tab-bridge', 'tab-btn-bridge'], ['tab-tune', 'tab-btn-tune']].map(([t, id]) => {
+const tabBtns = [['tab-sheet', 'tab-btn-sheet'], ['tab-water', 'tab-btn-water'], ['tab-dirt', 'tab-btn-dirt'], ['tab-dirt2', 'tab-btn-dirt2'], ['tab-bw', 'tab-btn-bw'], ['tab-pier', 'tab-btn-pier'], ['tab-bridge', 'tab-btn-bridge'], ['tab-beach', 'tab-btn-beach'], ['tab-tune', 'tab-btn-tune']].map(([t, id]) => {
     const b = el(id);
     b._attr['data-tab'] = t;
     return b;
@@ -95,8 +106,20 @@ function preset(name) {
     if (!b) throw new Error('no preset button: ' + name);
     return b;
 }
+/* BROWSER TRUTH for element ids: the real page can only hand back an element the
+   HTML actually contains, and asking for one it doesn't is a bug that blanks the
+   canvas pass (a missing `bch-hmtn-variant` once threw out of the init loop and
+   left EVERY beach canvas at its dark clear colour — black rectangles). The stub
+   therefore reads road-lab.html and returns null for any id it does not declare,
+   instead of conjuring an element the browser would never give back. */
+const HTMLSRC = fs.readFileSync(path.join(root, 'web', 'viewer', 'road-lab.html'), 'utf8');
+const HTML_IDS = new Set(
+    [...HTMLSRC.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
+const missingIds = [];
 global.document = {
-    getElementById: id => (els[id] || (els[id] = el(id))),
+    getElementById: id => (els[id] ||
+        (HTML_IDS.has(id) ? (els[id] = el(id))
+            : (missingIds.push(id), null))),
     querySelectorAll: sel => (sel === '[data-preset]' ? presets : sel === '[data-tab]' ? tabBtns : []),
     createElement: () => el('tmp'),
     body: { appendChild() {}, removeChild() {} },
@@ -126,7 +149,11 @@ global.Image = function () {
             const bs = { 'bridgetop_f2.png': [404, 325], 'bridgetop_f3.png': [404, 306],
                          'bridgetop_f4.png': [294, 325], 'bridgetop_f5.png': [294, 270],
                          'bridgetop_f6.png': [294, 306],
-                         'bridgebottom_f0.png': [294, 249] };
+                         'bridgebottom_f0.png': [294, 249],
+                         // beach tab: the real beach.bsv3 sheet (tutorialgame),
+                         // and the northern set's springfieldheightsnobeach sheet
+                         'images/beach.png': [2048, 1024],
+                         'images/springfieldheightsnobeach.png': [2048, 2048] };
             for (const k in bs) if (v.endsWith(k)) { self.naturalWidth = bs[k][0]; self.naturalHeight = bs[k][1]; }
             if (self.onload) self.onload();
         },
@@ -1078,5 +1105,951 @@ check('tile-space previews run the viewer chain: box->2:1 transform + rot45 + /4
 check('both tabs blit their sheets + every state preview',
     drawImageCalls - diP0 >= 2 + 9 + 5, String(drawImageCalls - diP0));
 
+/* ---------------- beach tab — fixed coast LandEdge tiles ----------------
+   The two tile types the engine draws itself where the ocean meets the land
+   (landinfo.xml LandEdge filename="Beach": BEACHSHORE1/2 + BEACHBUILDAREA1/2),
+   composited from beach.bsv3 via assets/city/beach-tiles.json. Manifest +
+   sheet load synchronously through the fetch/Image stubs, so by boot the
+   three cards are painted; drive the steppers and assert the model. */
+const beachSrc = fs.readFileSync(path.join(root, 'web', 'viewer', 'road-lab.js'), 'utf8');
+els['tab-btn-beach'].click();
+check('beach tab button swaps panes and classes',
+    L.getTab() === 'tab-beach' && els['tab-beach'].hidden === false &&
+    els['tab-sheet'].hidden === true && els['tab-btn-beach'].className === 'on',
+    [L.getTab(), els['tab-beach'].hidden].join('/'));
+els['tab-btn-sheet'].click();
+check('returning to the sheet tab hides the beach pane',
+    L.getTab() === 'tab-sheet' && els['tab-beach'].hidden === true);
+const BJ = L.getBeachManifest();
+check('beach manifest loads from assets/city/beach-tiles.json',
+    BJ && BJ.gen === 'tools/gen_beach_tiles.py' && BJ.pxPerTile === 64 &&
+    Object.keys(BJ.tiles).join(',') ===
+        'shore,buildarea,border,h_shore,h_beach,h_overlay,n_mountains,n_mtnwater,n_shore' &&
+    Object.keys(BJ.anims).sort().join(',') ===
+    'beachBorderOverlay,beachBuildArea1,beachBuildArea2,beachShore1,beachShore2,' +
+    'heights.Beach1,heights.Beach2,heights.BeachMtnOverlay,heights.BeachShore1,' +
+    'heights.BeachShore2,land.mountains,land.mountainsTOwater,land.shoreline1,' +
+    'land.shoreline2',
+    BJ && Object.keys(BJ.tiles).join(','));
+check('manifest carries the LandEdge contract from landinfo.xml',
+    BJ.tiles.shore.landedge.animname === 'BEACHSHORE1' &&
+    BJ.tiles.shore.landedge.unpurchased_animname === 'BEACHSHORE2' &&
+    BJ.tiles.shore.landedge.direction === 'y' &&
+    BJ.tiles.shore.landedge.culling === 'left' &&
+    BJ.tiles.shore.landedge.width === '16' &&
+    BJ.tiles.shore.landedge.repeat === '-1' &&
+    BJ.tiles.buildarea.landedge.animname === 'BEACHBUILDAREA1' &&
+    BJ.tiles.buildarea.landedge.unpurchased_animname === 'BEACHBUILDAREA2' &&
+    BJ.tiles.shore.landedgeBlock === 'LandSprite' &&
+    BJ.tiles.border.landedgeBlock === 'AlternateLandSprite',
+    JSON.stringify(BJ.tiles.shore.landedge));
+check('the coast is TWO sets, and the manifest says which file stamps each',
+    BJ.tiles.shore.landedge.animname === 'BEACHSHORE1' &&
+    BJ.tiles.h_shore.landedge.animname === 'beachshore1' &&
+    BJ.tiles.h_beach.landedge.animname === 'beach1' &&
+    BJ.tiles.h_overlay.landedge.animname === 'beachmtnoverlay' &&
+    /two sets/i.test(BJ.coast.twoSets) &&
+    BJ.coast.heights.set === 'springfieldheightsnobeach',
+    JSON.stringify(BJ.tiles.h_shore.landedge));
+check('only the SOUTHERN set fills: repeat="-1" vs the Heights repeat="6"',
+    BJ.tiles.shore.landedge.repeat === '-1' &&
+    BJ.tiles.buildarea.landedge.repeat === '-1' &&
+    BJ.tiles.h_shore.landedge.repeat === '6' &&
+    BJ.tiles.h_beach.landedge.repeat === '6' &&
+    BJ.tiles.h_overlay.landedge.repeat === '1' &&
+    BJ.tiles.h_shore.landedge.offsety === '-7' &&
+    BJ.tiles.shore.landedge.offsety === '-1',
+    BJ.tiles.h_shore.landedge.repeat + '/' + BJ.tiles.h_shore.landedge.offsety);
+check('the two shores cover the SAME columns — neighbours, not a stack',
+    (function () {
+        var a = BJ.anims[BJ.tiles.shore.anim].tilebox;        // lower shore
+        var b = BJ.anims[BJ.tiles.h_shore.anim].tilebox;      // Heights shore
+        return Math.abs(a[0] - b[0]) < 0.1 && Math.abs(a[2] - b[2]) < 0.2 &&
+            Math.abs(a[1] - b[1]) < 0.2 && Math.abs(a[3] - b[3]) < 0.2 &&
+            BJ.tiles.h_shore.coverRows === BJ.tiles.shore.coverRows;
+    })(),
+    JSON.stringify(BJ.anims[BJ.tiles.h_shore.anim].tilebox));
+check('the Heights beach/cliff art reaches inland where the lower one is 4 deep',
+    BJ.anims[BJ.tiles.h_beach.anim].tilebox[2] > 14 &&
+    BJ.anims[BJ.tiles.h_beach.anim].tilebox[0] > 1 &&
+    BJ.anims[BJ.tiles.buildarea.anim].tilebox[2] < 4.5,
+    JSON.stringify(BJ.anims[BJ.tiles.h_beach.anim].tilebox));
+check('the seam is published as an UNVERIFIED claim, not a fact',
+    BJ.coast.seamUnverified === true && BJ.coast.lower.from === -16 &&
+    /mountain/i.test(BJ.coast.lower.note) && BJ.regions.length >= 5 &&
+    BJ.regions.some(r => r.name === 'SHMountains' && r.y0 === -18 && r.y1 === 0) &&
+    BJ.regions.some(r => r.name === 'SH' && r.y1 === -18),
+    JSON.stringify(BJ.coast.lower));
+check('the Heights sheet is a SEPARATE asset, loaded separately',
+    BJ.assets.beach.sheet !== BJ.assets.heights.sheet &&
+    /springfieldheightsnobeach\.bsv3$/.test(BJ.assets.heights.bsv3) &&
+    L.getBeachSheetH && L.getBeachSheetH() &&
+    /images\/springfieldheightsnobeach\.png$/.test(L.getBeachSheetH()._src) &&
+    L.getBeachSheetH().naturalWidth === 2048 &&
+    L.getBeachSheetH().naturalHeight === 2048,
+    BJ.assets.heights.sheet + ' ' + (L.getBeachSheetH() || {}).naturalWidth);
+check('each Heights card blits its own sheet, with real crops',
+    (function () {
+        var h = L.beachCardRects(L.HSH), b = L.beachCardRects(L.HBD),
+            m = L.beachCardRects(L.HMO), p = L.beachCardRects(L.HST);
+        return h.length === 17 && b.length === 21 && m.length === 2 &&
+            p.length === 38 &&
+            h.every(r => r.anim === 'heights.BeachShore1' && r.sw > 0 && r.sh > 0) &&
+            p.slice(0, 21).every(r => r.anim === 'heights.Beach1') &&
+            p.slice(21).every(r => r.anim === 'heights.BeachShore1') &&
+            /springfieldheightsnobeach/.test(els['bch-hshore-info'].textContent) &&
+            /beachshore1/.test(els['bch-hshore-info'].textContent);
+    })(),
+    L.beachCardRects(L.HST).length + ' ' + els['bch-hshore-info'].textContent.slice(0, 60));
+check('the Heights cards paint, and their metadata is HTML not canvas text',
+    els['cv-beachhshore']._lastOp === 'draw' &&
+    els['cv-beachhbeach']._lastOp === 'draw' &&
+    els['cv-beachhmtn']._lastOp === 'draw' &&
+    els['cv-beachhpair']._lastOp === 'draw' &&
+    (els['cv-beachhpair']._labels || []).every(l => l.y + l.h <= L.BEACH_PAD),
+    els['cv-beachhpair']._lastOp);
+check('the Mountain-overlay card has no sand button — and nothing asks for one',
+    L.HMO.variantBtn === false && L.BSH.variantBtn === true &&
+    !/id="bch-hmtn-variant"/.test(HTMLSRC) &&
+    missingIds.indexOf('bch-hmtn-variant') < 0,
+    missingIds.join(','));
+check('the Heights band card\'s repeats/pitch/dir steppers are LIVE (pair kinds bind)',
+    (function () {
+        const r0 = L.HST.repeats, p0 = L.HST.pitch;
+        els['bch-hpair-repeats-plus'].click();
+        els['bch-hpair-pitch-plus'].click();
+        els['bch-hpair-dir'].click();
+        const moved = L.HST.repeats === r0 + 1 && L.HST.pitch === p0 + 1 &&
+            L.HST.dir === 'x' &&
+            els['bch-hpair-repeats-v'].textContent === String(L.HST.repeats) &&
+            els['bch-hpair-pitch-v'].textContent === String(L.HST.pitch) &&
+            /along: x/.test(els['bch-hpair-dir'].textContent);
+        L.HST.repeats = r0; L.HST.pitch = p0; L.HST.dir = 'y';
+        els['bch-hpair-repeats-v'].textContent = String(r0);
+        els['bch-hpair-pitch-v'].textContent = String(p0);
+        L.renderBeachCard(L.HST);
+        return moved;
+    })(), L.HST.repeats + '/' + L.HST.pitch + '/' + L.HST.dir);
+check('the Heights pair follows its variant + repeat steppers (repeat="6" default)',
+    (function () {
+        L.HST.unpurchased = true; L.renderBeachCard(L.HST);
+        var v = L.beachAnims(L.HST).join();
+        L.HST.unpurchased = false; L.renderBeachCard(L.HST);
+        return v === 'heights.Beach2,heights.BeachShore2' &&
+            L.HST.repeats === 6 && L.HST.pitch === BJ.tiles.h_shore.coverRows;
+    })(),
+    L.HST.repeats + '/' + L.HST.pitch);
+check('beach sheet art is the tutorialgame bsv3 sheet (2048x1024)',
+    L.getBeachSheet() && /tutorialgame-100-r\d+\/images\/beach\.png$/
+        .test(L.getBeachSheet()._src) &&
+    L.getBeachSheet().naturalWidth === 2048 && L.getBeachSheet().naturalHeight === 1024,
+    L.getBeachSheet() && L.getBeachSheet()._src);
+/* the v1 model DREW those ridge props as the beach art; naming them as the
+   source of the seam measurement is what pins the row now. So the guard is:
+   with comments and string literals removed, the props must not appear at all
+   (nothing loads or places them), and every surviving mention has to be prose
+   that also names the Mountain03/Mountain04 landmark. */
+check('the wrong v1 model is gone (the ridge props are never placed as art)',
+    (function () {
+        /* v1 DREW LowerMountainBeach/LowerMountainBeachShoreline as the beach.
+           The guard is behavioural, not textual: nothing the tab loads or places
+           may name them, so they can never be blitted again — and every mention
+           that IS in the file is documentation, each one naming the Mountain03/
+           Mountain04 landmark (or the seamFromProps lookup that reads them). */
+        if (/lowermountainbeach/i.test(JSON.stringify(BJ.assets || {}))) return false;
+        if (/lowermountainbeach/i.test(String((L.getBeachSheet() || {})._src || ''))) return false;
+        if (/lowermountainbeach/i.test(String((L.getBeachSheetH() || {})._src || ''))) return false;
+        if (L.beachPlaceAnims().concat(L.beachPlaceHAnims())
+            .some(a => /lowermountainbeach/i.test(String(a)))) return false;
+        const prose = beachSrc.replace(/\/\*[\s\S]*?\*\//g, '');
+        const re = /lowermountainbeach/gi;
+        let m, n = 0;
+        while ((m = re.exec(prose))) {
+            n++;
+            const ctx = prose.slice(Math.max(0, m.index - 220), m.index + 120);
+            if (!/Mountain0[34]|seamFromProps|e\[1\]/.test(ctx)) return false;
+        }
+        return n > 0;                                    // the provenance IS stated
+    })() && L.BEACH_REF === undefined);check('all three beach cards painted on boot',
+    els['cv-beachshore']._lastOp === 'draw' && els['cv-beachbuild']._lastOp === 'draw' &&
+    els['cv-beachpair']._lastOp === 'draw',
+    [els['cv-beachshore']._lastOp, els['cv-beachpair']._lastOp].join('/'));
+check('canvases grew to the real art (shore 1152x635, build 1322x696 + gutter)',
+    els['cv-beachshore'].width >= 1152 + 2 * L.BEACH_PAD &&
+    els['cv-beachshore'].height >= 635 + 2 * L.BEACH_PAD + L.BEACH_RULER &&
+    els['cv-beachbuild'].width >= 1322 + 2 * L.BEACH_PAD &&
+    els['cv-beachbuild'].height >= 696 + 2 * L.BEACH_PAD + L.BEACH_RULER,
+    [els['cv-beachshore'].width, els['cv-beachbuild'].height].join('/'));
+const bshR = L.beachCardRects(L.BSH), bldR = L.beachCardRects(L.BLD);
+check('shore card blits its 20 bsv3 blocks with real sheet crops',
+    L.beachAnims(L.BSH).join() === 'beachShore1' && bshR.length === 20 &&
+    bshR.every(r => r.anim === 'beachShore1' && r.w > 0 && r.h > 0 &&
+        isFinite(r.dx) && isFinite(r.dy) &&
+        r.sx >= 0 && r.sx + r.sw <= 2048 && r.sy >= 0 && r.sy + r.sh <= 1024),
+    bshR.length + ' ' + JSON.stringify(bshR[0] && { n: bshR[0].n, w: bshR[0].w }));
+check('buildarea card blits its 15 blocks (grass edge + rocks)',
+    L.beachAnims(L.BLD).join() === 'beachBuildArea1' && bldR.length === 15 &&
+    bldR.every(r => r.anim === 'beachBuildArea1' && r.w > 0 && r.h > 0),
+    String(bldR.length));
+check('block rects map art px through the single 64 px/tile transform',
+    (function () {
+        const f = BJ.anims.beachShore1.frames[0];
+        return f.every((blk, i) => {
+            const cell = BJ.cells[blk[0]], mx = Math.abs(blk[3]), my = Math.abs(blk[6]);
+            const p = L.beachMap(L.BSH, blk[1] - (blk[3] < 0 ? cell[3] * mx : 0), blk[2]);
+            const r = bshR[i];
+            return Math.abs(r.dx - p[0]) < 1e-9 && Math.abs(r.dy - p[1]) < 1e-9 &&
+                Math.abs(r.w - cell[3] * mx) < 1e-9 && Math.abs(r.h - cell[4] * my) < 1e-9 &&
+                r.sx === cell[1] && r.sy === cell[2] && r.sw === cell[3] && r.sh === cell[4];
+        });
+    })(),
+    JSON.stringify(bshR[0]));
+const pairR = L.beachPairRects();
+check('coast band = buildarea drawn first, shore on top (bsv3 draw order)',
+    pairR.length === 35 && pairR.slice(0, 15).every(r => r.anim === 'beachBuildArea1') &&
+    pairR.slice(15).every(r => r.anim === 'beachShore1'),
+    pairR.length + ' ' + pairR.map(r => r.anim[0]).join(''));
+const dxs = pairR.slice(15).map((r, i) => r.dx - bshR[i].dx);
+const dys = pairR.slice(15).map((r, i) => r.dy - bshR[i].dy);
+check('pair shares one unshifted coordinate space (constant offset only)',
+    dxs.every(d => Math.abs(d - dxs[0]) < 1e-9) &&
+    dys.every(d => Math.abs(d - dys[0]) < 1e-9),
+    dxs[0] + '/' + dys[0]);
+els['bch-shore-zoom-plus'].click();
+check('shore zoom stepper scales the blocks by ×1.5',
+    L.BSH.zoom === 1.5 && Math.abs(L.beachCardRects(L.BSH)[0].w / bshR[0].w - 1.5) < 1e-9 &&
+    els['bch-shore-zoom-v'].textContent === '×1.5',
+    els['bch-shore-zoom-v'].textContent);
+for (let i = 0; i < 8; i++) els['bch-shore-zoom-minus'].click();
+check('shore zoom clamps at ×0.5', L.BSH.zoom === 0.5, L.BSH.zoom);
+for (let i = 0; i < 12; i++) els['bch-shore-zoom-plus'].click();
+check('shore zoom clamps at ×4 and reads back',
+    L.BSH.zoom === 4 && els['bch-shore-zoom-v'].textContent === '×4', L.BSH.zoom);
+for (let i = 0; i < 6; i++) els['bch-shore-zoom-minus'].click();
+check('shore zoom restored to ×1', L.BSH.zoom === 1, L.BSH.zoom);
+const f0json = JSON.stringify(L.beachFrame(L.BSH, 'beachShore1'));
+for (let i = 0; i < 3; i++) els['bch-shore-frame-plus'].click();
+check('frame stepper advances the wave animation (frame 3 differs from 0)',
+    L.BSH.frame === 3 && JSON.stringify(L.beachFrame(L.BSH, 'beachShore1')) !== f0json &&
+    els['bch-shore-frame-v'].textContent === '3 / 20',
+    els['bch-shore-frame-v'].textContent);
+for (let i = 0; i < 18; i++) els['bch-shore-frame-plus'].click();
+check('frame stepper wraps modulo 20 (waves loop)',
+    L.beachFrame(L.BSH, 'beachShore1') === BJ.anims.beachShore1.frames[1] &&
+    els['bch-shore-frame-v'].textContent === '1 / 20',
+    String(L.BSH.frame));
+const namesOf = rs => rs.map(r => r.n).join(',');
+const bshNames = namesOf(bshR);
+els['bch-shore-variant'].click();
+check('unpurchased toggle swaps the shore to the duller BEACHSHORE2 anim',
+    L.beachAnims(L.BSH).join() === 'beachShore2' &&
+    els['bch-shore-variant'].textContent === 'sand: unpurchased' &&
+    els['bch-shore-variant'].className === 'on' &&
+    namesOf(L.beachCardRects(L.BSH)) !== bshNames &&
+    /BeachShoreline2/.test(namesOf(L.beachCardRects(L.BSH))),
+    namesOf(L.beachCardRects(L.BSH)).slice(0, 60));
+els['bch-shore-variant'].click();
+check('purchased sand returns on toggle-back',
+    L.beachAnims(L.BSH).join() === 'beachShore1' &&
+    els['bch-shore-variant'].className === '');
+els['bch-pair-variant'].click();
+check('the coast band follows the variant too (both anims swap)',
+    L.beachAnims(L.BST).join() === 'beachBuildArea2,beachShore2');
+els['bch-pair-variant'].click();
+const diB0 = drawImageCalls;
+els['bch-pair-repeats-plus'].click();
+const diB1 = drawImageCalls;
+check('repeat stepper doubles the band blits (one copy -> two)',
+    L.BST.repeats === 2 && diB1 - diB0 === 70, String(diB1 - diB0));
+els['bch-pair-repeats-minus'].click();
+check('repeats restore to a single copy',
+    L.BST.repeats === 1 && drawImageCalls - diB1 === 35, String(drawImageCalls - diB1));
+els['bch-pair-pitch-plus'].click();
+check('pitch stepper moves the repeat model and reads back',
+    L.BST.pitch === 19 && els['bch-pair-pitch-v'].textContent === '19',
+    els['bch-pair-pitch-v'].textContent);
+for (let i = 0; i < 60; i++) els['bch-pair-pitch-minus'].click();
+check('pitch clamps at 4 tiles', L.BST.pitch === 4, L.BST.pitch);
+for (let i = 0; i < 60; i++) els['bch-pair-pitch-plus'].click();
+check('pitch clamps at 48 tiles', L.BST.pitch === 48, L.BST.pitch);
+for (let i = 0; i < 40 && L.BST.pitch !== 18; i++) els['bch-pair-pitch-minus'].click();
+check('pitch restored to the 18-tile art width', L.BST.pitch === 18, L.BST.pitch);
+els['bch-pair-dir'].click();
+check('along-axis toggle flips the repeat direction (y -> x)',
+    L.BST.dir === 'x' && /along: x/.test(els['bch-pair-dir'].textContent));
+els['bch-pair-dir'].click();
+check('and back to along y',
+    L.BST.dir === 'y' && /along: y/.test(els['bch-pair-dir'].textContent));
+els['bch-build-grid'].click(); els['bch-build-sea'].click(); els['bch-build-ruler'].click();
+check('grid/sea/ruler toggles flip state and repaint',
+    L.BLD.grid === false && L.BLD.sea === false && L.BLD.ruler === false &&
+    els['cv-beachbuild']._lastOp === 'draw' && els['bch-build-grid'].className === '');
+els['bch-build-grid'].click(); els['bch-build-sea'].click(); els['bch-build-ruler'].click();
+check('toggles restore', L.BLD.grid && L.BLD.sea && L.BLD.ruler &&
+    els['bch-build-grid'].className === 'on');
+const gl = L.beachGridLines(BJ.anims.beachShore1.bounds);
+const vlines = gl.filter(g => Math.abs(g[0] - g[2]) < 1e-9);
+const hlines = gl.filter(g => Math.abs(g[1] - g[3]) < 1e-9);
+check('64-px grid: 1-town-tile spacing in art px, straight (no second shear)',
+    vlines.length === 18 && hlines.length === 10 &&
+    vlines.every((g, i) => i === 0 || Math.abs(g[0] - vlines[i - 1][0] - 64) < 1e-9) &&
+    hlines.every((g, i) => i === 0 || Math.abs(g[1] - hlines[i - 1][1] - 64) < 1e-9),
+    vlines.length + 'v/' + hlines.length + 'h');
+/* the readability fix: no text over the art — every label sits in the dark
+   ruler band above it; metadata lives in the HTML captions */
+['cv-beachshore', 'cv-beachbuild', 'cv-beachpair'].forEach(id => {
+    const ls = els[id]._labels || [];
+    check('all ' + id + ' labels stay in the ruler band (nothing over the art)',
+        ls.length > 0 && ls.every(l => l.y >= 0 && l.y + l.h <= L.BEACH_PAD),
+        ls.length + ' ' + JSON.stringify(ls[0]));
+    const coll = labelCollisions(ls);
+    check('no overlapping labels on ' + id, coll.length === 0, coll.slice(0, 3).join(' | '));
+});
+check('metadata is HTML, not canvas text (per-card captions filled)',
+    /beachShore1/.test(els['bch-shore-info'].textContent) &&
+    /BEACHSHORE1/.test(els['bch-shore-info'].textContent) &&
+    /unpurchased variant: beachShore2/.test(els['bch-shore-info'].textContent) &&
+    /beachBuildArea1/.test(els['bch-build-info'].textContent) &&
+    /LandSprite/.test(els['bch-shore-info'].textContent),
+    els['bch-shore-info'].textContent.slice(0, 90));
+const bref = L.formatBeachRef();
+check('reference block carries the LandEdge contract (balanced)',
+    bref.startsWith('BEACH_TILES = {') && bref.trim().endsWith('}') &&
+    (bref.match(/{/g) || []).length === (bref.match(/}/g) || []).length &&
+    /BEACHSHORE1/.test(bref) && /BEACHBUILDAREA1/.test(bref) &&
+    /pxPerTile: 64/.test(bref) &&
+    /border: \{ anim: "beachBorderOverlay"/.test(bref) &&
+    /strip: \{ repeats: 1, pitchTiles: 18, along: "y" \}/.test(bref),
+    bref.slice(0, 60));
+check('the main reference block includes the beach contract',
+    /BEACH_TILES = \{/.test(L.formatRef()));
+check('beach render is part of the shared render pass',
+    (L.render(), els['cv-beachpair']._lastOp === 'draw'));
+
+/* ---- the map-placement card (the whole coast, filled) ------------------ */
+function resetPlace() {
+    Object.assign(L.BEACH_MAP, {
+        zoom: 0.75, fit: true, fill: true, start: -16, end: 512,
+        pitch: L.beachPlaceSpan(), copies: 2, offX: 0, offY: 0, along: 'y',
+        unpurchased: false, iso: true, sea: true, grid: true, foot: true,
+        claimed: true, anchors: true, labels: true, types: true,
+    });
+    L.setBeachFit({ w: 1240, h: 760 });      // the card's real canvas size
+    L.renderBeachPlace();
+}
+check('placement card painted on boot (shared beach render pass)',
+    els['cv-beachmap']._lastOp === 'draw', els['cv-beachmap']._lastOp);
+check('manifest carries the measured opaque footprint per anim',
+    (function () {
+        var sh = BJ.anims.beachShore1.tilebox, bd = BJ.anims.beachBuildArea1.tilebox;
+        return sh[2] <= 0.5 && sh[0] < -3.5 && bd[0] > -0.5 && bd[2] > 3.5 &&
+            sh[1] > -0.5 && sh[3] > 17 && sh[3] < 18 &&
+            bd[1] > -0.5 && bd[3] > 17 && bd[3] < 18;
+    })(),
+    JSON.stringify([BJ.anims.beachShore1.tilebox, BJ.anims.beachBuildArea1.tilebox]));
+/* the coverage CLAIM, and where it comes from: landinfo.xml's own land table */
+check('manifest publishes the engine land-type table (GridTypeMap)',
+    BJ.gridtype && BJ.gridtype.base_type === 'grass' &&
+    BJ.gridtype.ranges.length === 5 &&
+    BJ.gridtype.ranges[0].type === 'ocean' && BJ.gridtype.ranges[0].x1 === -3 &&
+    BJ.gridtype.ranges[1].type === 'shoreline' && BJ.gridtype.ranges[1].x0 === -3 &&
+    BJ.gridtype.ranges[1].x1 === 0,
+    JSON.stringify(BJ.gridtype && BJ.gridtype.ranges));
+const lowerBeach = (BJ.gridtype.ranges || []).filter(r =>
+    r.type === 'beach' && r.y0 !== null)[0];
+check('the lower beach band is UNBOUNDED south (x 0..4, y_start -16, no y_end) ' +
+    '→ beach the whole way down',
+    !!lowerBeach && lowerBeach.x0 === 0 && lowerBeach.x1 === 4 &&
+    lowerBeach.y0 === -16 && lowerBeach.y1 === null,
+    JSON.stringify(lowerBeach));
+check('north of the split is a DIFFERENT coast (12-tile beach + cliff, y_end -16)',
+    (function () {
+        const r = BJ.gridtype.ranges;
+        const h = r.filter(x => x.type === 'beach' && x.y1 === -16)[0];
+        const c = r.filter(x => x.type === 'cliff')[0];
+        return !!h && h.x0 === 0 && h.x1 === 12 && h.y0 === null &&
+            !!c && c.x0 === 12 && c.x1 === 16;
+    })(), JSON.stringify(BJ.gridtype.ranges.slice(3)));
+check('the measured buildarea footprint matches the engine beach range (x 0..4)',
+    BJ.anims.beachBuildArea1.tilebox[0] > -0.5 &&
+    BJ.anims.beachBuildArea1.tilebox[2] > 3.5 && BJ.tiles.buildarea.coverRows === 17,
+    JSON.stringify(BJ.anims.beachBuildArea1.tilebox));
+check('LandEdge repeat="-1" is published as the fill rule',
+    BJ.coast.repeat === '-1' && BJ.tiles.shore.landedge.repeat === '-1',
+    JSON.stringify(BJ.coast.repeat));
+check('repeat="-1" means the WHOLE edge: every -1 edge is a full-map edge',
+    (function () {
+        const full = /^MOUNTAINS$|^neutral$|^BEACHSHORE1$|^BEACHBUILDAREA1$/;
+        const neg = BJ.coast.edgeInventory.filter(e => e.repeat === '-1');
+        const names = neg.map(e => e.animname);
+        return neg.every(e => full.test(e.animname)) &&
+            ['MOUNTAINS', 'neutral', 'BEACHSHORE1', 'BEACHBUILDAREA1']
+                .every(n => names.indexOf(n) >= 0);
+    })(),
+    JSON.stringify(BJ.coast.edgeInventory.filter(e => e.repeat === '-1')
+        .map(e => e.animname)));
+check('...and every edge of a KNOWN fixed length carries a finite repeat',
+    (function () {
+        const e = BJ.coast.edgeInventory;
+        const fin = x => e.filter(e2 => e2.animname === x).map(e2 => e2.repeat);
+        return fin('beach1').indexOf('6') >= 0 &&          // the Heights coast, 6
+            fin('MOUNTAINSTOWATER').indexOf('1') >= 0;     // the cap, 1
+    })(),
+    JSON.stringify(BJ.coast.edgeInventory.filter(e => e.repeat !== '-1')
+        .map(e => e.animname + '=' + e.repeat).slice(0, 6)));
+check('the fill is DERIVED from the range: 528 coast tiles / 17 painted rows = 32 strips',
+    BJ.coast.lower.from === -16 && BJ.coast.lower.to === 512 &&
+    BJ.coast.lower.tiles === 528 && BJ.coast.lower.pitchTiles === 17 &&
+    BJ.coast.lower.strips === 32 && L.beachPlaceSpan() === 17,
+    JSON.stringify(BJ.coast.lower));
+resetPlace();
+check('the card FILLS the coast by default (LandEdge repeat="-1")',
+    L.BEACH_MAP.fill === true && L.beachPlaceCount() === BJ.coast.lower.strips &&
+    L.beachPlaceInstances().length === 32,
+    String(L.beachPlaceInstances().length));
+check('strips run the ENTIRE coast: first at the Heights split, last at the sea end',
+    (function () {
+        const a = L.beachPlaceInstances();
+        return JSON.stringify(a[0]) === '[0,-16]' &&
+            JSON.stringify(a[a.length - 1]) === '[0,511]' &&   // -16 + 17*31
+            a[a.length - 1][1] + L.beachPlaceSpan() >= BJ.coast.lower.to;
+    })(), JSON.stringify(L.beachPlaceInstances().slice(0, 2)) + '…' +
+    JSON.stringify(L.beachPlaceInstances().slice(-1)));
+check('no gaps, no overlaps: every coast row gets its 4 shore + 4 buildarea tiles',
+    (function () {
+        const shore = BJ.tiles.shore.anim, bd = BJ.tiles.buildarea.anim;
+        const rows = new Map();
+        L.beachPlaceTiles().forEach(t => {
+            const k = t.y + '|' + (t.anim === shore ? 's' : 'b');
+            rows.set(k, (rows.get(k) || 0) + 1);
+        });
+        const gaps = [];
+        for (let y = BJ.coast.lower.from; y < BJ.coast.lower.to; y++)
+            if ((rows.get(y + '|s') || 0) !== 4 || (rows.get(y + '|b') || 0) !== 4)
+                gaps.push(y);
+        return gaps.length === 0 &&
+            L.beachPlaceTiles().length === 32 * 136;
+    })(),
+    String(L.beachPlaceTiles().length) + ' tiles, ' +
+    (function () {                              // first gap, for the failure text
+        const shore = BJ.tiles.shore.anim, rows = new Set();
+        L.beachPlaceTiles().forEach(t => { if (t.anim === shore) rows.add(t.y); });
+        for (let y = -16; y < 512; y++) if (!rows.has(y)) return y;
+        return 'none';
+    })());
+check('the pitch is the painted rows, not the art extent (an 18-tile pitch gaps the coast)',
+    (function () {
+        const p = L.BEACH_MAP.pitch;
+        if (p !== 17) return false;
+        L.BEACH_MAP.pitch = 18;
+        const shore = BJ.tiles.shore.anim, rows = new Set();
+        L.beachPlaceTiles().forEach(t => { if (t.anim === shore) rows.add(t.y); });
+        let gaps = 0;
+        for (let y = -16; y < 512; y++) if (!rows.has(y)) gaps++;
+        const want = (L.beachPlaceInstances().length - 1) * (18 - L.beachPlaceSpan());
+        L.BEACH_MAP.pitch = p;
+        L.renderBeachPlace();
+        return gaps === want && want > 0;       // one missing row per strip join
+    })(), String(L.BEACH_MAP.pitch));
+check('the pair straddles the shoreline column: shore water-side, buildarea inland',
+    (function () {
+        const t = L.beachPlaceTilesAt(0, 0);
+        const sh = t.filter(e => e.anim === BJ.tiles.shore.anim);
+        const bd = t.filter(e => e.anim === BJ.tiles.buildarea.anim);
+        function cols(a) {
+            return a.map(e => e.x).filter((v, i, s) => s.indexOf(v) === i)
+                .sort((p, q) => p - q).join();
+        }
+        return cols(sh) === '-4,-3,-2,-1' && cols(bd) === '0,1,2,3' &&
+            sh.length === 68 && bd.length === 68 && t.length === 136;
+    })(),
+    JSON.stringify(L.beachPlaceTilesAt(0, 0).length));
+/* fit: the whole 528-tile coast on one canvas */
+const mfw = L.beachPlaceWin(), mfv = L.beachPlaceView();
+check('fit sizes the zoom so the whole coast fits the card (no 34k-px canvas)',
+    L.BEACH_MAP.fit && L.BEACH_MAP.zoom === L.beachPlaceFitZoom(mfw) &&
+    L.BEACH_MAP.zoom <= 0.04 && mfv.need.w <= L.getBeachFit().w &&
+    mfv.need.h <= L.getBeachFit().h && els['cv-beachmap'].width <= L.getBeachFit().w,
+    JSON.stringify([L.BEACH_MAP.zoom, mfw, mfv.need]));
+check('fit really shows both ends of the coast on the canvas',
+    (function () {
+        const v = L.beachPlaceView(), cv = els['cv-beachmap'];
+        const a = v.P(0, BJ.coast.lower.from), b = v.P(0, BJ.coast.lower.to);
+        return a.y > 0 && b.y < cv.height && isFinite(a.x) && isFinite(b.x);
+    })(),
+    JSON.stringify((function () { const v = L.beachPlaceView();
+        return [v.P(0, -16).y, v.P(0, 512).y, els['cv-beachmap'].height]; })()));
+/* the iso view runs through the viewer's own ground projection */
+const mpv = L.beachPlaceView();
+check('placement iso view uses the canonical 2:1 oblique (CAM.tileAffine)',
+    Math.abs(mpv.A.a - mpv.A.b) < 1e-9 && Math.abs(mpv.A.d + mpv.A.e) < 1e-9 &&
+    Math.abs(mpv.A.a / mpv.A.e - 2) < 1e-9 && mpv.s === 64 * L.BEACH_MAP.zoom &&
+    Math.abs(mpv.k - L.BEACH_MAP.zoom) < 1e-9,
+    JSON.stringify([mpv.A.a, mpv.A.b, mpv.A.d, mpv.A.e, mpv.k]));
+const mpR = L.beachPlaceRects();
+check('iso mode blits both anims for every strip (35 blocks x 32 strips)',
+    mpR.length === 35 * 32 &&
+    mpR.every(r => r.w > 0 && r.h > 0 && isFinite(r.dx) && isFinite(r.dy)) &&
+    mpR.filter(r => r.inst === 0).every(r => r.anim === BJ.tiles.buildarea.anim ||
+        r.anim === BJ.tiles.shore.anim),
+    String(mpR.length));
+check('strip N is strip 0 stepped by N x pitch tiles through the same affine',
+    (function () {
+        const a = mpR.filter(r => r.inst === 0), b = mpR.filter(r => r.inst === 1);
+        const c = mpR.filter(r => r.inst === 31);
+        const st = L.BEACH_MAP.pitch * 31;
+        return a.length === b.length && a.length === c.length &&
+            a.every((r, i) =>
+                Math.abs((b[i].dx - r.dx) - mpv.A.b * L.BEACH_MAP.pitch) < 1e-6 &&
+                Math.abs((b[i].dy - r.dy) - mpv.A.e * L.BEACH_MAP.pitch) < 1e-6) &&
+            c.every((r, i) =>
+                Math.abs((r.dx - a[i].dx) - mpv.A.b * st) < 1e-3 &&
+                Math.abs((r.dy - a[i].dy) - mpv.A.e * st) < 1e-3);
+    })(),
+    JSON.stringify(mpR[0] && [mpR[0].dx, mpR[35] && mpR[35].dx]));
+check('the strip art sits on the tiles it claims (art bbox covers footprint)',
+    (function () {
+        const bd = BJ.tiles.buildarea.anim;
+        const art = mpR.filter(r => r.inst === 0 && r.anim === bd);
+        const ts = L.beachPlaceTileRects().filter(t => t.anim === bd &&
+            t.y >= BJ.coast.lower.from && t.y < BJ.coast.lower.from + L.beachPlaceSpan());
+        if (!art.length || ts.length !== 68) return false;
+        const ax0 = Math.min.apply(null, art.map(r => r.dx));
+        const ax1 = Math.max.apply(null, art.map(r => r.dx + r.w));
+        const ay0 = Math.min.apply(null, art.map(r => r.dy));
+        const ay1 = Math.max.apply(null, art.map(r => r.dy + r.h));
+        const tile = 64 * L.BEACH_MAP.zoom;
+        return ts.every(t => t.x0 > ax0 - tile && t.x1 < ax1 + tile &&
+            t.y0 > ay0 - tile && t.y1 < ay1 + tile);
+    })(),
+    String(L.beachPlaceTileRects().filter(t => t.anim === BJ.tiles.buildarea.anim).length));
+check('top-down mode drops the art and keeps the footprints',
+    (function () {
+        L.BEACH_MAP.iso = false;
+        L.renderBeachPlace();
+        const noArt = L.beachPlaceRects().length === 0;
+        const tr = L.beachPlaceTileRects();
+        const flat = tr.every(t => Math.abs((t.x1 - t.x0) - L.BEACH_CELL * L.BEACH_MAP.zoom) < 1e-6 &&
+            Math.abs((t.y1 - t.y0) - L.BEACH_CELL * L.BEACH_MAP.zoom) < 1e-6);
+        L.BEACH_MAP.iso = true;
+        L.renderBeachPlace();
+        return noArt && flat && tr.length === 32 * 136;
+    })(),
+    String(L.beachPlaceTileRects().length));
+check('iso footprints are ground diamonds (2:1), not squares',
+    (function () {
+        const t = L.beachPlaceTileRects()[0];
+        return Math.abs((t.x1 - t.x0) / (t.y1 - t.y0) - 2) < 1e-6;
+    })(),
+    JSON.stringify((t => [t.x1 - t.x0, t.y1 - t.y0])(L.beachPlaceTileRects()[0])));
+check('the land side fills with the ground green (viewer grass)',
+    styles.has('rgb(74,128,66)'), [...styles].slice(-3).join(','));
+check('the engine\'s OWN land-type bands are drawn, and hide with the toggle',
+    (function () {
+        styles.clear();
+        L.renderBeachPlace();                       // types on (resetPlace default)
+        const on = ['shoreline', 'beach', 'cliff'].every(k =>
+            styles.has(L.BEACH_TYPE_FILL[k]));
+        styles.clear();
+        L.BEACH_MAP.types = false;
+        L.renderBeachPlace();
+        const off = ['shoreline', 'beach', 'cliff'].every(k =>
+            !styles.has(L.BEACH_TYPE_FILL[k])) && styles.has('rgb(74,128,66)');
+        L.BEACH_MAP.types = true;
+        L.renderBeachPlace();
+        return on && off;
+    })(), JSON.stringify(L.BEACH_TYPE_FILL));
+check('the caption puts the SPLIT at the mountains and calls the row unverified',
+    BJ.coast.lower.from === -16 &&
+    /FILLS the SOUTHERN coast/.test(els['bch-map-info'].textContent) &&
+    /NOT the whole coast/.test(els['bch-map-info'].textContent) &&
+    /DIFFERENT set/.test(els['bch-map-info'].textContent) &&
+    /THE SEAM: the default row is MEASURED off the save/.test(els['bch-map-info'].textContent) &&
+    /Mountain03\/LowerMountainBeach/.test(els['bch-map-info'].textContent) &&
+    /south edge is row 0/.test(els['bch-map-info'].textContent.replace(/\s+/g, ' ')) &&
+    /BOTH candidate/.test(els['bch-map-info'].textContent) &&
+    /SHMountains/.test(els['bch-map-info'].textContent),
+    els['bch-map-info'].textContent.slice(0, 90));
+check('the old over-claim is gone: nothing says the lower set fills the whole coast',
+    (function () {
+        const t = els['bch-map-info'].textContent + L.formatBeachRef() +
+            (els['cv-beachmap']._labels || []).map(l => l.t).join(' ');
+        return !/whole coast south of the mountains/i.test(t) &&
+            !/end to end/i.test(t) && !/NO y_end/.test(t);
+    })(), els['cv-beachmap']._labels.map(l => l.t).join(' | ').slice(0, 120));
+let placeFlags = '';
+check('steppers drive the placement model', (function () {
+    resetPlace();
+    els['bch-map-end-minus'].click();
+    const n = () => Math.ceil((L.BEACH_MAP.end - L.BEACH_MAP.start -
+        L.BEACH_MAP.offY) / L.BEACH_MAP.pitch);
+    const e1 = L.BEACH_MAP.end === 511 && L.beachPlaceInstances().length === n() &&
+        n() === 31 && els['bch-map-end-v'].textContent === '511';
+    L.BEACH_MAP.end = 250; L.renderBeachPlace();
+    const e2 = L.beachPlaceInstances().length === n() && n() === 16;
+    L.BEACH_MAP.end = 512; L.renderBeachPlace();
+    els['bch-map-end-plus'].click();
+    const e3 = L.BEACH_MAP.end === 513 && L.beachPlaceInstances().length === n() &&
+        n() === 32;
+    els['bch-map-end-minus'].click();
+    els['bch-map-start-plus'].click(); els['bch-map-start-plus'].click();
+    const st = L.BEACH_MAP.start === -14 && L.beachPlaceInstances()[0][1] === -14 &&
+        els['bch-map-start-v'].textContent === '-14';
+    for (let i = 0; i < 2; i++) els['bch-map-start-minus'].click();
+    els['bch-map-pitch-plus'].click();
+    const pj = L.BEACH_MAP.pitch === 18 &&
+        L.beachPlaceInstances()[1][1] === -16 + 18 &&
+        els['bch-map-pitch-v'].textContent === '18';
+    for (let i = 0; i < 40; i++) els['bch-map-pitch-minus'].click();
+    const pmin = L.BEACH_MAP.pitch === 1;
+    for (let i = 0; i < 80; i++) els['bch-map-pitch-plus'].click();
+    const pmax = L.BEACH_MAP.pitch === 64;
+    for (let i = 0; i < 47; i++) els['bch-map-pitch-minus'].click();
+    const pdef = L.BEACH_MAP.pitch === 17;
+    els['bch-map-offx-plus'].click(); els['bch-map-offx-plus'].click();
+    const ox = L.beachPlaceInstances()[0][0] === 2 &&
+        L.beachPlaceTilesAt(2, -16).length === 136 &&
+        els['bch-map-offx-v'].textContent === '2';
+    els['bch-map-offx-minus'].click(); els['bch-map-offx-minus'].click();
+    els['bch-map-offy-plus'].click();
+    const oy = L.beachPlaceInstances()[0][1] === -15 &&
+        els['bch-map-offy-v'].textContent === '1';
+    els['bch-map-offy-minus'].click();
+    /* the flags in order: end-, end=250, end+, start, pitch, pitch-min,
+       pitch-max, pitch-default, offX, offY, pitch back, strip count */
+    const f = [e1, e2, e3, st, pj, pmin, pmax, pdef, ox, oy,
+        L.BEACH_MAP.pitch === 17, L.beachPlaceInstances().length === 32];
+    placeFlags = f.join(',');
+    return f.every(Boolean);
+})(), 'flags ' + placeFlags);
+check('strips steppers take over from the fill (manual sampling)', (function () {
+    resetPlace();
+    els['bch-map-copies-minus'].click();
+    const one = L.BEACH_MAP.fill === false && L.BEACH_MAP.copies === 1 &&
+        L.beachPlaceTiles().length === 136 &&
+        els['bch-map-copies-v'].textContent === '1';
+    for (let i = 0; i < 30; i++) els['bch-map-copies-plus'].click();
+    const many = L.BEACH_MAP.copies === 31 &&
+        L.beachPlaceTiles().length === 31 * 136;
+    els['bch-map-fill'].click();
+    const back = L.BEACH_MAP.fill === true && L.beachPlaceInstances().length === 32 &&
+        /^auto 32$/.test(els['bch-map-copies-v'].textContent);
+    L.BEACH_MAP.end = 9000; L.renderBeachPlace();
+    const capped = L.beachPlaceInstances().length === L.BEACH_MAX_STRIPS;
+    L.BEACH_MAP.end = 512; L.renderBeachPlace();
+    return one && many && back && capped;
+})(), [L.BEACH_MAP.fill, L.BEACH_MAP.copies, L.beachPlaceInstances().length].join('/'));
+check('the zoom stepper takes over from fit, and clamps', (function () {
+    resetPlace();
+    const z0 = L.BEACH_MAP.zoom;
+    els['bch-map-zoom-minus'].click();
+    const manual = L.BEACH_MAP.fit === false &&
+        Math.abs(L.BEACH_MAP.zoom - Math.max(0.02, +(z0 - 0.25).toFixed(2))) < 1e-9;
+    for (let i = 0; i < 20; i++) els['bch-map-zoom-plus'].click();
+    const zmax = L.BEACH_MAP.zoom === 3;
+    for (let i = 0; i < 20; i++) els['bch-map-zoom-minus'].click();
+    const zmin = L.BEACH_MAP.zoom === 0.02;
+    const readout = els['bch-map-zoom-v'].textContent === '×' + L.BEACH_MAP.zoom;
+    els['bch-map-fit'].click();
+    const refit = L.BEACH_MAP.fit === true &&
+        L.BEACH_MAP.zoom === L.beachPlaceFitZoom(L.beachPlaceWin());
+    return manual && zmax && zmin && readout && refit;
+})(), [L.BEACH_MAP.fit, L.BEACH_MAP.zoom].join('/'));
+check('the coast can be stepped inland (the anchor column is a question)',
+    (function () {
+        L.BEACH_MAP.offX = 3;
+        const t3 = L.beachPlaceTilesAt(L.BEACH_MAP.offX, -16);
+        L.BEACH_MAP.offX = 0;
+        const t0 = L.beachPlaceTilesAt(0, -16);
+        return t3.length === 136 && t3[0].x !== t0[0].x;
+    })(), 'xOff stepper');
+check('along-axis toggle steps the strips inland instead',
+    (function () {
+        els['bch-map-along'].click();
+        const a = L.beachPlaceInstances();
+        const okx = a[1][0] - a[0][0] === L.BEACH_MAP.pitch && a[1][1] === a[0][1] &&
+            /along: x/.test(els['bch-map-along'].textContent);
+        els['bch-map-along'].click();
+        return okx && L.beachPlaceInstances()[1][0] === L.beachPlaceInstances()[0][0];
+    })(), L.BEACH_MAP.along);
+resetPlace();
+els['bch-map-variant'].click();
+check('the placement view follows the unpurchased sand too',
+    L.beachPlaceAnims().join() === 'beachBuildArea2,beachShore2' &&
+    L.beachPlaceTiles().length === 32 * 136 &&
+    els['bch-map-variant'].textContent === 'sand: unpurchased',
+    L.beachPlaceAnims().join());
+els['bch-map-variant'].click();
+resetPlace();
+L.BEACH_MAP.fill = false; L.BEACH_MAP.copies = 2; L.renderBeachPlace();
+const diM0 = drawImageCalls;
+els['bch-map-copies-plus'].click();
+check('one more strip = one more set of blocks blitted (35)',
+    drawImageCalls - diM0 >= 35 && L.BEACH_MAP.copies === 3,
+    String(drawImageCalls - diM0));
+els['bch-map-copies-minus'].click();
+resetPlace();
+['iso', 'sea', 'grid', 'foot', 'claimed', 'anchors', 'labels', 'types', 'fill', 'fit']
+    .forEach(k => { els['bch-map-' + k].click(); });
+check('placement toggles flip state, classes and repaint',
+    L.BEACH_MAP.iso === false && L.BEACH_MAP.sea === false && L.BEACH_MAP.grid === false &&
+    L.BEACH_MAP.foot === false && L.BEACH_MAP.claimed === false &&
+    L.BEACH_MAP.anchors === false && L.BEACH_MAP.labels === false &&
+    L.BEACH_MAP.types === false && L.BEACH_MAP.fill === false &&
+    L.BEACH_MAP.fit === false && els['cv-beachmap']._lastOp === 'draw' &&
+    els['bch-map-foot'].className === '',
+    [L.BEACH_MAP.iso, els['bch-map-foot'].className].join('/'));
+['iso', 'sea', 'grid', 'foot', 'claimed', 'anchors', 'labels', 'types', 'fill', 'fit']
+    .forEach(k => { els['bch-map-' + k].click(); });
+check('placement toggles restore', L.BEACH_MAP.iso && L.BEACH_MAP.sea && L.BEACH_MAP.grid &&
+    L.BEACH_MAP.foot && L.BEACH_MAP.claimed && L.BEACH_MAP.anchors && L.BEACH_MAP.labels &&
+    L.BEACH_MAP.types && L.BEACH_MAP.fill && L.BEACH_MAP.fit &&
+    els['bch-map-iso'].className === 'on');
+/* readability: nothing is written over the art — checked at whole-coast fit
+   (text is a dozen tiles tall there, so labels must drop out) and zoomed in */
+[[true, 'whole coast'], [false, 'one section']].forEach(function (pair) {
+    const [fit, what] = pair;
+    resetPlace();
+    if (!fit) { L.BEACH_MAP.fit = false; L.BEACH_MAP.zoom = 0.75; L.renderBeachPlace(); }
+    const ls = els['cv-beachmap']._labels || [];
+    const art = L.beachPlaceRects().concat(L.beachPlaceTileRects().map(t =>
+        ({ dx: t.x0, dy: t.y0, w: t.x1 - t.x0, h: t.y1 - t.y0 })));
+    const hits = ls.filter(l => l.y >= L.BEACH_BAND && art.some(r =>
+        l.x < r.dx + r.w && l.x + l.w > r.dx && l.y < r.dy + r.h && l.y + l.h > r.dy));
+    check('placement labels stay off the art and the footprint tiles (' + what + ')',
+        ls.length > 0 && hits.length === 0,
+        ls.length + ' labels, ' + hits.length + ' over art: ' + JSON.stringify(hits[0]));
+    const coll = labelCollisions(ls);
+    check('no overlapping placement labels (' + what + ')', coll.length === 0,
+        coll.slice(0, 3).join(' | '));
+});
+check('strip labels are labelled every-N, and N follows the on-screen pitch',
+    (function () {
+        resetPlace();                                  // whole coast: strips ~51 px apart
+        const v = L.beachPlaceView();
+        const px = Math.abs(v.A.b * L.BEACH_MAP.pitch) + Math.abs(v.A.e * L.BEACH_MAP.pitch);
+        const dense = L.beachPlaceStride(v.P, L.BEACH_MAP.pitch, 96);
+        const want = Math.ceil(96 / px);
+        const atFit = (els['cv-beachmap']._labels || [])
+            .filter(l => /^strip /.test(l.t)).length;
+        L.BEACH_MAP.fit = false; L.BEACH_MAP.zoom = 0.75; L.renderBeachPlace();
+        const roomy = L.beachPlaceStride(L.beachPlaceView().P, L.BEACH_MAP.pitch, 96);
+        const zoomed = (els['cv-beachmap']._labels || [])
+            .filter(l => /^strip /.test(l.t)).length;
+        resetPlace();
+        return dense === want && want >= 2 && roomy === 1 &&
+            atFit <= L.beachPlaceInstances().length && zoomed > 0;
+    })(), String((els['cv-beachmap']._labels || []).filter(l => /^strip /.test(l.t)).length));
+check('placement caption states the fill, its source, and the northern set',
+    (function () {
+        resetPlace();
+        const t = els['bch-map-info'].textContent;
+        return /FILLS the SOUTHERN coast \(LandEdge repeat="-1"\)/.test(t) &&
+            /32 strips from the seam y=-16 south to y=512 = 4352 grid tiles/.test(t) &&
+            /17 rows one strip paints/.test(t) &&
+            /the northern set is OFF/.test(t) &&
+            /GridTypeRange/.test(t) && /SHMountains y -18\.\.0/.test(t) &&
+            /SAME columns/.test(t) &&
+            /terrain\.js seaFill/.test(t) && /open: the seam row/.test(t);
+    })(), els['bch-map-info'].textContent.slice(0, 160));
+check('reference block carries the placement contract',
+    (function () {
+        resetPlace();
+        const t = L.formatBeachRef();
+        return /place: \{/.test(t) &&
+            /shorelineX: 0, sea: \[-64, 0\], coastY: \[0, 512\]/.test(t) &&
+            /seam: -16,/.test(t) &&
+            /fill: true, repeat: "-1"/.test(t) &&
+            /coastFrom: -16, coastTo: 512, strips: 32/.test(t) &&
+            /pitchTiles: 17, coverRows: 17, artSpanTiles: 18/.test(t) &&
+            /coveredTiles: 4352/.test(t) &&
+            /UNVERIFIED against the map/.test(t) &&
+            /heights: \{/.test(t) &&
+            /set: "springfieldheightsnobeach", repeat: "6"/.test(t) &&
+            /mode: "replace"/.test(t) &&
+            /strips: 6, pitchTiles: 17, coverRows: 17/.test(t) &&
+            /heightsSheet: "assets\/dlc\/.*springfieldheightsnobeach\.png"/.test(t) &&
+            /h_shore: \{ anim: "heights\.BeachShore1"/.test(t) &&
+            /heightsStrip: \{ repeats: 6, pitchTiles: 17, along: "y" \}/.test(t) &&
+            /springfieldheightsnobeach/.test(t) &&
+            /width="16" unexplained/.test(t);
+    })(),
+    (L.formatBeachRef().match(/place: \{[\s\S]*\}/) || [''])[0].slice(0, 90));
+/* ---- the NORTHERN set on the map card (the seam + the stacking test) ---- */
+check('the northern set is OFF by default (the card does not claim it unasked)',
+    L.BEACH_MAP.heights === false && L.beachPlaceHInstances().length === 0 &&
+    L.beachPlaceTiles().every(t => t.set === 'lower') &&
+    L.beachPlaceAll().length === L.beachPlaceInstances().length,
+    String(L.beachPlaceAll().length));
+check('its defaults come from the file: 6 strips (repeat) x its own 17 rows',
+    L.BEACH_MAP.hinst === 6 && L.BEACH_MAP.hpitch === BJ.tiles.h_shore.coverRows &&
+    L.BEACH_MAP.hmode === 'replace' && L.beachPlaceSpanOf('heights') === 17,
+    L.BEACH_MAP.hinst + '/' + L.BEACH_MAP.hpitch + '/' + L.BEACH_MAP.hmode);
+let HROWS = null;
+check('turning it on stamps six strips NORTH of the seam, contiguous, no overlap',
+    (function () {
+        resetPlace();
+        els['bch-map-heights'].click();                 // the button, not the state
+        const seam = L.beachSeam(), a = L.beachPlaceHInstances();
+        if (a.length !== 6 || L.BEACH_MAP.heights !== true) return 'n=' + a.length;
+        const rows = a.map(p => p[1]);
+        const northOfSeam = rows.every(y => y + L.beachPlaceSpanOf('heights') <= seam);
+        const stepped = rows.every((y, i) => y === seam - (i + 1) * L.BEACH_MAP.hpitch);
+        // contiguous among themselves, and they MEET the lower band at the seam
+        const contiguous = rows.slice(1).every((y, i) =>
+            y === rows[i] - L.BEACH_MAP.hpitch) &&
+            rows[0] + L.beachPlaceSpanOf('heights') === seam;
+        const lower = L.beachPlaceInstances().map(p => p[1]);
+        const noOverlap = lower.every(ly => rows.every(hy =>
+            hy + L.beachPlaceSpanOf('heights') <= ly || hy >= ly + L.BEACH_MAP.pitch));
+        const cols = new Set(L.beachPlaceTiles().filter(t => t.set === 'heights')
+            .map(t => t.y));
+        HROWS = rows;
+        return northOfSeam && stepped && contiguous && noOverlap &&
+            cols.size === 6 * L.BEACH_MAP.hpitch;
+    })(), JSON.stringify(HROWS));
+check('its footprints are its OWN (violet/green tints appear, and only then)',
+    (function () {
+        styles.clear(); L.renderBeachPlace();
+        const on = styles.has('rgba(171,71,188,0.34)') &&
+            styles.has('rgba(139,195,74,0.3)');
+        els['bch-map-heights'].click(); L.renderBeachPlace();
+        styles.clear(); L.renderBeachPlace();
+        const off = !styles.has('rgba(171,71,188,0.34)') &&
+            !styles.has('rgba(139,195,74,0.3)') &&
+            styles.has('rgba(77,208,225,0.34)');
+        els['bch-map-heights'].click(); L.renderBeachPlace();
+        return on && off;
+    })(), 'tints');
+check('the northern art blits from ITS sheet, with its own crops',
+    (function () {
+        const rs = L.beachPlaceRects().filter(r => r.set === 'heights');
+        const cells = BJ.assets.heights.cells;
+        const hnames = new Set(cells.map(c => c[0]));
+        const lnames = new Set(BJ.cells.map(c => c[0]));
+        const cbyname = {};
+        cells.forEach(c => { cbyname[c[0]] = c; });
+        return rs.length === 6 * 38 &&
+            rs.every(r => /^heights\./.test(r.anim) && r.w > 0 && r.h > 0 &&
+                isFinite(r.dx) && isFinite(r.dy) &&
+                r.sx >= 0 && r.sx + r.sw <= 2048 && r.sy >= 0 && r.sy + r.sh <= 2048) &&
+            // every crop is a cell of the HEIGHTS table, and the table is not this one
+            rs.every(r => hnames.has(r.n) && cbyname[r.n] &&
+                cbyname[r.n][1] === r.sx && cbyname[r.n][2] === r.sy &&
+                cbyname[r.n][3] === r.sw) &&
+            rs.some(r => !lnames.has(r.n)) &&
+            L.beachPlaceRects().filter(r => r.set === 'lower').length === 32 * 35;
+    })(), L.beachPlaceRects().filter(r => r.set === 'heights').length + ' rects');
+check('fit grows the window north and still fits the card',
+    (function () {
+        const w = L.beachPlaceWin();
+        const need = L.beachPlaceNeed(w);
+        return w.y0 <= L.beachSeam() - 6 * L.BEACH_MAP.hpitch - 8 &&
+            els['cv-beachmap'].width <= L.getBeachFit().w &&
+            els['cv-beachmap'].height <= L.getBeachFit().h;
+    })(), JSON.stringify(L.beachPlaceWin()));
+check('mode: over stacks the OTHER set on the lower anchors (the overlay test)',
+    (function () {
+        els['bch-map-hmode'].click();
+        const a = L.beachPlaceHInstances(), lo = L.beachPlaceInstances();
+        const same = a.length === 6 && a.every((p, i) =>
+            p[0] === lo[i][0] && p[1] === lo[i][1]);
+        const t = L.beachPlaceTiles();
+        const both = t.some(x => x.set === 'heights') && t.some(x => x.set === 'lower');
+        els['bch-map-hmode'].click();
+        return same && both && L.BEACH_MAP.hmode === 'replace' &&
+            /mode: replace/.test(els['bch-map-hmode'].textContent);
+    })(), els['bch-map-hmode'].textContent);
+check('the northern strips are labelled, off the art, and never overlap',
+    (function () {
+        // at the fit zoom of the whole coast no label of any length can miss a
+        // continuous band, so read them at a roomy zoom (as the lower set's check does)
+        L.BEACH_MAP.fit = false; L.BEACH_MAP.zoom = 0.75; L.renderBeachPlace();
+        const ls = els['cv-beachmap']._labels || [];
+        const hs = ls.filter(l => /^H strip /.test(l.t));
+        const fb = L.beachPlaceFootBox();
+        const v = L.beachPlaceView();
+        const overArt = hs.filter(l => {
+            const a = v.inv(l.x, l.y), b = v.inv(l.x + l.w, l.y + l.h);
+            return b.x > fb.x0 && a.x < fb.x1 && b.y > fb.y0 && a.y < fb.y1;
+        });
+        const out = hs.length >= 1 && overArt.length === 0 &&
+            labelCollisions(ls).length === 0;
+        resetPlace();
+        return out;
+    })(), (els['cv-beachmap']._labels || []).filter(l => /^H strip/.test(l.t))
+        .map(l => l.t).join(' | ').slice(0, 80));
+check('the type table\'s own split row is drawn as the SECOND candidate when the seam moved',
+    (function () {
+        L.BEACH_MAP.fit = false; L.BEACH_MAP.zoom = 0.75;
+        L.BEACH_MAP.start = 0;                    // the shipped default: props' row
+        L.renderBeachPlace();
+        const ls = (els['cv-beachmap']._labels || []).map(l => l.t);
+        const st = (els['cv-beachmap']._strokes || []).join(' ');
+        const out = ls.some(t => /^GridTypeMap split y=-16/.test(t)) &&
+            ls.some(t => /^seam y=0 \(unverified\)/.test(t)) &&
+            /rgba\(196,160,255,0\.35\)/.test(st);
+        resetPlace();
+        return out;
+    })(), (els['cv-beachmap']._labels || []).map(l => l.t).join(' | ').slice(0, 140));
+check('the seam tag says unverified and marks the other set (canvas text)',
+    (function () {
+        L.BEACH_MAP.fit = false; L.BEACH_MAP.zoom = 0.75; L.renderBeachPlace();
+        const ls = (els['cv-beachmap']._labels || []).map(l => l.t);
+        const out = ls.some(t => /^seam y=-16 \(unverified\)/.test(t)) &&
+            /north = Heights set/.test(ls.join(' '));
+        resetPlace();
+        return out;
+    })(), (els['cv-beachmap']._labels || []).map(l => l.t).join(' | ').slice(0, 140));
+check('the caption counts the northern strips when they are on',
+    /\+ 6 NORTHERN strips \(springfieldheightsnobeach, LandEdge repeat="6"\) replace/.test(
+        els['bch-map-info'].textContent) &&
+    /northern shore measures the SAME columns/.test(els['bch-map-info'].textContent),
+    els['bch-map-info'].textContent.slice(0, 200));
+check('northern steppers drive the model and read back',
+    (function () {
+        els['bch-map-hinst-plus'].click();
+        const up = L.BEACH_MAP.hinst === 7 && L.beachPlaceHInstances().length === 7 &&
+            els['bch-map-hinst-v'].textContent === '7';
+        for (let i = 0; i < 40; i++) els['bch-map-hinst-minus'].click();
+        const zero = L.BEACH_MAP.hinst === 0 && L.beachPlaceHInstances().length === 0;
+        for (let i = 0; i < 10; i++) els['bch-map-hinst-plus'].click();
+        for (let i = 0; i < 30; i++) els['bch-map-hpitch-plus'].click();
+        const p47 = L.BEACH_MAP.hpitch === 47 &&
+            L.beachPlaceHInstances()[0][1] === L.beachSeam() - 47;
+        L.BEACH_MAP.hinst = 6; L.BEACH_MAP.hpitch = 17;
+        L.renderBeachPlace();
+        return up && zero && p47;
+    })(), L.BEACH_MAP.hpitch + '/' + L.BEACH_MAP.hinst);
+check('the unpurchased variant swaps BOTH coasts at once',
+    (function () {
+        els['bch-map-variant'].click();
+        const a = L.beachPlaceHAnims().join();
+        const off = L.beachPlaceAnims().join();
+        els['bch-map-variant'].click();
+        return a === 'heights.Beach2,heights.BeachShore2' &&
+            off === 'beachBuildArea2,beachShore2' &&
+            L.beachPlaceHAnims().join() === 'heights.Beach1,heights.BeachShore1';
+    })(), L.beachPlaceHAnims().join());
+check('turning the northern set off leaves the southern fill untouched',
+    (function () {
+        const before = JSON.stringify(L.beachPlaceInstances()) +
+            L.beachPlaceTiles().filter(t => t.set === 'lower').length;
+        els['bch-map-heights'].click(); L.renderBeachPlace();
+        const after = JSON.stringify(L.beachPlaceInstances()) +
+            L.beachPlaceTiles().filter(t => t.set === 'lower').length;
+        return before === after && L.beachPlaceHInstances().length === 0;
+    })(), String(L.BEACH_MAP.heights));
+check('the reference block states the seam as an unverified claim',
+    (function () {
+        const t = L.formatBeachRef();
+        return /That row is the seam/.test(t) && /UNVERIFIED against the map/.test(t) &&
+            /REPLACES these tiles/.test(t) && /beachmtnoverlay/.test(t);
+    })(), (L.formatBeachRef().match(/heights: \{[\s\S]*?\n {4}\}/) || [''])[0]
+        .slice(0, 90));
+check('placement is part of the shared render pass and leaves a painted canvas',
+    (L.render(), els['cv-beachmap']._lastOp === 'draw'));
+check('every control the code asks the page for EXISTS (no silent black canvases)',
+    missingIds.length === 0, [...new Set(missingIds)].join(', '));
 console.log(failures ? '\n' + failures + ' FAILURES' : '\nALL CHECKS PASSED');
 process.exit(failures ? 1 : 0);

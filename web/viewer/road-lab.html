@@ -33,6 +33,12 @@
     .st { display: flex; gap: 3px; align-items: center; }
     .st .v { min-width: 34px; text-align: right; color: #ffe86e; }
     canvas { display: block; background: rgb(74,128,66); border-radius: 4px; }
+    /* the beach cards paint their own sea/grid; a dark gutter reads better
+       under the transparent shore art than grass green does */
+    #tab-beach canvas { background: #101216; }
+    /* card metadata lives in the HTML captions, never on the art */
+    section p.meta { margin: 6px 0 0; color: #8a919c; font-size: 11px;
+        white-space: pre-wrap; }
     #refwrap { margin: 0 12px 16px; }
     #refwrap .bar { border: 1px solid #2b2f36; border-bottom: none;
         border-radius: 6px 6px 0 0; }
@@ -64,7 +70,9 @@
         <button id="tab-btn-dirt2" data-tab="tab-dirt2">dirt (river)</button>
         <button id="tab-btn-bw" data-tab="tab-bw">boardwalk</button>
         <button id="tab-btn-pier" data-tab="tab-pier">pier</button>
+        <button id="tab-btn-align" data-tab="tab-align">marina align</button>
         <button id="tab-btn-bridge" data-tab="tab-bridge">bridges</button>
+        <button id="tab-btn-beach" data-tab="tab-beach">beach</button>
         <button id="tab-btn-tune" data-tab="tab-tune">footpath / carriageway tuning</button>
     </div>
 </div>
@@ -251,6 +259,300 @@
             <div class="ctl" id="bridge-rows"></div>
         </section>
     </div>
+    <div id="tab-beach" class="tabpane" hidden>
+        <section>
+            <h2>beach tile 1 — <code>BEACHSHORE1</code> / <code>BEACHSHORE2</code>
+                <small>the water's edge of the bottom (below-the-mountains) coast: sand +
+                    wavy shoreline + animated <code>C_Wave_*</code> foam + seaweed.
+                    One of the two tile types that line the ocean where it meets the land
+                    the SOUTHERN coast only (sea up to where the mountain ridge meets the
+                water — the seam on the map card below).
+                    <b>Not RoadMap tiles, never paintable, never in the save</b> — the
+                    SAND layer is engine filler (notes/01); the engine draws these strips
+                    itself as <code>landinfo.xml</code> <code>&lt;LandSprite&gt;</code>
+                    <code>LandEdge filename="Beach" direction="y" culling="left"
+                    width="16" offsety="-1" repeat="-1"</code>.
+                    <code>…2</code> is the duller unpurchased-plot sand.
+                    Art: <code>beach.bsv3</code> / <code>beach.png</code> (tutorialgame
+                    pack), pre-sheared oblique art at 64 art px per town tile — so the
+                    64-px grid below is exactly 1 town tile.
+                    Parsed by <code>tools/gen_beach_tiles.py</code> into
+                    <code>assets/city/beach-tiles.json</code>.</small></h2>
+            <canvas id="cv-beachshore" width="1184" height="693"></canvas>
+            <p class="meta" id="bch-shore-info"></p>
+            <div class="ctl">
+                <div class="st"><span class="lbl">zoom</span>
+                    <button id="bch-shore-zoom-minus">−</button><span class="v" id="bch-shore-zoom-v"></span><button id="bch-shore-zoom-plus">+</button></div>
+                <div class="st"><span class="lbl">frame</span>
+                    <button id="bch-shore-frame-minus">◀</button><span class="v" id="bch-shore-frame-v"></span><button id="bch-shore-frame-plus">▶</button></div>
+                <div class="st"><button id="bch-shore-variant">sand: purchased</button></div>
+                <div class="st"><button id="bch-shore-sea" class="on">sea</button>
+                    <button id="bch-shore-grid" class="on">64-px grid</button>
+                    <button id="bch-shore-ruler" class="on">ruler</button></div>
+            </div>
+        </section>
+        <section>
+            <h2>beach tile 2 — <code>BEACHBUILDAREA1</code> / <code>BEACHBUILDAREA2</code>
+                <small>the buildable sand behind the shore: same strip, with the inland
+                    grass edge and rocks. The second of the two fixed coast types
+                    (same <code>LandEdge</code> family, <code>width="16"</code>,
+                    <code>repeat="-1"</code>).</small></h2>
+            <canvas id="cv-beachbuild" width="1354" height="754"></canvas>
+            <p class="meta" id="bch-build-info"></p>
+            <div class="ctl">
+                <div class="st"><span class="lbl">zoom</span>
+                    <button id="bch-build-zoom-minus">−</button><span class="v" id="bch-build-zoom-v"></span><button id="bch-build-zoom-plus">+</button></div>
+                <div class="st"><span class="lbl">frame</span>
+                    <button id="bch-build-frame-minus">◀</button><span class="v" id="bch-build-frame-v"></span><button id="bch-build-frame-plus">▶</button></div>
+                <div class="st"><button id="bch-build-variant">sand: purchased</button></div>
+                <div class="st"><button id="bch-build-sea" class="on">sea</button>
+                    <button id="bch-build-grid" class="on">64-px grid</button>
+                    <button id="bch-build-ruler" class="on">ruler</button></div>
+            </div>
+        </section>
+        <section>
+            <h2>coast band (both tiles stacked) <small>the two anims share one bsv3
+                coordinate space, so drawn UNSHIFTED at the same edge position they
+                compose the complete coast: sea → foam → sand → grass.
+                <code>repeat</code>/<code>pitch</code>/<code>along</code> only test the
+                <code>repeat="-1"</code> tiling along the coast — the engine's real
+                repeat rule is an open question, so the defaults (1 copy) are the only
+                claim. <code>BEACHBORDEROVERLAY</code> (the green cliff/rock map-border
+                cap, <code>&lt;AlternateLandSprite&gt;</code>) is in the manifest but is
+                not one of the coast types. This is the <b>southern</b> set only — the
+                coast north of the mountains is another asset, shown in the next
+                section.</small></h2>
+            <canvas id="cv-beachpair" width="1428" height="823"></canvas>
+            <p class="meta" id="bch-pair-info"></p>
+            <div class="ctl">
+                <div class="st"><span class="lbl">zoom</span>
+                    <button id="bch-pair-zoom-minus">−</button><span class="v" id="bch-pair-zoom-v"></span><button id="bch-pair-zoom-plus">+</button></div>
+                <div class="st"><span class="lbl">frame</span>
+                    <button id="bch-pair-frame-minus">◀</button><span class="v" id="bch-pair-frame-v"></span><button id="bch-pair-frame-plus">▶</button></div>
+                <div class="st"><button id="bch-pair-variant">sand: purchased</button></div>
+                <div class="st"><span class="lbl">repeats</span>
+                    <button id="bch-pair-repeats-minus">◀</button><span class="v" id="bch-pair-repeats-v"></span><button id="bch-pair-repeats-plus">▶</button></div>
+                <div class="st"><span class="lbl">pitch (tiles)</span>
+                    <button id="bch-pair-pitch-minus">◀</button><span class="v" id="bch-pair-pitch-v"></span><button id="bch-pair-pitch-plus">▶</button></div>
+                <div class="st"><button id="bch-pair-dir">along: y</button></div>
+                <div class="st"><button id="bch-pair-sea" class="on">sea</button>
+                    <button id="bch-pair-grid" class="on">64-px grid</button>
+                    <button id="bch-pair-ruler" class="on">ruler</button></div>
+            </div>
+        </section>
+        <section>
+            <h2>the OTHER coast — the Heights set
+                (<code>beachshore1</code> / <code>beach1</code> /
+                <code>beachmtnoverlay</code>)
+                <small>the coast north of the mountains is a <b>different set</b>, and
+                    <code>landinfo.xml</code> says so by <code>filename</code>:
+                    <code>&lt;LandEdge filename="springfieldheightsnobeach" direction="y"
+                    culling="left" width="16" offsety="-7" repeat="6"&gt;</code>. Three
+                    edges, not two: <code>beachshore1</code> is its water's edge,
+                    <code>beach1</code> is the sand behind it with a <b>rocky
+                    cliff/mountain ridge</b> rising inland (its <code>bgColor="EEDDCCFF"</code>
+                    is the sand fill), and <code>beachmtnoverlay</code> (<code>repeat="1"</code>,
+                    one stamp) is the mountain mass where the ridge meets the sea. Two
+                    things make this the northern set rather than a third look: the repeat
+                    is <b>finite (6 stamps, then stop)</b> where the southern set is
+                    <code>-1</code> (stamp until the edge ends), and its shore art measures
+                    the <b>same columns</b> as the southern shore (x&nbsp;-4…0, 17 rows) —
+                    so north of the seam it <b>replaces</b> those tiles; it is not a second
+                    band inland of them. Art: <code>springfieldheightsnobeach.bsv3</code> /
+                    <code>.png</code>, same pre-sheared oblique model at 64 art px per town
+                    tile.</small></h2>
+            <h3>Northern shore — <code>BeachShore1</code> / <code>BeachShore2</code></h3>
+            <canvas id="cv-beachhshore" width="1184" height="693"></canvas>
+            <p class="meta" id="bch-hshore-info"></p>
+            <div class="ctl">
+                <div class="st"><span class="lbl">zoom</span>
+                    <button id="bch-hshore-zoom-minus">−</button><span class="v" id="bch-hshore-zoom-v"></span><button id="bch-hshore-zoom-plus">+</button></div>
+                <div class="st"><span class="lbl">frame</span>
+                    <button id="bch-hshore-frame-minus">◀</button><span class="v" id="bch-hshore-frame-v"></span><button id="bch-hshore-frame-plus">▶</button></div>
+                <div class="st"><button id="bch-hshore-variant">sand: purchased</button></div>
+                <div class="st"><button id="bch-hshore-sea" class="on">sea</button>
+                    <button id="bch-hshore-grid" class="on">64-px grid</button>
+                    <button id="bch-hshore-ruler" class="on">ruler</button></div>
+            </div>
+            <h3>Northern beach + cliff — <code>Beach1</code> / <code>Beach2</code></h3>
+            <canvas id="cv-beachhbeach" width="1768" height="989"></canvas>
+            <p class="meta" id="bch-hbeach-info"></p>
+            <div class="ctl">
+                <div class="st"><span class="lbl">zoom</span>
+                    <button id="bch-hbeach-zoom-minus">−</button><span class="v" id="bch-hbeach-zoom-v"></span><button id="bch-hbeach-zoom-plus">+</button></div>
+                <div class="st"><span class="lbl">frame</span>
+                    <button id="bch-hbeach-frame-minus">◀</button><span class="v" id="bch-hbeach-frame-v"></span><button id="bch-hbeach-frame-plus">▶</button></div>
+                <div class="st"><button id="bch-hbeach-variant">sand: purchased</button></div>
+                <div class="st"><button id="bch-hbeach-sea" class="on">sea</button>
+                    <button id="bch-hbeach-grid" class="on">64-px grid</button>
+                    <button id="bch-hbeach-ruler" class="on">ruler</button></div>
+            </div>
+            <h3>Mountain-at-the-water stamp — <code>BeachMtnOverlay</code></h3>
+            <canvas id="cv-beachhmtn" width="1283" height="704"></canvas>
+            <p class="meta" id="bch-hmtn-info"></p>
+            <div class="ctl">
+                <div class="st"><span class="lbl">zoom</span>
+                    <button id="bch-hmtn-zoom-minus">−</button><span class="v" id="bch-hmtn-zoom-v"></span><button id="bch-hmtn-zoom-plus">+</button></div>
+                <div class="st"><span class="lbl">frame</span>
+                    <button id="bch-hmtn-frame-minus">◀</button><span class="v" id="bch-hmtn-frame-v"></span><button id="bch-hmtn-frame-plus">▶</button></div>
+                <div class="st"><button id="bch-hmtn-sea" class="on">sea</button>
+                    <button id="bch-hmtn-grid" class="on">64-px grid</button>
+                    <button id="bch-hmtn-ruler" class="on">ruler</button></div>
+            </div>
+            <h3>Northern coast band (stacked, <code>repeat="6"</code>)</h3>
+            <canvas id="cv-beachhpair" width="1768" height="989"></canvas>
+            <p class="meta" id="bch-hpair-info"></p>
+            <div class="ctl">
+                <div class="st"><span class="lbl">zoom</span>
+                    <button id="bch-hpair-zoom-minus">−</button><span class="v" id="bch-hpair-zoom-v"></span><button id="bch-hpair-zoom-plus">+</button></div>
+                <div class="st"><span class="lbl">frame</span>
+                    <button id="bch-hpair-frame-minus">◀</button><span class="v" id="bch-hpair-frame-v"></span><button id="bch-hpair-frame-plus">▶</button></div>
+                <div class="st"><button id="bch-hpair-variant">sand: purchased</button></div>
+                <div class="st"><span class="lbl">repeats</span>
+                    <button id="bch-hpair-repeats-minus">◀</button><span class="v" id="bch-hpair-repeats-v"></span><button id="bch-hpair-repeats-plus">▶</button></div>
+                <div class="st"><span class="lbl">pitch (tiles)</span>
+                    <button id="bch-hpair-pitch-minus">◀</button><span class="v" id="bch-hpair-pitch-v"></span><button id="bch-hpair-pitch-plus">▶</button></div>
+                <div class="st"><button id="bch-hpair-dir">along: y</button></div>
+                <div class="st"><button id="bch-hpair-sea" class="on">sea</button>
+                    <button id="bch-hpair-grid" class="on">64-px grid</button>
+                    <button id="bch-hpair-ruler" class="on">ruler</button></div>
+            </div>
+        </section>
+        <section>
+            <h2>map placement — <code>two coasts, one seam</code>
+                <small>the coast as the viewer models it: <b>sea west of grid
+                    x&nbsp;=&nbsp;0</b> (<code>terrain.js</code> <code>seaFill</code>
+                    −64…0, coast <code>y 0..512</code>), land east of it. The
+                    <b>southern</b> (below-the-mountains) coast is one continuous band
+                    of the <code>Beach</code> pair, and it stops where the mountain ridge
+                    meets the water: <code>landinfo.xml</code>'s own land table splits its
+                    two beach ranges at <code>y&nbsp;=&nbsp;-16</code>
+                    (<code>&lt;GridTypeRange type="beach" x_start="0" x_end="4"
+                    y_start="-16"/&gt;</code> south of it — the 4-tile band the measured
+                    buildarea box matches tile for tile — and <code>type="beach" x_end="12"
+                    y_end="-16"</code> + <code>type="cliff" x_start="12" x_end="16"
+                    y_end="-16"</code> north of it, the wider Heights coast), and the
+                    region table puts the mountain band at <code>SHMountains y&nbsp;-18..0</code>
+                    with Springfield&nbsp;Heights above it. That split row is one
+                    candidate seam; the <b>default</b> is the other, and it is
+                    <b>measured off the save</b> — the game itself puts
+                    <code>Mountain03</code>/<code>LowerMountainBeach</code> (16×16) and
+                    <code>Mountain04</code>/<code>LowerMountainBeachShoreline</code> (6×16)
+                    at x&nbsp;-6…16 with their south edge on row&nbsp;0, so the ridge foot
+                    sits in rows -16…0 at the west end of the <code>Mountains_Standard</code>
+                    wall. The two sources bracket the row, so the <code>coast from</code>
+                    stepper <i>is</i> the seam: the fill runs from it south to
+                    <code>coast to</code>, and the canvas draws <b>both</b> candidate rows
+                    (bright dashed = the live seam, faint = the type table's own
+                    <code>y&nbsp;=&nbsp;-16</code>) until the map decides.
+                    <b>North of the seam the coast is the other set</b>
+                    (<code>springfieldheightsnobeach</code>, <code>repeat="6"</code>):
+                    <code>heights</code> draws it, <code>mode</code> decides whether it
+                    <b>replaces</b> the lower strips north of the seam (both shores measure
+                    the same columns, so that is what the file implies) or is painted
+                    <b>over</b> them at the same anchors (the stacking question, visible).
+                    <code>LandEdge repeat="-1"</code> still means stamp until the edge
+                    ends — every edge of a <i>known fixed length</i> carries a finite
+                    repeat (the Heights set 6, the <code>MOUNTAINSTOWATER</code> cap 1,
+                    Krustyland's fence 13/12), so the southern set really does fill its
+                    stretch: 528 tiles ÷ the <b>17 rows</b> one strip paints =
+                    <b>32 strips</b> (the art reaches 18 tiles but fills only 17 rows, so
+                    an 18-tile pitch would leave a 1-row gap every 18). Coverage itself is
+                    <b>derived from the opaque art</b> (<code>anims[].tilebox</code>): shore
+                    covers the 4 tiles <i>water-side</i> of the anchor column, buildarea the
+                    4 tiles <i>inland</i> — so the anchor column <i>is</i> the shoreline.
+                    <code>fit</code> picks the zoom that shows the whole stretch (at ×1 it
+                    would be a 34k-px canvas); the zoom stepper turns it off to inspect one
+                    section. <code>iso</code> draws through the City View's own projection
+                    (<code>CAM.tileAffine</code>, 2:1 oblique; the pre-sheared art blits
+                    unshifted because its own tile step is that projection's
+                    (+64,&nbsp;+32)&nbsp;px), off gives a flat top-down grid. Still open:
+                    the seam row, the repeat <i>phase</i> (the pitch steppers), the anchor
+                    column, and what <code>width="16"</code> means (dashed amber — the
+                    measured band is only ~8 tiles deep).</small></h2>
+            <canvas id="cv-beachmap" width="1240" height="760"></canvas>
+            <p class="meta" id="bch-map-info"></p>
+            <div class="ctl">
+                <div class="st"><span class="lbl">zoom</span>
+                    <button id="bch-map-zoom-minus">−</button><span class="v" id="bch-map-zoom-v"></span><button id="bch-map-zoom-plus">+</button></div>
+                <div class="st"><span class="lbl">seam / coast from</span>
+                    <button id="bch-map-start-minus">◀</button><span class="v" id="bch-map-start-v"></span><button id="bch-map-start-plus">▶</button></div>
+                <div class="st"><span class="lbl">coast to</span>
+                    <button id="bch-map-end-minus">◀</button><span class="v" id="bch-map-end-v"></span><button id="bch-map-end-plus">▶</button></div>
+                <div class="st"><span class="lbl">anchor column</span>
+                    <button id="bch-map-offx-minus">◀</button><span class="v" id="bch-map-offx-v"></span><button id="bch-map-offx-plus">▶</button></div>
+                <div class="st"><span class="lbl">along nudge</span>
+                    <button id="bch-map-offy-minus">◀</button><span class="v" id="bch-map-offy-v"></span><button id="bch-map-offy-plus">▶</button></div>
+                <div class="st"><span class="lbl">strips</span>
+                    <button id="bch-map-copies-minus">◀</button><span class="v" id="bch-map-copies-v"></span><button id="bch-map-copies-plus">▶</button></div>
+                <div class="st"><span class="lbl">pitch (tiles)</span>
+                    <button id="bch-map-pitch-minus">◀</button><span class="v" id="bch-map-pitch-v"></span><button id="bch-map-pitch-plus">▶</button></div>
+                <div class="st"><span class="lbl">N. strips</span>
+                    <button id="bch-map-hinst-minus">◀</button><span class="v" id="bch-map-hinst-v"></span><button id="bch-map-hinst-plus">▶</button></div>
+                <div class="st"><span class="lbl">N. pitch</span>
+                    <button id="bch-map-hpitch-minus">◀</button><span class="v" id="bch-map-hpitch-v"></span><button id="bch-map-hpitch-plus">▶</button></div>
+                <div class="st"><button id="bch-map-along">along: y</button></div>
+                <div class="st"><button id="bch-map-variant">sand: purchased</button></div>
+                <div class="st"><button id="bch-map-heights">heights set</button>
+                    <button id="bch-map-hmode">mode: replace</button></div>
+                <div class="st"><button id="bch-map-fill" class="on">fill coast</button>
+                    <button id="bch-map-fit" class="on">fit</button>
+                    <button id="bch-map-iso" class="on">2:1 oblique</button>
+                    <button id="bch-map-sea" class="on">sea</button>
+                    <button id="bch-map-types" class="on">land types</button>
+                    <button id="bch-map-grid" class="on">tile grid</button>
+                    <button id="bch-map-foot" class="on">tiles painted</button>
+                    <button id="bch-map-claimed" class="on">width=16</button>
+                    <button id="bch-map-anchors" class="on">anchors</button>
+                    <button id="bch-map-labels" class="on">labels</button></div>
+            </div>
+        </section>
+    </div>
+    <div id="tab-align" class="tabpane" hidden>
+        <section style="flex: 1 1 100%;">
+            <h2>marina align — move every boardwalk / pier tile together by hand
+                <small>the live City View (same code, same art) framed on
+                    BarnacleBayMarina. The nudge moves ALL brush frames as one, in
+                    screen-aligned art px (+x right, +y down; one tile = 128×64 art
+                    px). Pan / zoom inside the view as usual. When it lines up, copy
+                    the readout below and paste it back.</small></h2>
+            <div class="ctl">
+                <div class="st"><span class="lbl">step</span>
+                    <select id="al-step">
+                        <option value="1">1 px</option><option value="2">2 px</option>
+                        <option value="4" selected>4 px</option><option value="8">8 px</option>
+                        <option value="16">16 px</option><option value="32">32 px (¼ tile)</option>
+                    </select></div>
+                <div class="st"><button id="al-left" title="left (←)">◀ left</button>
+                    <button id="al-up" title="up (↑)">▲ up</button>
+                    <button id="al-down" title="down (↓)">▼ down</button>
+                    <button id="al-right" title="right (→)">right ▶</button></div>
+                <div class="st"><span class="lbl">dx</span>
+                    <input id="al-dx" type="number" step="1" value="0" style="width:64px">
+                    <span class="lbl">dy</span>
+                    <input id="al-dy" type="number" step="1" value="0" style="width:64px">
+                    <button id="al-reset">reset 0,0</button></div>
+                <div class="st"><button id="al-recenter">re-frame marina</button>
+                    <button id="al-flip" title="toggle 0,0 vs your nudge (B key)">A/B: show 0,0</button></div>
+                <span class="lbl" id="al-status">loading view…</span>
+            </div>
+            <p class="meta">keys (with the focus outside the view — click this text first):
+                arrows move by one step, shift+arrows by 4 steps, B toggles A/B.</p>
+            <iframe id="al-frame" title="City View framed on BarnacleBayMarina"
+                style="display:block; width:100%; height:820px; border:1px solid #2b2f36;
+                border-radius:4px; margin-top:8px; background:#101216;"></iframe>
+            <h2 style="margin-top:10px;">readout <small>paste this back — it is everything
+                needed to reproduce your alignment</small></h2>
+            <div class="ctl"><span class="lbl">notes</span>
+                <input id="al-notes" type="text" style="flex:1; min-width:300px"
+                    placeholder="optional: what you aligned against, what still looks off"></div>
+            <div class="ctl"><button id="al-copy">copy readout</button>
+                <span class="lbl" id="al-copied"></span></div>
+            <pre id="al-out" style="margin:6px 0 0; padding:10px 12px; background:#101216;
+                border:1px solid #2b2f36; border-radius:6px; color:#a8d8a8;
+                overflow:auto; font-size:12px;"></pre>
+        </section>
+    </div>
     <div id="tab-tune" class="tabpane" hidden>
         <div class="bar" style="border: 1px solid #2b2f36; border-radius: 6px; margin-bottom: 12px;">
             <div class="grp"><span class="lbl">view</span>
@@ -315,6 +617,6 @@
     <pre id="refout"></pre>
 </div>
 <script src="../js/camera.js"></script>
-<script src="road-lab.js?v=25"></script>
+<script src="road-lab.js?v=34"></script>
 </body>
 </html>
