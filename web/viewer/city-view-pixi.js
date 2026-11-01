@@ -39,12 +39,12 @@
        ?v= of this script in index.html) whenever the pipeline regenerates
        them — otherwise the browser keeps the previous render (e.g. a
        building's old snowy art) whatever the pool says */
-    var ASSET_V = '?v=20261030.7';
+    var ASSET_V = '?v=20261031.4';
     // Bump whenever city/*.png art changes — the sprites, filmstrip atlases
     // and stack sheets all load through cityUrl(), and a stale cached PNG
     // against fresh city-anims.json sub-rects draws sparse water from wrong
     // shelf spots (the "water attached incorrectly" report, round 6).
-    var MANIFEST_V = '?v=20261030.7';           // city-sprites/-anims.json
+    var MANIFEST_V = '?v=20261101.1';           // city-sprites/-anims.json
     function cityUrl(p) { return B + 'assets/city/' + p + ASSET_V; }
 
     var stage = $('stage');
@@ -2719,6 +2719,9 @@
             Math.min(255, c[1] * f | 0) + ',' + Math.min(255, c[2] * f | 0) + ')';
     }
     var buildings = [];
+    var charGrid = null;                  // oriented-space coarse grid: cell
+                                          // 'gu,gv' -> [building index..] for
+                                          // the char-vs-building occlusion test
     var byMi = [];                      // M.buildings index -> drawn block
     var catOfMi = [];                   // M.buildings index -> object bucket
     function buildBuildings() {         // re-run after an ORIENT change (depth keys)
@@ -2753,11 +2756,34 @@
                 depth: front[0] + front[1],
                 ox1: front[0]
             };
+            blk.bu0 = blk.bv0 = 0; blk.bu1 = blk.bv1 = 0;
+            var oc0 = CAM.oriented(blk.x0, blk.y0), oc1 = CAM.oriented(blk.x1, blk.y1);
+            blk.bu0 = Math.min(oc0[0], oc1[0]); blk.bu1 = Math.max(oc0[0], oc1[0]);
+            blk.bv0 = Math.min(oc0[1], oc1[1]); blk.bv1 = Math.max(oc0[1], oc1[1]);
             buildings.push(blk);
             byMi[i] = blk;
             catOfMi[i] = blk.cat;
         }
         buildings.sort(function (a, b) { return a.depth - b.depth || a.ox1 - b.ox1; });
+        buildCharGrid();                    // char-occlusion lookup (below)
+    }
+    /* coarse oriented-space grid for the scene pass' char-vs-building
+       occlusion test. CH_* bounds in tile units: CH_H/CH_W a character
+       sprite's generous visible envelope (the art ships tall transparent
+       filmstrip cells; the body is well inside), CH_PAD the reach of a
+       screen-space overlap along one oriented axis (biggest footprint
+       13x12 + wall 4 + char 6 rounds up). */
+    var CH_CS = 8, CH_PAD = 40, CH_H = 6, CH_W = 2;
+    function buildCharGrid() {
+        charGrid = {};
+        for (var i = 0; i < buildings.length; i++) {
+            var b = buildings[i];
+            for (var gu = Math.floor(b.bu0 / CH_CS); gu <= Math.floor(b.bu1 / CH_CS); gu++)
+                for (var gv = Math.floor(b.bv0 / CH_CS); gv <= Math.floor(b.bv1 / CH_CS); gv++) {
+                    var kk = gu + ',' + gv, a = charGrid[kk];
+                    if (a) a.push(i); else charGrid[kk] = [i];
+                }
+        }
     }
     buildBuildings();
 
@@ -3735,7 +3761,7 @@
     /* ============================ render ===================================== */
     var DIAG = {
         mode: 'Pixi', ms: 0, fps: 0, maxMs: 0, anims: 0, charAnims: 0,
-        pool: 0, ver: '2026-10-30.6'
+        pool: 0, ver: '2026-11-01'
     };
     window.__CV_DIAG = DIAG;
     window.__CV_VER = DIAG.ver;                    // console sanity check
@@ -3998,13 +4024,108 @@
         }
     }
 
-    /* ---- scene pass: buildings + people in ONE depth-ordered pool ----------- */
+    /* ---- scene pass: buildings + people in ONE depth-ordered pool -----------
+       People MERGE into the buildings' painter-order stream instead of always
+       drawing after the last block (the old code made every char float over
+       every roof, e.g. Dimwillie over the Springfield firehouse). Each
+       on-screen char gets an emit index: its position in the blocks'
+       pivot-depth order, corrected per the oriented separating-axis test
+       against the blocks that can visually touch it (see the grid note in
+       buildBuildings) — behind BOTH viewer-facing faces (or standing on the
+       lot) sends it under the block, otherwise it stays over. Chars are
+       bucketed by emit index and flushed as the block loop passes it. */
     function renderScene(A, s, T, lod) {
         var i, b;
+        var art = !!artMode && !!citySprites;
+        var k = s / ART.S;
+        var nq = 0, chq = null, buck = null;
+        peopleDots = 0;
+        if (!objHidden.people) {
+            var ch = M.chars;
+            for (i = 0; i < ch.length; i++) {
+                var c = ch[i];
+                if (c[1] < T.x0 - 1 || c[1] > T.x1 + 1 ||
+                    c[2] < T.y0 - 1 || c[2] > T.y1 + 1) continue;
+                var cxw = c[1], cyw = c[2];
+                var x = A.a * cxw + A.b * cyw + A.c,
+                    y = A.d * cxw + A.e * cyw + A.f;
+                if (x < -4 || x > VW + 4 || y < -4 || y > VH + 4) continue;
+                var u = CAM.oriented(cxw, cyw);
+                if (!chq) chq = [];
+                chq.push({ d: u[0] + u[1], u: u[0], v: u[1], c: c, x: x, y: y });
+            }
+            if (chq) {
+                chq.sort(function (p, q) { return p.d - q.d || p.u - q.u; });
+                nq = chq.length;
+                /* Emit index: the scalar pivot-depth position, corrected
+                   against the grid candidates whose screen silhouette can
+                   actually touch the char sprite (oriented-rect overlap on
+                   sy=(u+v), sx=(u-v)). Behind BOTH viewer-facing faces
+                   (u < bu1 && v < bv1) — incl. standing on the lot — pulls
+                   the emit index down before that block; otherwise the
+                   nearest candidate that should sit UNDER the char pushes
+                   it up. Conflicts keep the occlusion (hidden wins). */
+                var sp = 0;
+                for (i = 0; i < nq; i++) {
+                    var e = chq[i];
+                    while (sp < buildings.length && buildings[sp].depth <= e.d) sp++;
+                    var ei = sp, lo = -1, hi = -1, seen = {};
+                    for (var gu = Math.floor((e.u - CH_PAD) / CH_CS);
+                             gu <= Math.floor((e.u + CH_PAD) / CH_CS); gu++)
+                        for (var gv = Math.floor((e.v - CH_PAD) / CH_CS);
+                                 gv <= Math.floor((e.v + CH_PAD) / CH_CS); gv++) {
+                            var a = charGrid && charGrid[gu + ',' + gv];
+                            for (var j = 0; a && j < a.length; j++) {
+                                var jj = a[j];
+                                if (seen[jj]) continue;
+                                seen[jj] = 1;
+                                var bb = buildings[jj];
+                                if (objHidden[bb.cat] || hiddenObjs[bb.hkey]) continue;
+                                if (e.d < bb.bu0 + bb.bv0 - bb.hgt - CH_H ||
+                                    e.d - CH_H > bb.bu1 + bb.bv1 ||
+                                    e.u - e.v < bb.bu0 - bb.bv1 - CH_W ||
+                                    e.u - e.v > bb.bu1 - bb.bv0 + CH_W) continue;
+                                if (e.u < bb.bu1 && e.v < bb.bv1) {
+                                    if (lo < 0 || jj < lo) lo = jj;
+                                } else if (jj > hi) hi = jj;
+                            }
+                        }
+                    if (lo >= 0 && lo < ei) ei = lo;
+                    if (hi >= 0 && hi + 1 > ei && !(lo >= 0 && hi >= lo)) ei = hi + 1;
+                    if (!buck) buck = [];
+                    (buck[ei] || (buck[ei] = [])).push(e);    // d-ordered in
+                }                                             // push order
+            }
+        }
+        var artC = !!artMode && !!charMan;
+        var kc = k;
+        var rpx = Math.max(1.6, CityObjects.PEOPLE_R * Math.min(2.2, s / 40));
+        var dotHex = rgbHex(M.charcol);
+        function emitChar(e) {
+            if (artC && !lod) {
+                var as2 = charArtOf(e.c);
+                if (as2 && !(as2.w * kc < 12 && as2.h * kc < 12)) {
+                    var url = B + 'assets/characters/' +
+                        (charPreview && charPreview.cell === as2
+                            ? charPreviewFrame(as2)
+                            : charFrameFile(as2, e.c[0], kc));
+                    if (charAnimating(as2, kc)) charAnimLive++;
+                    var t = texFor(url);
+                    if (t) { emitSpr(t, e.x - as2.anchor[0] * kc,
+                                     e.y - as2.anchor[1] * kc,
+                                     as2.w * kc, as2.h * kc); return; }
+                }
+            }
+            emitDot(e.x, e.y, rpx, dotHex);
+            peopleDots++;
+        }
+        function emitBucket(ei) {
+            var bk = buck && buck[ei];
+            if (!bk) return;
+            for (var j = 0; j < bk.length; j++) emitChar(bk[j]);
+        }
         if (!lod) {
             renderBridges(A, s, T);           // deck art into bridgeG (under sceneG)
-            var art = !!artMode && !!citySprites;
-            var k = s / ART.S;
             var mgn = art ? 6 : 2;
             if ((!pierOver || pierOver.recs !== pierRecs || pierOver.spr !== citySprites) &&
                 (citySprites || !artMode)) {
@@ -4016,6 +4137,7 @@
             var po = pierOver && (pierOver.cells ? pierOver : null);
             for (i = 0; i < buildings.length; i++) {
                 if (po && i && (po.at[i - 1] || po.re[i - 1])) emitPierOver(i - 1, A, s, k);
+                emitBucket(i);
                 b = buildings[i];
                 if (objHidden[b.cat] || hiddenObjs[b.hkey]) continue;
                 if (b.x1 < T.x0 - mgn || b.x0 > T.x1 + mgn ||
@@ -4024,41 +4146,8 @@
                 emitBlock(b, A, s);
             }
             if (po && buildings.length) emitPierOver(buildings.length - 1, A, s, k);
-        }
-        if (!objHidden.people) {
-            var artC = !!artMode && !!charMan;
-            var kc = s / ART.S;
-            var rpx = Math.max(1.6, CityObjects.PEOPLE_R * Math.min(2.2, s / 40));
-            var dots = null, ch = M.chars;
-            for (i = 0; i < ch.length; i++) {
-                var c = ch[i];
-                if (c[1] < T.x0 - 1 || c[1] > T.x1 + 1 ||
-                    c[2] < T.y0 - 1 || c[2] > T.y1 + 1) continue;
-                var cxw = c[1], cyw = c[2];
-                var x = A.a * cxw + A.b * cyw + A.c,
-                    y = A.d * cxw + A.e * cyw + A.f;
-                if (x < -4 || x > VW + 4 || y < -4 || y > VH + 4) continue;
-                if (artC && !lod) {
-                    var as2 = charArtOf(c);
-                    if (as2 && !(as2.w * kc < 12 && as2.h * kc < 12)) {
-                        var url = B + 'assets/characters/' +
-                            (charPreview && charPreview.cell === as2
-                                ? charPreviewFrame(as2)
-                                : charFrameFile(as2, c[0], kc));
-                        if (charAnimating(as2, kc)) charAnimLive++;
-                        var t = texFor(url);
-                        if (t) { emitSpr(t, x - as2.anchor[0] * kc,
-                                         y - as2.anchor[1] * kc,
-                                         as2.w * kc, as2.h * kc); continue; }
-                    }
-                }
-                if (!dots) dots = [];
-                dots.push(x, y);
-            }
-            peopleDots = dots ? dots.length / 2 : 0;
-            for (i = 0; dots && i < dots.length; i += 2)
-                emitDot(dots[i], dots[i + 1], rpx, rgbHex(M.charcol));
-        } else peopleDots = 0;
+            emitBucket(buildings.length);       // chars nearer than every block
+        } else for (i = 0; i < nq; i++) emitChar(chq[i]);
     }
     function emitBlock(b, A, s) {
         var ax0 = A.a * b.x0 + A.b * b.y0 + A.c, ay0 = A.d * b.x0 + A.e * b.y0 + A.f;

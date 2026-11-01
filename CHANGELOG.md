@@ -1,5 +1,181 @@
 # Changelog
 
+## 2026-11-01.2
+
+- **Characters in the Pixi viewer are occluded by buildings again (z-order
+  fix).** `renderScene` in `web/viewer/city-view-pixi.js` claimed one
+  depth-ordered pool but emitted every building first and all people after,
+  so any character floated over every roof (e.g. Dimwillie at 79.5,80.5
+  drew over the Springfield Fire Department standing between him and the
+  camera). Chars on screen now carry the buildings' own oriented depth key
+  (`CAM.depth` of the foot tile, tie on oriented u), are sorted
+  back-to-front each frame, and get an emit index into the block loop —
+  their position in the blocks' pivot-depth order corrected per the oriented
+  separating-axis test (the same rule as the pier pass: a char is behind a
+  block only when its foot is behind BOTH viewer-facing faces, `u < bu1 &&
+  v < bv1`, which also covers standing on the lot; a char on the sidewalk in
+  front of a wall still draws over it). Candidates for the test come from a
+  new coarse oriented-space grid, `buildCharGrid()` (rebuilt only on an
+  ORIENT change), bounded by a screen-space overlap check so chars under
+  tall blocks vanish and ones beside them don't. Legend-hidden blocks are
+  skipped as occluders. Char sprites and fallback dots share the merge (dots
+  emit inline instead of in a trailing batch), so `peopleDots` and
+  `charAnimLive` mean the same as before; the LOD pass is unchanged (no
+  blocks drawn, all chars after). Cache-buster → `city-view-pixi.js?v=86`
+  (`web/viewer/index.html`). The deprecated Canvas page is untouched.
+
+## 2026-11-01
+
+- **bsv3 filmstrips wound back to how they played before the speed experiment.**
+  The 2026-10-31.5 speed fix (fps 12 → 60), the .6 tick-aligned repaint and the
+  .7 rate knob are all reverted: on screen the loops ran far too fast against
+  the game and some frames read as pixel-offset, so the experiment is off rather
+  than half-in. The Pixi viewer and the deprecated page are byte-identical to
+  their pre-experiment state again — `animIdx` samples `a.fps` directly, the
+  anim repaint is back on its fixed ~90 ms grid (`animNextT = t + 90`), and the
+  `animTick`/`animDelay`/`animWatch`/`animNextMs` scheduler, `stripFps`, the
+  `?animFps` + `__CV_ANIM_fps` + `localStorage` override and the
+  `__CV_ANIM_pin` freezer are gone. `tools/gen_city_sprites.py`: `ANIM_FPS`
+  → 12 with its original note, and the cluster path's thinned-strip fps boost
+  (poses change ~4/s, capped at 18) is restored. `web/assets/city/city-anims.json`
+  — generated data, gitignored — was rewritten in place to match: every strip
+  back to `fps` 12, except `privateisland05 PrivateIslandTop` at 15 (the one
+  sparse-thinned strip the boost applies to, recomputed from its recorded
+  `lt`/`frames` by the same formula). A `gen_city_sprites anims` re-bake
+  reproduces the manifest exactly. The RE evidence that started it is kept in
+  `notes/01-binary-formats.md`, marked as an unresolved question: `Sequence`
+  `ControllerInstance::Update` (fcn `0x1085364`) really does advance the raw
+  index +1 per call, but no bsv3 file, building XML (none of the 3 634 in the
+  city pool carries a timing attribute) or render-path limiter says how often
+  that update runs, so the engine's ticks/s is still unmeasured. `DIAG.ver` →
+  `2026-11-01` in both pages, cache-busters → `city-view-pixi.js?v=85`
+  (`web/viewer/index.html`) and `city-view.js?v=37` (`web/city-view.html`),
+  `MANIFEST_V` → `?v=20261101.1` so the manifest rewrite is refetched (the
+  deprecated page fetches `city-anims.json` unversioned, as before). Harness:
+  `tools/smoke-city-view-dom.cjs` is back to its pre-experiment checks, and all
+  suites pass. Files: `web/viewer/city-view-pixi.js`, `web/viewer/index.html`,
+  `web/js/city-view.js`, `web/city-view.html`,
+  `tools/smoke-city-view-dom.cjs`, `tools/gen_city_sprites.py`,
+  `web/assets/city/city-anims.json`, `notes/01-binary-formats.md`.
+
+## 2026-10-31.4
+
+- **`0x0303` block-pool format cracked — shattered landmarks fixed.**
+  The pool parser read each block's `u16` cell index *after* its six
+  floats, so every block's index actually came from the next entry and
+  the pool's leading u16 was invented as a "reserved" field. That
+  off-by-one pairing spread whole buildings across the wrong sheet crops
+  — PlaydoughFactory shipped as scattered fragments. The layout is now
+  confirmed (`u16 ci` leading, stride 26/27, ci always a local cell
+  index on the whole corpus; the old "alpha=1 = global handles" and
+  "some files number cells from 1" theories were artifacts of the same
+  misalignment and are gone). The frame section is decoded too: after
+  `u16 nb0, u16 pad(0)` come `ceil(nf/2)` records of three
+  zero-terminated u16 runs, even frames drawing run A and odd frames
+  run C, with per-record base-0/1 voting (positional agreement +
+  drawn-area / duplicate-cell scoring). 114 of the 142 pool files
+  decode fully; the 28 delta-style files (terminal, bastille, planebot,
+  deathtable …) keep the legacy run/cluster/body fallback, which also
+  renders far better now that the pool is aligned. Static art picks the
+  Neutral anim's first frame like `0x0103` (guarded: a v3 "Neutral" can
+  be a piece-frame, so it must carry ≥40 % of the fullest frame's
+  area), else the fullest frame — 56 assets move off the old 1-block
+  'body' renders. Evidence: `mapdump/registration/m4-pdf-body-fixed.png`,
+  `m4-v3b-*`, `m4-v3c/d/e-*` renders.
+- **PlaydoughFactory rebuilt (body + animations).** The body PNG is now
+  the complete factory (static frame 132, 20 blocks, matching its
+  transimage), the winter variant re-rendered, and two filmstrips baked:
+  `Active` (the running-machine loop) and `Active_Out` (the shutdown
+  transition). No gamescript names this building, so its click gate is
+  synthesized (`V3_CLICK_GATES` in `tools/gen_city_sprites.py`): first
+  tap starts the Active loop, second plays Active_Out back to the
+  static body — the same inout machine its `Active / Active_In /
+  Active_Out` ranges describe.
+- `ASSET_V` / `MANIFEST_V` bumped to `?v=20261031.4`; viewer script
+  cache-buster `city-view-pixi.js?v=81`.
+
+## 2026-10-31.3
+
+- **Transimage-box gate generalised + pool-wide audit harness.** A
+  second box class surfaced (`CrowdOfBullies`, `CrowdOfCosplayers`,
+  `GnomeInTheHomeDomeAutomatons` → asset `GnomeAutomatonCrowd`): same
+  degenerate authoring, but the placeholder cell is a blue
+  `C_CrowdofPres` sliver (12x24) instead of the white `C_Square`, so
+  the 2026-10-31.2 gate (which required the cell name and an
+  achromatic sheet) missed them. The generator gate is now
+  content-based: single bsv3 cell + a placeholder-marker sheet
+  (<=96x96, >=25% opaque, <=8 colours quantised to 32-unit buckets —
+  real single-cell art like trashcan/pylon sits at 12+) + a companion
+  carrying real content (>=1% opaque, more colours than the marker) +
+  a non-zero xml `transImageX/Y` pair. Six more slugs converted
+  (`crowdofbullies`, `crowdofcosplayers`, `crowdofpresidents`,
+  `dancingchildren`, `gnomeautomatoncrowd`, `unrulycrowd`); 17
+  manifest entries now ship `pivot: "transimage"`. `ASSET_V` /
+  `MANIFEST_V` bumped to `?v=20261031.3`.
+- **`tools/audit-transimage-boxes.py`.** Checks every pool asset for
+  the condition (run after a pool sync or when a building draws as a
+  box): buckets FIXABLE (gate should have fired — re-render with
+  `sprites --slug`), PARTIAL (transimage XOR xml pair), NO-ART marker
+  sheets (true boxes or legitimately flat art — the two
+  `spotlightwhite*` slugs are real spotlight art, eyeballed), and
+  manifest keys with no pool source (only the synthetic `bridge*_f<N>`
+  frame keys today). Current state: clean. Before/after evidence:
+  `mapdump/registration/m4-transimage-crowds2-fixed.png` (and
+  `m4-transimage-crowds-fixed.png`, `m4-transimage-audit-candidates.png`
+  from the audit sweep).
+
+## 2026-10-31.2
+
+- **Crowd sprites drawn from their transimage companions.** The
+  `crowdof*` props (MovementarianRecruiters, SeasonalWorkers, DogGang,
+  FBIAgents, Golfers, Lawyers, Burgersoldiers, CrankyElderly,
+  RappinRabbis, HellKidsCrowd, HellScientistsCrowd) drew as a flat
+  white/black box on the City View while their click panel showed the
+  art as found & extracted. Cause: each ships a degenerate 43-byte bsv3
+  holding ONE white `C_Square` quad over a 48×48 achromatic placeholder
+  `.rgb`; the pipeline's body fallback drew that quad, and the real art —
+  the coloured `<slug>_transimage.rgb` companion the game actually
+  displays — was only ever decoded by the explorer. `gen_city_sprites.py`
+  now detects the signature (lone `C_Square` cell + transimage companion
+  on disk + achromatic sheet + non-zero xml `transImageX/Y`) and ships
+  the full companion sheet as the sprite, anchored `(-tx, h + ty)` — the
+  transImage-pair rule pinned to <1.5 px on the ~347 healthy assets
+  (`pivot: "transimage"`, `static: "transimage"`). Viewer code is
+  unchanged (it only reads `png/w/h/anchor`); the 11 PNGs were
+  regenerated with `sprites --slug` and the viewer's `ASSET_V` /
+  `MANIFEST_V` cache-busters bumped to `?v=20261031.2`. Evidence sheet:
+  `mapdump/registration/m4-transimage-crowds-fixed.png`.
+
+## 2026-10-31
+
+- **LavaMachine animations restored from its overlay companions.** The
+  machine's own bsv3 carries no motion — all 24 Neutral frame records are
+  one repeated block list, so the viewer could only ever show it static.
+  The real art sits in two un-placed DLC companion assets,
+  `lavamachineneutraloverlay01` (a 24-tick smoke plume venting from the
+  tower top) and `lavamachineactiveoverlay02` (an 80-tick red lava
+  eruption with splashes, crater glow and trees catching fire). Neither
+  has an xml, no building places them and no gamescript names them; the
+  engine composites them from code no data file exposes.
+- **Pipeline: `OVERLAY_COMPANIONS` merge pass.** `gen_city_sprites anims`
+  now bakes the companion's named range as a plain filmstrip (the
+  companion's bsv3 origin IS the building's ground pin — origin-aligned
+  the plume lands exactly on the tower rim) and merges the strip into the
+  BASE slug as `OverlayNeutral` / `OverlayActive`. The companion `.bsv3` +
+  `.rgb` were pulled from the local cdn 7z's nested pack zip (the web DLC
+  copies keep only decoded PNGs); the XMAS2017 duplicates are
+  byte-identical, so there is no winter variant.
+- **Synthesized behavior gate.** No engine data names the machine, so
+  `_behavior_map` applies a small authored gate while the strips exist —
+  `layers: ['OverlayNeutral']` (idle smoke over the body) and
+  `tap: 'OverlayActive'` (one-shot eruption on click). The generic verbs
+  can never claim an `Overlay*` strip as a plain idle (that would replace
+  the body and blank the tower), and companion slugs draw nothing on
+  their own. No viewer code change: the existing layers/tap paths and the
+  "single-strip tap on a layered asset keeps the body" rule already cover
+  it. Evidence renders: `mapdump/registration/m4-lavaov-blit-*.png`.
+- `ASSET_V`/`MANIFEST_V` bumped to `?v=20261031.1`.
+
 ## 2026-10-30.25
 
 - **Brush cells in front of a building now draw over it.** The boardwalk
