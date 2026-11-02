@@ -231,10 +231,24 @@ main { display: flex; flex: 1; min-height: 0; }
     grid-template-columns: 1fr;
     min-width: 200px;
 }
-#arttune .trow { display: flex; align-items: center; gap: 5px; }
-#arttune .tlab { width: 52px; opacity: .7; }
-#arttune .tval { min-width: 40px; text-align: center; color: var(--text); }
-#arttune .tbtn {
+/* beach tune panel (viewer/city-view-pixi.js bindBeachUI, 2026-10-30): the two
+   fixed coast sets' open questions — the seam row, both strip pitches, the
+   Heights repeat and replace/over — as steppers over the map. It sits in its own
+   column LEFT of the art tune panel (both are top-right and both can be open at
+   once) and shares that panel's row/button styling (selectors below) */
+#beachtune {
+    right: 224px;
+    top: 10px;
+    grid-template-columns: 1fr;
+    min-width: 210px;
+    max-height: 52%;
+    overflow-y: auto;
+}
+#arttune .trow, #beachtune .trow { display: flex; align-items: center; gap: 5px; }
+#arttune .tlab, #beachtune .tlab { width: 52px; opacity: .7; }
+#beachtune .tlab { width: 64px; }
+#arttune .tval, #beachtune .tval { min-width: 40px; text-align: center; color: var(--text); }
+#arttune .tbtn, #beachtune .tbtn {
     pointer-events: auto;
     background: rgba(255, 255, 255, 0.06);
     color: var(--text-dim);
@@ -244,8 +258,8 @@ main { display: flex; flex: 1; min-height: 0; }
     font: inherit;
     cursor: pointer;
 }
-#arttune .tbtn:hover { color: var(--text); }
-#arttune .tbtn.on { color: #ffd60a; border-color: #ffd60a; }
+#arttune .tbtn:hover, #beachtune .tbtn:hover { color: var(--text); }
+#arttune .tbtn.on, #beachtune .tbtn.on { color: #ffd60a; border-color: #ffd60a; }
 #arttune .trow.wide .tbtn { flex: 1; text-align: left; }   /* the walker button */
 
 #proplegend .row b.n { text-transform: lowercase; }
@@ -380,6 +394,67 @@ main { display: flex; flex: 1; min-height: 0; }
     border-top: 1px dashed #2c3a52;
     padding-top: 8px;
 }
+
+/* ---- per-instance hide (js/city-view-pixi.js building card + hidden bar) ---
+   The card's hide/show toggle, and the recovery list shown whenever any
+   instance is hidden. Tooltips ride the shared [data-tip] rule below. */
+#details .hidebtn {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    padding: 5px 8px;
+    font: inherit;
+    color: var(--text-dim);
+    background: var(--panel2);
+    border: 1px solid #2c3a52;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+}
+#details .hidebtn:hover { color: var(--gold-bright); border-color: var(--gold); }
+#details .hidebtn:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
+#details .hidebtn[aria-pressed="true"] { color: var(--warn); border-color: var(--warn); }
+#details .hidebar {
+    margin-top: 12px;
+    border-top: 1px dashed #2c3a52;
+    padding-top: 8px;
+}
+#details .hidebar .hhead {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    color: var(--text);
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+#details .hidebar .hhead b { color: var(--warn); }
+#details .hidebar button {
+    all: unset;
+    cursor: pointer;
+    font: inherit;
+    color: var(--text-dim);
+    border: 1px solid #2c3a52;
+    border-radius: 4px;
+    padding: 1px 6px;
+}
+#details .hidebar button:hover { color: var(--gold-bright); }
+#details .hidebar button:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
+#details .hidebar .hiderow {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 3px;
+}
+#details .hidebar .hiderow > button:first-child {
+    flex: 1;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#details .hidebar .hiderow .n { color: var(--text); font-weight: normal; }
+#details .hidebar .un { color: var(--err); }
+#details .hidebar .unall { margin-left: auto; color: var(--ok); }
 
 /* ---- search result list (right pane, under the details card) ---------------- */
 #results { margin-top: 12px; }

@@ -2442,7 +2442,7 @@
         artBlock: '',                              // block='art': 'deep' | 'big'
         glReason: glR ? ''                         // why GL never booted
             : (window.CityGL ? CityGL.lastError() : 'no-CityGL-script'),
-        ver: '2026-10-30.4'
+        ver: '2026-11-01'
     };
     window.__CV_DIAG = DIAG;
     window.__CV_VER = DIAG.ver;                    // console sanity check

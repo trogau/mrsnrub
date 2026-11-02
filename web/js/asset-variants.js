@@ -48,7 +48,7 @@
         var name = v.path.split('/').pop();
         var t = document.createElement('a');
         t.className = 'vtile';
-        t.href = 'assets-explorer.html?path=' + encodeURIComponent(v.path);
+        t.href = 'assets-explorer.php?path=' + encodeURIComponent(v.path);
         t.dataset.tip = name + ' · ' + v.kind +
             (v.res ? ' · ' + v.res : '') +
             (v.w != null ? ' · ' + v.w + '×' + v.h : '') +
@@ -69,7 +69,40 @@
         if (v.w != null) { bits.push(v.w + '×' + v.h); }
         t.appendChild(el('div', 'vname', name));
         t.appendChild(el('div', 'vsub', bits.join(' · ')));
+        t.appendChild(sizeLine(v.path));
         return t;
+    }
+
+    /* on-disk size under the resolution row: KB under 1 MB, else MB. A HEAD
+       request answers without downloading (the carrier sheets are 12-14 MB
+       each and these tiles are in a sidebar — we must never pull the body
+       just to print a number); only if the server withholds content-length
+       do we fall back to a GET. Results memoise per asset. */
+    var sizeCache = {};                   // asset url -> bytes (null = n/a)
+    function sizeLine(path) {
+        var url = 'assets/' + path;
+        var d = el('div', 'vsize');
+        function put(b) {
+            sizeCache[url] = b;
+            d.textContent = b == null ? 'size n/a'
+                : b < 1048576 ? Math.max(1, Math.round(b / 1024)) + ' KB'
+                : (b / 1048576).toFixed(1) + ' MB';
+        }
+        if (sizeCache[url] !== undefined) {
+            put(sizeCache[url]);
+        } else {
+            d.textContent = '\u2026';
+            fetch(url, { method: 'HEAD' }).then(function (r) {
+                var n = r.ok && r.headers.get('content-length');
+                if (n) { return +n; }
+                return fetch(url).then(function (r2) {
+                    return r2.blob();
+                }).then(function (bl) { return bl.size; });
+            }).then(function (bytes) {
+                put(bytes);
+            }).catch(function () { put(null); });
+        }
+        return d;
     }
 
     function el(tag, cls, text) {
@@ -101,6 +134,7 @@
         t.appendChild(el('div', 'vname', v.name));
         t.appendChild(el('div', 'vsub',
             'anim \u00b7 ' + v.frames + ' f \u00b7 bsv3'));
+        t.appendChild(sizeLine(v.path));
         var bar = el('div', 'vbar');
         var play = el('button', 'on', '\u23f8');
         var fast = el('button', null, '\u23e9 1\u00d7');
@@ -112,16 +146,28 @@
         var img = new Image();
         var st = { i: 0, t: 0, raf: null, playing: true, rate: 1, last: 0 };
 
-        function cellRect() {
-            var col = st.i % v.cols, row = Math.floor(st.i / v.cols);
-            return [col * v.cellw, row * v.cellh, v.cellw, v.cellh];
-        }
         function draw() {
             if (!img.complete || !img.naturalWidth) { return; }
-            var r = cellRect();
             ctx.clearRect(0, 0, cv.width, cv.height);
             ctx.imageSmoothingEnabled = s < 1;
-            ctx.drawImage.apply(ctx, [img].concat(r)
+            if (v.sub) {
+                // sparse shelf (tools/gen_city_sprites.py): the frame is a
+                // list of rects, each blitted from the packed (sx,sy) spot
+                // to the cell coord (ox+ax, oy+ay) — mirrors animOf/sparse
+                // blitting in city-view-pixi.js
+                var rs = v.sub[st.i] || [];
+                var ax = v.ax || 0, ay = v.ay || 0;
+                for (var j = 0; j < rs.length; j++) {
+                    var r = rs[j];
+                    ctx.drawImage(img, r.sx, r.sy, r.w, r.h,
+                                  (r.ox + ax) * s, (r.oy + ay) * s,
+                                  r.w * s, r.h * s);
+                }
+                return;
+            }
+            var col = st.i % v.cols, row = Math.floor(st.i / v.cols);
+            ctx.drawImage.apply(ctx, [img]
+                .concat([col * v.cellw, row * v.cellh, v.cellw, v.cellh])
                 .concat([0, 0, cv.width, cv.height]));
         }
         function frame(now) {

@@ -1,5 +1,361 @@
 # Changelog
 
+## 2026-11-02.11
+
+- **Flag cloths now hang from the pole top, not the base.** The first
+  live cut of the nation-cloth composite placed the cloth's top-left at
+  `polePos + (poleAnchor − clothAnchor)×k`, which added the pole's anchor
+  a second time (the pole sprite emit already subtracts it): cloths drew
+  ~44 px right and ~17 px below the pole's ground pin instead of hanging
+  under the ball. `emitFlagCloth` in `web/viewer/city-view-pixi.js` now
+  uses the same convention every other sprite uses — top-left =
+  `polePos − clothAnchor×k` — so the cloth's anchor point pins to the
+  ground exactly like the pole does (`__CV_FLAG()` logs show
+  `x ≈ px − 2.5, y ≈ py − 339` at zoom 0.829). Bumps the viewer cache
+  buster to `city-view-pixi.js?v=97` and `DIAG.ver` to `2026-11-02.11`.
+
+## 2026-11-02.10
+
+- **Nation flag cloths now draw on the map and the panel.** The 30
+  country-flag bids (SwedenFlag, CameroonFlag, …) all place the shared
+  `Flag_Pole` asset, which ships the pole only — the game composites a
+  per-country cloth sprite on top at runtime, but those cloths live in
+  the SoccerCup2015 DLC pack, which the city extract pass never walked,
+  so no viewer ever drew them. New `tools/gen_city_sprites.py flags`
+  subcommand extracts the 35 `flag_*.{bsv3,rgb,xml}` from the local
+  `cdn/4_15_SoccerCup2015*.7z` into the pool and bakes pre-baked PNGs to
+  `web/assets/city/flags/` + a new `city-flags.json` manifest;
+  `tools/preflight_city.py` reports the cloth stems in `city-source.json`
+  under `flags`. `bsprite.php` gained `kind=flag` (served by
+  `tools/city_render.py` through the same bake helpers, pixel-identical
+  to the pre-baked file). The Pixi viewer composites the cloth for a
+  `flag_pole` instance at the shared ground pin
+  (`polePos + (poleAnchor − clothAnchor)×k`, evidence:
+  `mapdump/registration/m4-flag-overlay-viewer-math.png`), deriving the
+  stem from the bid's display name (`"SwedenFlag"` → `flag_sweden`); the
+  cloth rides the `VIEWER_DYNAMIC_CITY.sprites` switch with the pre-baked
+  file as fallback, and the asset-variants card for a country-flag bid
+  gains a cloth tile routed through the shared endpoint/breaker config.
+  Cache-busters: `city-view-pixi.js?v=95`, `asset-variants-pixi.js?v=9`.
+  Harnesses: `smoke-bsprite-api.py` +4 flag checks, `smoke-asset-panel.cjs`
+  +8 cloth-row checks.
+
+## 2026-11-02.9
+
+- **Fixed: every building red-boxed — the endpoint rejected every request
+  with 404.** The map (and the new panel) appended the asset cache-buster
+  to `bsprite.php` URLs with a second `?` (`…?kind=sprite&name=x` +
+  `?v=…`), so PHP parsed `name` as `x?v=…`, `NAME_RE` rejected it, and
+  `emitBuilding` drew the red wireframe on the whole city. This had never
+  fired before only because yesterday's broken `dynCon()` meant no
+  endpoint URL was ever issued; fixing that exposed it. All bsprite URLs
+  now join the buster with `&` (a shared `AMP_V` in the viewer, exposed
+  via `__CV_DYNC.urlv`; the panel additionally converts a leading `?`
+  defensively). Two harness gaps let it through and are closed:
+  `tools/smoke-bsprite-api.py` only exercised the CLI `--args` branch, so
+  it now also invokes the real `$_GET` path (emulated web request:
+  pre-filled `$_GET` + `REQUEST_METHOD`; `bsprite.php`'s CLI dispatch now
+  defers to `$_GET` when `REQUEST_METHOD` is set) and asserts the exact
+  failing URL shape is refused while the `&v=` form serves; and
+  `tools/smoke-asset-panel.cjs` asserts every endpoint URL the panel
+  builds carries exactly one `?`. Cache-busters:
+  `asset-variants-pixi.js?v=8`, `city-view-pixi.js?v=94`.
+
+## 2026-11-02.8
+
+- **The Sprite-variants panel now streams from the city endpoint too,
+  sharing every toggle the map uses.** Tiles in the building details card
+  (`web/viewer/asset-variants-pixi.js`) that show city art — bodies and
+  flipped twins (`city/<stem>.png`), season and stack composites, and the
+  bsv3 named-anim filmstrips — request it from `api/bsprite.php` whenever
+  the map does: the panel reads the map's `window.__CV_DYNC` handle, so it
+  honours the same per-category `VIEWER_DYNAMIC_CITY` flags (including the
+  `?dyn=…` URL override), waits for the same boot preflight inventory
+  (stems the pool cannot bake, `grasstile`, and manifest-pack copies stay
+  plain files), falls back to the pre-baked PNG on any dead endpoint
+  response, and counts those fallbacks on the **same 25-failure circuit
+  breaker** (`__CV_DYNC.fails`) — panel and map trip together. Dynamic
+  filmstrips reconcile their slice geometry from the endpoint's
+  `mode=meta`, exactly like `animUrlFor`/`animMeta` on the map, and undo
+  it if the tile falls back (the file matches the shipped manifest). The
+  on-disk size line now reports the bytes actually served, and a dynamic
+  tile only HEADs the endpoint after its own GET has warmed the server
+  cache, so no asset ever spawns the python bake twice. The Asset
+  Explorer deep link still points at the pre-baked file. The deprecated
+  Canvas page's copy (`web/js/asset-variants.js`) stays frozen on files.
+  New harness `tools/smoke-asset-panel.cjs` (24 checks) covers routing,
+  toggles, inventory gating, fallback, breaker, and meta reconcile;
+  `city-view-pixi.js` gained `urlv` on `__CV_DYNC` (shared cache-buster
+  for endpoint URLs) — cache-busters now `asset-variants-pixi.js?v=7`,
+  `city-view-pixi.js?v=93`.
+- **Fixed: the dynamic city endpoint was silently never used.** The map's
+  `dynCon()` consulted the failure counter with the plural category name
+  (`dynCFail.sprites`) while the counters are keyed singular
+  (`dynCFail.sprite`), so `undefined < 25` made every category look
+  breaker-tripped and `dynCityUrl()` always returned the pre-baked path
+  — the flags, the preflight, and the endpoint were all healthy but
+  unreachable from the map. `dynCon()` now maps plural → singular
+  (`kind.replace(/s$/, '')`); the panel harness caught the same class of
+  bug in the panel's mirror and both are fixed.
+
+## 2026-11-02.7
+
+- **All bakeable city art can now stream from the dynamic endpoint, not
+  just characters.** A new endpoint, `web/api/bsprite.php` (deliberately
+  separate from `bcell.php`, which stays the pure-PHP character-codec),
+  serves the four bsv3 families on demand: building bodies
+  (`?kind=sprite&name=<slug>`), season variants (`kind=season&cls=…`),
+  named-anim filmstrip atlases (`kind=anim&png=anims/…`) and oversized
+  stack composites (`kind=stack`). Decoding reuses the bake pipeline
+  itself: a thin shim, `tools/city_render.py`, imports
+  `gen_city_sprites.py` and calls the same helpers `sprites`/`anims` use
+  (`_render_sprite`, `_composite`, `_loop_occluder`, `_pack_sparse`,
+  `_anim_clock`…), so served bytes are pixel-identical to the pre-baked
+  PNGs by construction — one `python3` subprocess per cold asset,
+  results cached under `web/api/bsprite-cache/` keyed by source-file
+  mtimes and served immutable + ETag (warm hit ≈ 18 ms). Failures carry
+  `E422` (no source) / `E423` (not bakeable here) / `E424` (bake
+  failed) and get a negative cache so a dead slug doesn't re-spawn
+  python every glance; `&debug=1` renders the usual HTML report.
+- **Viewer rollout behind per-category toggles.** `index.html` gains
+  `window.VIEWER_DYNAMIC_CITY = { sprites, seasons, anims, stacks }`
+  (all on; URL override `?dyn=0` / `?dyn=1` / `?dyn=sprites,anims` for
+  A/B). All pre-baked PNGs stay on disk and keep drawing whenever a
+  category is off — the old system is one flag away. A boot preflight
+  (`tools/preflight_city.py` → `assets/city/city-source.json`, 80 KB)
+  lists which stems the pool can actually render, so doomed requests
+  never spawn; bodies missing from it get the same **red wireframe box
+  + one console line** as dead character cells, while season/filmstrip/
+  stack failures degrade to the pre-baked file and just name themselves
+  on the console. A per-category circuit breaker (25 failures) flips a
+  family back to pre-baked if the endpoint/python goes down. Because
+  the working tree of `gen_city_sprites.py` currently sits ~1 px ahead
+  of the shipped manifests, every dynamic filmstrip also pulls its own
+  `mode=meta` once and overwrites its atlas-slicing fields before the
+  next draw. The asset pill's error segment now reads `· N dyn err`.
+  Building art holds one tick (`DINV_WAIT`) until the preflight
+  inventory settles — before this, frames painted during the
+  boot window requested the pre-baked `.png` and only then re-asked
+  through the endpoint, which the network panel read as slugs like
+  `exoticpond` "still loading .png".
+- **New harness** `tools/smoke-bsprite-api.py` (30 checks): preflight
+  inventory, per-kind pixel identity vs the pre-baked files (drift
+  reported, never hidden), PHP/shim byte equality, cache-warm calls,
+  meta vs manifest, error/traversal paths. `tools/smoke-char-panel.cjs`
+  and the four viewer harnesses stay green.
+
+## 2026-11-02.6
+
+- **Failed dynamic cells get a red wireframe box on the map.** With
+  `VIEWER_DYNAMIC_BCELL.characters` on, a character whose cell the endpoint
+  rejects (pool 404/422, manifest garbage, or a sheet PNG that dies on
+  decode) no longer hides behind its pre-baked art: it draws as a red
+  wireframe box (rect + corner cross, sized from the asset's w/h/anchor,
+  on a new `dynErrG` layer over the scene), so gaps in the dynamic source
+  are visible for triage instead of silently covered. The asset pill gains
+  a `· N bcell err` segment, and each failing cell is named once on the
+  console with the endpoint's own error text
+  (`[dynbcell] <slug>: missing companion …`) — the manifest fetch now
+  parses the JSON error body even on 404/422. In the family strip, dead
+  tiles get a red outline (`.vtile.cdead`) while still playing their
+  pre-baked frames, and `window.__CV_DYNB.cells[slug].err` keeps the
+  message for the console-shy. Loading and switched-off behavior are
+  unchanged (pre-baked art, no flag). `tools/smoke-char-panel.cjs` grew to
+  10 checks (red-flag toggle on/off); legacy Canvas page
+  (`web/city-view.html` + `web/js/city-view.js`) is hereby **fully
+  deprecated** — frozen reference only, no further updates. Cache-busters:
+  `city-view-pixi.js?v=90`, `char-variants-pixi.js?v=5`,
+  `asset-variants.css?v=15`.
+
+## 2026-11-02.5
+
+- **Family-strip preview panel plays from dynamic sheets.** The character
+  card's animation tiles (`char-variants-pixi.js`) now take their art from
+  the `bcell.php` endpoint when `window.VIEWER_DYNAMIC_BCELL.characters` is
+  on: each tile plays the cell's ONE sheet PNG, sliced per-frame with the
+  manifest's image rects and `x_off`/`y_off` offsets (the same geometry the
+  map uses), timed off the manifest's own `delay_ms`, on the same one-play-
+  then-standby model. The tile canvas is sized to the union bbox of all
+  frames so inter-frame motion stays true. Manifests are the viewer's
+  shared `dynCells` entries — one fetch per cell between map and panel.
+  Fallback is unchanged: while a sheet loads, or if the cell 404s/422s in
+  the pool, or with the flag off, tiles play the pre-baked per-frame PNGs.
+  Tiles only fetch their sheet once scrolled near the sidebar viewport
+  (`IntersectionObserver`), so a 150-tile card doesn't pre-decode 150
+  full-width sheets. Related fixes surfaced by the port: playback now
+  times off the source's actual frame list (manifest frame counts run
+  ~1 frame higher than pre-baked — the pipeline drops empty frames; e.g.
+  every `*_idle_blink` cell is 3 frames vs 2), the hit-test extents moved
+  onto the shared cell record so map previews use the real sheet extent,
+  and the animated-sprite counter matches. New harness
+  `tools/smoke-char-panel.cjs` (8 checks: sheet slice geometry, bbox
+  canvas, fallback while loading, fallback on dead cells). Cache-busters:
+  `char-variants-pixi.js?v=4`, `city-view-pixi.js?v=89`.
+
+## 2026-11-02.4
+
+- **All 142 `0x0303` landmarks regenerated with the cracked decoder, and
+  150 new filmstrips baked.** With the pool and frame sections now decoded
+  (`## 2026-10-31.4`, `## 2026-11-01.3`) the whole v3 family was re-rendered:
+  `sprites` drew 142/142 bodies plus 141 winter and 1 halloween variant, and
+  the static pick for every one of them is a real engine frame —
+  Neutral 88, best-frame 26, leading run 26, run-scan 2 — with no
+  `cluster`/`body` fallbacks left. `anims` then baked filmstrips for the
+  same list: 96 assets gained atlases (2547 → 2639 assets in
+  `city-anims.json`, 5502 strip PNGs). The 47 v3 assets still without a
+  strip are fully accounted for: 28 are the undecoded delta-style files
+  (static-only by design), 15 carry only 1-frame "anims" (`nf <= 2`:
+  footballfield, hangar, japanesecherrytree, the Heavenly Hills wings …),
+  and 4 (`runwaypiece01/02/02down/03`) decode to 43 byte-identical frames —
+  they draw their whole 14-block pool every frame, so there is no motion to
+  ship. `--slug` on both subcommands now takes a comma-separated list so a
+  batch runs as one job. `ASSET_V` / `MANIFEST_V` → `?v=20261102.1`.
+- **Audited why 65 of those assets still never animate.** They have
+  playable strips but no `behavior` record, so the viewer draws the static
+  PNG. Every one was looked up in the gamescripts packs by building name
+  (`mapdump/registration/m4-v3-gate-audit.md` lists all 65 with evidence).
+  Three causes: 17 are the Secret Agents **Espionage Mode** family
+  (`AgencyHeadquarters`, `CafeKafka`, `GlobexCompound`,
+  `CrouchingPandaHiddenEggroll`, the `Secret*` shops) — their
+  `NeutralAnimationController` is `EspionageMode_Neutral_{Simple,InOut,HQ}`,
+  a land-variable Sequence (`Land::getVariable('EspionageMode')==1` →
+  `Active`/`Active_In`/`Active_Out`) that `_parse_controller` rejects
+  because it only understands click-state machines (21 of the 104
+  `buildingcontrollers.xml` Sequences parse); 2 (`Pagoda`, `ShintoShrine`)
+  name a tap anim their `.bsv3` does not contain; and 46 have a `<Building>`
+  def with no controller, tap script or `<Animation>` at all — their
+  `Active*` frames are authored art the shipped scripts never play. The
+  task-triggered mechanism the audit checked for does exist
+  (`<Job><BuildingAnimation><Controller name=…>` — `FlandersHome`
+  `WindowBreak`, `StonecutterTableSeat` `ActiveTopEmpty`, `DeathTable`
+  `ActiveFastBreak`, `3DPrinter`, `TrainingPlane`, `BeachHouse`), but no
+  pack names any of these 65.
+
+## 2026-11-02.3
+
+- **Selective rollout: Pixi viewer can draw characters from the dynamic
+  `.bcell` endpoint.** A new config block in `web/viewer/index.html` —
+  `window.VIEWER_DYNAMIC_BCELL = { characters: true, src: 'pool' }` — turns
+  character sprites over to `web/api/bcell.php` (one sprite-sheet PNG + JSON
+  manifest per cell, sliced client-side, timed off the cell's own
+  `delay_ms`, placed per-frame at `x_off`/`y_off` from the character origin
+  — the engine's own rule) instead of the pre-baked `assets/characters`
+  PNGs, for A/B comparison. It is a strict overlay: cells fetch lazily on
+  first sight, and the pre-baked path draws while a sheet is loading, after
+  any error, or whenever the flag is off — so it always degrades to static
+  art. Hit-test margins use the sheet's real extent once a manifest is in;
+  the art-stream pill counts `api/bcell.php` fetches as character art.
+  `src: 'pool' | 'pack'` picks the source. Debug hook:
+  `window.__CV_DYNB`. Set `characters: false` to revert with no code change.
+- **`bcell.php` resolves flattened slugs.** `characters.json` slugs are
+  underscore-stripped cell stems (`aaronburridleblink` ←
+  `aaronburr_idle_blink`), so `name=` now falls back to an
+  alphanumeric-only match against the pool's cell stems or the pack's
+  `.bcell` entries after an exact-name miss (first match in order, reported
+  as `cell stem` on the debug page).
+- **Fixed: pack cache-key collision.** The disk-cache key for `src=pack`
+  identified only the zip, not the cell — two different cells from the same
+  pack would have served each other's sheets. The resolved stem is now part
+  of the key (pool keys already included the cell path);
+  `tools/smoke-bcell-api.py` gained slug-resolution checks and a
+  distinct-cells-same-pack guard (15 checks, all green).
+
+## 2026-11-02.2
+
+- **`bcell.php ?debug=1` debug report page.** Any web request with
+  `&debug=1` (sheet|manifest|frame) returns a styled HTML report instead of
+  the raw asset: the generated image embedded on a checkerboard (alpha
+  visible), per-stage timings (cell read → parse+pixel decode → sheet pack →
+  PNG encode → total), the cache story (HIT/MISS, dir path + writability,
+  cache file, write result incl. the failing user, ETag), source info (pool
+  path or pack zip + inner-zip hit, file mtimes/sizes, decoded pixel and PNG
+  byte counts), a per-frame table (image, delay, x_off/y_off, sheet rect)
+  with the raw manifest JSON behind a fold, and runtime stats (PHP version,
+  peak memory). Errors short-circuit into the same page as a red banner
+  instead of bare JSON, so a broken cell explains itself. The report is
+  `no-store`; the underlying render still populates the disk cache as
+  normal, and CLI ignores the flag. Verified live: a 48-frame cell renders
+  MISS → cached (233 KB, sheet 5076×212) → HIT on the second request,
+  missing-companion cells show the exact missing filename;
+  `tools/smoke-bcell-api.py` stays green. Also removed a real double-decode:
+  `build_model` now returns the decoded frame pixels alongside the model
+  (`main` used to decode every frame a second time for rendering), which is
+  visible as the single `cell parse + pixel decode` timing row.
+
+## 2026-11-02
+
+- **`bcell.php` cache now actually fills when served by the web server.**
+  The first browser request rendered fine but `web/api/bcell-cache/` stayed
+  empty: the directory had been created by a CLI test run (owner `dave`,
+  mode 755), so PHP-FPM (`www-data`) couldn't write and the failed
+  `file_put_contents` was silent — every request re-decoded. The endpoint
+  now creates the cache dir 0777 (either creator — CLI or FPM — can write
+  regardless of who got there first), writes cache files atomically via a
+  `.tmp` + rename at mode 0666, and on an unwritable dir degrades to
+  serving uncached with a single `error_log` line instead of failing per
+  request; `src=pack` (which must write the unpacked inner zip) fails fast
+  with a clear 503 naming the path. The live dir was chmod'ed and verified:
+  first browser request caches (files owned by `www-data`), repeats serve
+  from cache, `If-None-Match` returns 304, and `tools/smoke-bcell-api.py`
+  stays green (11/11).
+
+## 2026-11-01.4
+
+- **Dynamic `.bcell` → PNG endpoint (standalone, not yet wired into the
+  viewer).** New `web/api/bcell.php` decodes character animation cells
+  server-side so the browser no longer needs a pre-baked PNG per animation
+  frame — one request per animation instead of one per frame. `?mode=sheet`
+  returns a single sprite-sheet PNG whose unique frame images are row-packed
+  (wrapped at 8192 px) with the frame manifest embedded as a PNG `tEXt`
+  chunk (keyword `bcell-manifest`: per-frame rects, `delay_ms`, and the
+  bcell10/bcell13 `x_off/y_off` placement), so a client can slice and play
+  the animation from the one image; `?mode=manifest` serves the same JSON
+  standalone and `?mode=frame&n=N` serves one frame as its own PNG. Two
+  sources: `src=pool` reads `/tmp/opencode/citypool/<name>.bcell` with its
+  mixed-case-lowered `_image_N.rgb` companions (bcell13), and `src=pack`
+  opens a CDN double-zip (`cdn/<pack>` → entry `1`, cached next to the
+  endpoint) for the bcell10 core pack. Decoders are ports of the verified
+  `tools/extract_assets.py` ones (bcell10 inline blocks incl. the
+  records-outnumber-blocks rule; bcell13 external frames at scale 1.0;
+  `.rgb` flags 0/0x2000/0x6000), PNGs use the same filter-0 writer
+  (`gzcompress`) rather than GD so alpha stays exact and `tEXt` is possible;
+  `php-zip` is now required, `php-gd` is not. Everything decodes once into
+  `web/api/bcell-cache/` (gitignored) keyed by source path+mtime+size+query
+  and is served with ETag + far-future immutable cache headers; CLI mode
+  (`php web/api/bcell.php --mode=sheet --src=pool --name=… --out=…`) serves
+  independent testing without a server. Verified pixel-identical to the
+  pipeline: `tools/smoke-bcell-api.py` checks bcell10 frames against the
+  pre-baked `web/assets/characters` PNGs, bcell13 frames/delays/offsets
+  against `parse_bcell13` + `rgb_to_rgba`, tEXt manifest round-trip, cache
+  hits, and path-traversal rejection.
+
+## 2026-11-01.3
+
+- **KingHomersSkyscraper draws as a building again (run-scan fallback).**
+  Shattered like PlaydoughFactory, but for a different reason: its frame
+  section is one of the 28 `0x0303` encodings the new record decoder
+  rejects (the section opens with a pool handle table, so the A/B/C
+  record alignment fails at record 0). With no frames and a 1-block
+  leading run it fell through to the `cluster` picture — every pool
+  variant at once — so it shipped 141 blocks: duplicated floors, a dozen
+  biplanes and three King Homers. `static_blocks` now tries
+  `_v3_runmax` before that fallback: the section is still a stream of
+  zero-separated u16 pool-reference runs, so the runs are split on the
+  zeros and the one that draws the most sheet art wins, scoring each
+  `(cell, position)` slot once (counting repeats made an animation-dump
+  segment beat the resting pose; counting only distinct cells picked a
+  run missing the tower's middle floors). The recovered frame is the
+  complete tower with King Homer clinging to it (89 blocks), matching
+  the winter/halloween variants' silhouette plus the climb pose, and
+  `runwaypiece02up` — the other `cluster` asset — now draws its runway
+  strip with all eleven edge lights instead of two blocks. Evidence:
+  `mapdump/registration/m4-khs-body-fixed.png` (and
+  `m4-khs-runmax-winner.png`, `m4-khs-runmax-distinctcell-rejected.png`,
+  `m4-khs-seg216.png` from the decode; `m4-rw02up-body-fixed.png`).
+  Both sprites and their season variants regenerated; `ASSET_V` /
+  `MANIFEST_V` bumped to `?v=20261101.2`, viewer script cache-buster
+  `city-view-pixi.js?v=87`.
+
 ## 2026-11-01.2
 
 - **Characters in the Pixi viewer are occluded by buildings again (z-order
