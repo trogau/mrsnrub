@@ -1644,6 +1644,30 @@
     var charAnimLive = 0;                 // animating character sprites
     var charPreview = null;               // {cid, cell} — card-driven preview
                                           // (CharVariants tile click)
+    /* one global playback rate for the building filmstrips. The art carries no
+       timing anywhere — bsv3 frames have no delay and none of the city pool's
+       3 634 building XMLs has an fps/delay attribute (notes/01 "bsv3 playback
+       rate — still unmeasured") — so the 12 fps the manifest stamps on all
+       5 359 strips is OUR empirical constant, calibrated once against a
+       screenshot. Scaling it is how a single object that reads wrong gets
+       A/B'd against the game instead of guessed at.
+       The rate multiplies a CLOCK (animClock), not each strip's fps: a
+       one-shot already playing keeps its place when the rate changes instead of
+       snapping to another frame, and the crowd's per-instance phase offsets
+       (which are counted in ticks) stay put. Characters are NOT on this clock:
+       their bcell art ships a real per-frame delay_ms, so their loops keep
+       running on animNow at the authored speed.
+       The shipped default is 2×. That is an eye calibration, not a measurement
+       (2026-11-03): with the control in place the town was compared against the
+       game screenshot, the bare 12 fps read slow and 2× — 24 ticks/s — read
+       right. 1× stays on the ladder as the manifest's unmodified rate, which is
+       the reference any future ANIM_FPS argument has to be made against. */
+    var ANIMSPEED_KEY = 'mrsnrub.cityview.animspeed';
+    var ANIM_SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];   // the button ladder
+    var ANIM_SPEED_DEFAULT = 2;         // 2× the manifest's 12 fps; see above
+    var animSpeed = ANIM_SPEED_DEFAULT;
+    var animClock = 0;                  // ms, animNow scaled by animSpeed
+    var animClockT = 0;                 // real ms animClock last advanced at
     var CHAR_ANIM_MIN_PX = QP.get('charAnimMinPx') !== null
         ? (Math.abs(QP.get('charAnimMinPx') | 0)) : 24;
     var animNextT = 0;
@@ -1828,6 +1852,51 @@
         applyAnimMode();
         markDirty();
     });
+    /* the playback rate: the shipped default first, then any saved choice, then
+       ?animSpeed= over both so a rate worth quoting can be pasted as a URL (same
+       habit as the camera/orientation knobs). Outside the ladder a URL value is
+       still honoured, clamped — 8× is well past anything the art was authored
+       for and below it the strips just crawl, so the clamp only stops a typo
+       starving the frame. */
+    /* the ladder and its label are plain functions of the rate so the harness
+       can run them verbatim out of this file (the pattern the other Pixi checks
+       use) rather than reimplementing them and drifting */
+    function animSpeedStep(cur, back) {   // the button's steps, wrapping at both
+                                          // ends; a ?animSpeed= that is not on
+                                          // the ladder rejoins it at the default
+        var i = ANIM_SPEEDS.indexOf(cur);
+        if (i < 0) i = ANIM_SPEEDS.indexOf(ANIM_SPEED_DEFAULT);
+        i += back ? -1 : 1;
+        if (i < 0) i = ANIM_SPEEDS.length - 1;
+        if (i >= ANIM_SPEEDS.length) i = 0;
+        return ANIM_SPEEDS[i];
+    }
+    function animSpeedX(v) {              // the bare rate as text: 2 → "2×"
+        v = (v === undefined) ? animSpeed : v;
+        return (v === Math.floor(v) ? v : v.toFixed(2).replace(/0$/, '')) +
+            '\u00d7';
+    }
+    function animSpeedLabel() {           // the button's whole label
+        return 'Speed ' + animSpeedX(animSpeed);
+    }
+    function applyAnimSpeed() {
+        var b = $('btn-animspeed');
+        if (b) b.textContent = animSpeedLabel();
+    }
+    (function loadAnimSpeed() {
+        var v = NaN;
+        try { v = parseFloat(localStorage.getItem(ANIMSPEED_KEY)); } catch (e) { /* private mode */ }
+        var q = parseFloat(QP.get('animSpeed'));
+        if (isFinite(q) && q > 0) v = q;
+        if (isFinite(v) && v > 0) animSpeed = Math.min(8, Math.max(0.1, v));
+        applyAnimSpeed();
+    })();
+    if ($('btn-animspeed')) $('btn-animspeed').addEventListener('click', function (ev) {
+        animSpeed = animSpeedStep(animSpeed, !!(ev && ev.shiftKey));
+        try { localStorage.setItem(ANIMSPEED_KEY, String(animSpeed)); } catch (e) { /* private mode */ }
+        applyAnimSpeed();
+        markDirty();                      // re-show the new rate even on a still frame
+    });
     function animKey(b) {                 // strips follow the DRAWN sprite
         if (!b.slug) return null;
         if (!b.flip) return b.slug;
@@ -1845,7 +1914,7 @@
         if (base && base.seasons && base.seasons[SEASON.mode]) return null;
         var tp = b._tap;              // a tapped building plays its one-shot
         if (tp) {
-            var tfi = Math.floor((animNow - tp.t0) * tp.a.fps / 1000);
+            var tfi = Math.floor((animClock - tp.t0) * tp.a.fps / 1000);
             if (tfi >= (tp.n || tickCount(tp.a))) {   // one loop of the
                 b._tap = null;                        // ENGINE's ticks, not
                 if (tp.then !== undefined) b._tog = tp.then;
@@ -1889,7 +1958,7 @@
             }
             if (a) {
                 var c = animCell(a, k, hold ? a.frames - 1
-                    : animIdx(a, animNow, ph), true);
+                    : animIdx(a, animClock, ph), true);
                 return c ? { cells: [c], base: 0 } : null;
             }
         }
@@ -1898,7 +1967,7 @@
         var cells = null;
         for (var i = 0; i < rec.cells.length; i++) {
             var a2 = rec.cells[i];
-            var c2 = animCell(a2, k, animIdx(a2, animNow, ph));
+            var c2 = animCell(a2, k, animIdx(a2, animClock, ph));
             if (!c2) {
                 if (rec.base) return null;    // a layered stack composites whole
                 continue;
@@ -2019,7 +2088,7 @@
     }
     function animFrame(a, b, nowMs) {
         var ph = Math.abs(Math.round((b.px || 0) * 3 + (b.py || 0) * 7));
-        return animIdx(a, nowMs === undefined ? animNow : nowMs, ph);
+        return animIdx(a, nowMs === undefined ? animClock : nowMs, ph);
     }
     function animIdx(a, clockMs, ph) {   // shared clock -> this strip's cell
         return cellAt(a, (Math.floor(clockMs * a.fps / 1000) + ph) %
@@ -2049,6 +2118,10 @@
         if (!anims || !anims[slug]) return -1;
         return animFrame(anims[slug].cells[0], b, nowMs);
     };
+    /* the scaled clock and the rate as probes: the harness can then prove a
+       rate change really runs the strips faster, not just the label */
+    window.__CV_ANIM_CLOCK = function () { return animClock; };
+    window.__CV_ANIM_SPEED = function () { return animSpeed; };
     window.__CV_ANIM_cell = function (slug, b, i, nowMs) {  // harness: clock
         var r = anims && anims[slug];                        // mapping per
         if (!r || !r.cells[i]) return -1;                    // registered part
@@ -2073,8 +2146,8 @@
             if (b._tap) return false;
             if (tg.kind === 'inout') {
                 b._tap = b._tog
-                    ? { a: tg.out, t0: performance.now(), then: 0 }
-                    : { a: tg['in'], t0: performance.now(), then: 1 };
+                    ? { a: tg.out, t0: animClock, then: 0 }
+                    : { a: tg['in'], t0: animClock, then: 1 };
             } else if (tg.kind === 'active') {
                 b._tog = b._tog ? 0 : 1;
             } else {
@@ -2090,7 +2163,7 @@
             for (i3 = 0; i3 < tl.length; i3++)
                 if (tickCount(tl[i3]) > n) n = tickCount(tl[i3]);
             b._tap = { a: tl[0], list: tl, n: n, base: 1,
-                       t0: performance.now() };
+                       t0: animClock };
             markDirty();
             return true;
         }
@@ -2099,7 +2172,7 @@
         // a single-strip tap on a LAYERED asset (the Active verb never
         // paired): draw the body under it too, or the object blanks down
         // to one part for the length of the one-shot
-        b._tap = { a: t, t0: performance.now(),
+        b._tap = { a: t, t0: animClock,
                    base: (anims[key] && anims[key].base) ? 1 : 0 };
         markDirty();
         return true;
@@ -2117,7 +2190,7 @@
         if (!b) return -1;
         if (fire) tapBuilding(b);
         if (!b._tap) return -1;
-        var fi = Math.floor((performance.now() - b._tap.t0) *
+        var fi = Math.floor((animClock - b._tap.t0) *
                             b._tap.a.fps / 1000);
         return fi < (b._tap.n || tickCount(b._tap.a)) ? fi : -1;
     };
@@ -2126,7 +2199,7 @@
         if (!b) return -1;
         if (fire) tapBuilding(b);
         if (!b._tap) return -1;
-        var fi = Math.floor((performance.now() - b._tap.t0) *
+        var fi = Math.floor((animClock - b._tap.t0) *
                             b._tap.a.fps / 1000);
         return fi < (b._tap.n || tickCount(b._tap.a)) ? fi : -1;
     };
@@ -4092,7 +4165,7 @@
     /* ============================ render ===================================== */
     var DIAG = {
         mode: 'Pixi', ms: 0, fps: 0, maxMs: 0, anims: 0, charAnims: 0,
-        pool: 0, ver: '2026-11-02.13'
+        pool: 0, ver: '2026-11-03.2'
     };
     window.__CV_DIAG = DIAG;
     window.__CV_VER = DIAG.ver;                    // console sanity check
@@ -5224,6 +5297,18 @@
         requestAnimationFrame(loop);
         var dt = lastT ? Math.min(0.05, (t - lastT) / 1000) : 0;
         lastT = t;
+        /* the filmstrips' playback clock: real elapsed ms × the global rate.
+           Taken off performance.now() rather than the frame stamp — the two
+           share a timebase in the browser, but a rAF stamp frozen across a
+           replayed queue (the DOM harness flushes every callback on one stamp)
+           would stall the loops. Uncapped like the animNow it mirrors: every
+           consumer is a modulo of this clock or a one-shot age, so the long
+           delta a backgrounded tab comes back with just lands the loops on a
+           different cell, which is what they already did before the rate
+           existed */
+        var an = performance.now();
+        animClock += (animClockT ? an - animClockT : 0) * animSpeed;
+        animClockT = an;
         if (cam.vx || cam.vy) { CAM.tick(cam, dt); markDirty(); }
         if (t >= camSaveDue) {                   // persist any camera move
             camSaveDue = t + 400;
@@ -5244,7 +5329,14 @@
             // frame drew animated sprites, is still waiting on one to
             // decode, or has a strip that was refused a cache slot and is
             // owed one retry (animRetryT, armed once per arrival)
-            animNextT = t + 90;
+            //
+            // 90 ms is ~11 Hz, which is already the ceiling on the strips'
+            // 12 fps: speed the loops up and the repaint, not the art, is
+            // what would stutter. So the interval follows the rate — but only
+            // upward. The min() keeps 90 ms as the floor for slow rates, since
+            // the character idle loops and the decode retries still run on the
+            // real clock and would go choppy if we starved them of repaints.
+            animNextT = t + Math.max(16, Math.min(90, 90 / animSpeed));
             markDirty();
         }
         if (t - diagLastT > 500) {                 // statsbar at 2 Hz
@@ -5257,7 +5349,8 @@
                 (diagFrames ? (diagMsAcc / diagFrames).toFixed(1) : '0.0') +
                 '/' + DIAG.maxMs.toFixed(1) + 'ms' +
                 ' · a' + DIAG.anims + ' · p' + DIAG.pool +
-                ' · v' + DIAG.ver;
+                (animSpeed === ANIM_SPEED_DEFAULT ? '' : ' \u00b7 ' + animSpeedLabel()) +
+                ' \u00b7 v' + DIAG.ver;
             diagFrames = 0; diagMsAcc = 0; DIAG.maxMs = 0;
         }
     }

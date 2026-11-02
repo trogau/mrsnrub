@@ -1,5 +1,67 @@
 # Changelog
 
+## 2026-11-03.2
+
+- **The animation rate now ships at 2× (24 ticks/s).** With the new
+  control in place the town was compared against the game screenshot and
+  the manifest's bare 12 fps read slow while 2× read right, so the
+  viewer's default rate is 2 rather than 1 (`ANIM_SPEED_DEFAULT` in
+  `web/viewer/city-view-pixi.js`): a fresh profile plays at 2×, the button
+  opens labelled `Speed 2×`, and the statsbar stays quiet at that rate
+  (it shows the rate only when you move off it). Two deliberate
+  non-changes: `ANIM_FPS` stays 12 in `tools/gen_city_sprites.py`, so
+  `city-anims.json` still records the raw strip timing and the multiplier
+  remains a viewer-side opinion (the deprecated Canvas page and the
+  details-card filmstrip players still read 12 fps), and 1× stays on the
+  ladder as the unmodified reference to argue against. A saved choice
+  still beats the default, so anyone who parked at 1× stays there. An
+  off-ladder `?animSpeed=` value now rejoins the ladder at the shipped
+  rate. Records the calibration in notes/01 §"bsv3 playback rate — still
+  unmeasured", which still calls the number an eye estimate: the caller of
+  the `SequenceController` vtable slot is the way to settle it. Bumps the
+  viewer cache buster to `city-view-pixi.js?v=101` and `DIAG.ver` to
+  `2026-11-03.2`; `tools/smoke-anim-speed.cjs` grows to 40 checks and
+  pins the shipped default, the label, and the ladder's `1×` reference.
+
+## 2026-11-03
+
+- **Global animation speed control on the Pixi city view.** Nothing in the
+  art says how fast a building loop plays: bsv3 frame records carry no
+  delay, none of the city pool's 3 634 building XMLs has an
+  `fps`/`delay`/`duration` attribute, and the binary's
+  `SequenceControllerInstance::Update` just adds 1 to a counter with no
+  clock read (notes/01 §"bsv3 playback rate — still unmeasured"). So the
+  manifest stamps one empirical 12 fps on all 5 359 strips and every
+  object plays at that same ticks/s — which is why a 19-tick loop and a
+  6-tick loop can both look wrong in opposite directions. A new
+  `Speed 1×` button in the viewbar (directly after `Anim`) multiplies that
+  rate for the whole town: click steps the ladder
+  0.25 / 0.5 / 0.75 / 1 / 1.5 / 2 / 3 / 4, shift+click steps back, and the
+  current rate shows in the statsbar. It scales a dedicated clock
+  (`animClock`, accumulated in the render loop as real elapsed ms × the
+  rate) rather than each strip's `fps`, so the idle loops, the toggle
+  loops and a one-shot already playing all move together and a rate
+  change mid-playback does not snap a tap to another frame; per-instance
+  phase offsets are counted in ticks so the crowd stays out of lockstep.
+  The repaint cadence follows the rate upward (`90 / speed`, floored at
+  16 ms) because 11 Hz is already the ceiling on a 12 fps strip, and stays
+  at 90 ms for slower rates so the character loops and decode retries are
+  not starved. Deliberately NOT on the scaled clock: the character idle
+  blinks and card preview (their `.bcell` art ships a real per-frame
+  `delay_ms`, so they keep the authored speed), the filmstrip decode retry
+  timer (a scaled 2 s would hold off a stalled decode for minutes at
+  0.25×), the details-card filmstrip players (they keep their own per-tile
+  ⏩ 1×/2×/4× cycler), and the deprecated Canvas page (AGENTS.md).
+  New setting: `localStorage['mrsnrub.cityview.animspeed']`, overridable
+  per view with `?animSpeed=2` (clamped 0.1–8) so a rate worth quoting
+  travels in the URL. New probes `__CV_ANIM_CLOCK` / `__CV_ANIM_SPEED`.
+  Bumps the viewer cache buster to `city-view-pixi.js?v=100` and
+  `DIAG.ver` to `2026-11-03`. New harness
+  `node tools/smoke-anim-speed.cjs` (33 checks) runs the ladder, the boot
+  precedence and the clock/tick math verbatim out of the viewer; the
+  existing DOM, beach, pier, bridge, road-lab and panel harnesses all pass.
+  No server or nginx config involved — the control is client-side only.
+
 ## 2026-11-02.13
 
 - **Directional face loops can no longer replace a building's whole
