@@ -81,6 +81,16 @@ the hard way in earlier sessions (APK triage, format RE, pipeline, CDN work).
     it replaced), the per-cell state rule, the three draw-order rules
     including the scene "over" pass, and the Road Lab marina-align tool.
 
+ 13. **`12-building-animation-wiring.md`** — what makes a baked filmstrip
+     actually play: the `behavior` gate in `city-anims.json` and its three
+     gamescript authorities, the real task-triggered mechanism
+     (`<Job><BuildingAnimation><Controller name=…>` — FlandersHome
+     `WindowBreak`, DeathTable `ActiveFastBreak`, …), the 2026-11-02 audit of
+     the 65 `0x0303` assets that ship strips but stay static (17 Espionage
+     Mode land-variable sequences `_parse_controller` drops, 2 tap verbs with
+     no matching anim, 46 buildings with no animation wiring at all), and the
+     accounted-for list of v3 assets with no strip.
+
 ## Where it's served
 
 The `web/` tree is served at the project **base URL**:

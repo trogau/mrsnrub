@@ -1,0 +1,857 @@
+BGMenuCmds::ButtonBase
+BGMenuCmds::DragButton
+BGMenuCmds::TextButton
+BGMenuCmds::TextColumn
+BGMenuCmds::BranchGroup
+BGMenuCmds::DrawDelayed
+BGMenuCmds::AlignCmdText<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmdText<BGMenuCmds::SubCommandBase> > >
+BGMenuCmds::StorePtrRoot
+BGMenuCmds::CenterCmdText<BGMenuCmds::SubCommandBase>
+BGMenuCmds::CompositeBase
+BGMenuCmds::SubCommandBase
+BGMenuCmds::AlignCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmdText<BGMenuCmds::SubCommandBase> > >
+BGMenuCmds::AlignCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmd<BGMenuCmds::SubCommandBase> > >
+BGMenuCmds::ColorCmdNoApply<BGMenuCmds::AlignCmdText<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmdText<BGMenuCmds::SubCommandBase> > > >
+BGMenuCmds::ColorCmdNoApply<BGMenuCmds::AlignCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmd<BGMenuCmds::SubCommandBase> > > >
+BGMenuCmds::ColorCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::SubCommandBase> >
+BGMenuCmds::ColorCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmd<BGMenuCmds::WidthCmd<BGMenuCmds::HeightCmd<BGMenuCmds::SubCommandBase> > > > >
+BGMenuCmds::ScaleCmdNoApply<BGMenuCmds::AlignCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmd<BGMenuCmds::SubCommandBase> > > >
+BGMenuCmds::ScaleCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::SubCommandBase> >
+BGMenuCmds::ScaleCmdNoApply<BGMenuCmds::ColorCmd<BGMenuCmds::AlignCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmd<BGMenuCmds::SubCommandBase> > > > >
+BGMenuCmds::SetAnchorObject
+BGMenuCmds::SetCanvasScreen
+BGMenuCmds::ScaleCmdHighlight<BGMenuCmds::HideCmd<BGMenuCmds::SubCommandBase> >
+BGMenuCmds::SetAnchorPosition
+BGMenuCmds::SetAnchorAreaLocal
+BGMenuCmds::BGMenuContainerRoot
+BGMenuCmds::BSv2
+BGMenuCmds::Fill
+BGMenuCmds::Rect
+BGMenuCmds::Text
+BGMenuCmds::Branch
+BGMenuCmds::Button
+BGMenuCmds::Scroll
+BGMenuCmds::FlipCmd<BGMenuCmds::ColorCmd<BGMenuCmds::AlignCmdText<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmdText<BGMenuCmds::SubCommandBase> > > > >
+BGMenuCmds::FlipCmd<BGMenuCmds::ScaleCmd<BGMenuCmds::AlignCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmd<BGMenuCmds::SubCommandBase> > > > >
+BGMenuCmds::FlipCmd<BGMenuCmds::ScaleCmd<BGMenuCmds::ColorCmd<BGMenuCmds::AlignCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmd<BGMenuCmds::SubCommandBase> > > > > >
+BGMenuCmds::HideCmd<BGMenuCmds::CenterCmdText<BGMenuCmds::SubCommandBase> >
+BGMenuCmds::HideCmd<BGMenuCmds::SubCommandBase>
+BGMenuCmds::HideCmd<BGMenuCmds::CenterCmd<BGMenuCmds::SubCommandBase> >
+BGMenuCmds::HideCmd<BGMenuCmds::CenterCmd<BGMenuCmds::WidthCmd<BGMenuCmds::HeightCmd<BGMenuCmds::SubCommandBase> > > >
+BGMenuCmds::ColorCmd<BGMenuCmds::AlignCmdText<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmdText<BGMenuCmds::SubCommandBase> > > >
+BGMenuCmds::ColorCmd<BGMenuCmds::AlignCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmd<BGMenuCmds::SubCommandBase> > > >
+BGMenuCmds::Graphics
+BGMenuCmds::ICommand
+BGMenuCmds::ScaleCmd<BGMenuCmds::AlignCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmd<BGMenuCmds::SubCommandBase> > > >
+BGMenuCmds::ScaleCmd<BGMenuCmds::ColorCmd<BGMenuCmds::AlignCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmd<BGMenuCmds::SubCommandBase> > > > >
+BGMenuCmds::Template
+BGMenuCmds::TextBase
+BGMenuCmds::WidthCmd<BGMenuCmds::HideCmd<BGMenuCmds::SubCommandBase> >
+BGMenuCmds::WidthCmd<BGMenuCmds::HeightCmd<BGMenuCmds::SubCommandBase> >
+BGMenuCmds::CenterCmd<BGMenuCmds::SubCommandBase>
+BGMenuCmds::CenterCmd<BGMenuCmds::WidthCmd<BGMenuCmds::HeightCmd<BGMenuCmds::SubCommandBase> > >
+BGMenuCmds::Component
+BGMenuCmds::Container
+BGMenuCmds::HeightCmd<BGMenuCmds::SubCommandBase>
+BGMenuCmds::IMenuRoot
+BGMenuCmds::PickerCmd<BGMenuCmds::WidthCmd<BGMenuCmds::HideCmd<BGMenuCmds::SubCommandBase> > >
+BGMenuCmds::RotateCmd<BGMenuCmds::FlipCmd<BGMenuCmds::ScaleCmd<BGMenuCmds::ColorCmd<BGMenuCmds::AlignCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmd<BGMenuCmds::SubCommandBase> > > > > > >
+BGMenuCmds::SetCanvas
+BGMenuCmds::TextEntry
+BGMenuCmds::ToggleCmd<BGMenuCmds::FlipCmd<BGMenuCmds::ScaleCmd<BGMenuCmds::AlignCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmd<BGMenuCmds::SubCommandBase> > > > > >
+BGMenuCmds::ToggleCmd<BGMenuCmds::RotateCmd<BGMenuCmds::FlipCmd<BGMenuCmds::ScaleCmd<BGMenuCmds::ColorCmd<BGMenuCmds::AlignCmdNoApply<BGMenuCmds::HideCmd<BGMenuCmds::CenterCmd<BGMenuCmds::SubCommandBase> > > > > > > >
+BightGames::GameClient
+BightGames::ServerCall
+BightGames::TimerCallback
+BightGames::NetworkHandler
+BightGames::GameClientManager
+BightGames::ScorpioGameClient
+BightGames::NetworkTaskHandler
+BightGames::PrintNetworkHandler
+BightGames::SilentNetworkHandler
+BightGames::DownloadNetworkHandler
+BightGames::PrizeBoxNetworkHandler
+BightGames::SimpsonsNetworkHandler
+BightGames::FindMatchNetworkHandler
+BightGames::HeartbeatNetworkHandler
+BightGames::IPrizeBoxNetworkHandler
+BightGames::LandWriteNetworkHandler
+BightGames::CreateLandNetworkHandler
+BightGames::DeleteUserNetworkHandler
+BightGames::GameConfigNetworkHandler
+BightGames::ServerTimeNetworkHandler
+BightGames::FriendEventNetworkHandler
+BightGames::ClientConfigNetworkHandler
+BightGames::FacebookLinkNetworkHandler
+BightGames::GetDirectionNetworkHandler
+BightGames::ReadCurrencyNetworkHandler
+BightGames::HeartbeatTaskNetworkHandler
+BightGames::StealBuildingNetworkHandler
+BightGames::TNTOriginAuthNetworkHandler
+BightGames::TelemetrySendNetworkHandler
+BightGames::AnonymousLoginNetworkHandler
+BightGames::CheckDLCUpdateNetworkHandler
+BightGames::ExtraLandWriteNetworkHandler
+BightGames::FacebookUnlinkNetworkHandler
+BightGames::ReadFriendLandNetworkHandler
+BightGames::RetrieveOffersNetworkHandler
+BightGames::WholeLandWriteNetworkHandler
+BightGames::CollectCurrencyNetworkHandler
+BightGames::RequestMayhemIDNetworkHandler
+BightGames::TNTNucleusTokenNetworkHandler
+BightGames::OriginFriendDataRequestHandler
+BightGames::RequestAuthTokenNetworkHandler
+BightGames::RequestSynergyIDNetworkHandler
+BightGames::TNTFriendsInviteNetworkHandler
+BightGames::TNTMigrationLinkNetworkHandler
+BightGames::ReadLandWithTokenNetworkHandler
+BightGames::FacebookFriendDataRequestHandler
+BightGames::TNTFriendsUnfriendNetworkHandler
+BightGames::CheckWholeLandTokenNetworkHandler
+BightGames::SearchOriginAvatarsNetworkHandler
+BightGames::TNTGetUserBasicDataNetworkHandler
+BightGames::TNTUserOriginAvatarNetworkHandler
+BightGames::CreateWholeLandTokenNetworkHandler
+BightGames::DeleteWholeLandTokenNetworkHandler
+BightGames::TNTEmailAddressCheckNetworkHandler
+BightGames::TNTFriendsGetInvitesNetworkHandler
+BightGames::TNTFriendsGetPendingNetworkHandler
+BightGames::EndOfSessionTelemetryNetworkHandler
+BightGames::TNTFriendsPersonaListNetworkHandler
+BightGames::TNTRegisterOriginUserNetworkHandler
+BightGames::CheckWholeLandChecksumNetworkHandler
+BightGames::TNTFriendsAcceptInviteNetworkHandler
+BightGames::TNTFriendsCancelInviteNetworkHandler
+BightGames::TNTFriendsRejectInviteNetworkHandler
+BightGames::TNTEncryptedNucleusTokenNetworkHandler
+BightGames::TNTFriendsFullOriginListNetworkHandler
+BightGames::ExternalConnectivityCheckNetworkHandler
+BightGames::TNTNucleusTokenValidationNetworkHandler
+BightGames::TNTMigrationAvailableToUserNetworkHandler
+BightGames::TNTFriendsSearchByEmailOrNameNetworkHandler
+BightGames::UnregisterMatchmakingOpponentNetworkHandler
+BightGames::TNTMigrationAnonymousLandCheckNetworkHandler
+HUDHandler::SpecialEventButtonEventListener
+JobInstance::JobMovementBehaviourUpdater
+Matchmaking::BaseTargetList
+Matchmaking::FormulaParameter
+Matchmaking::SpendableParameter
+Matchmaking::BuildingListTargetList
+Matchmaking::BaseRegistrationParameter
+Matchmaking::VariableSummationParameter
+Matchmaking::Category
+BonusManager::DynamicBonusEntry
+DataSelector::TableSelector
+DataSelector::FormulaSelector
+DataSelector::FixedValueSelector
+DataSelector::SelectorParserCallBack
+DataSelector::Selector
+Subscription::DumbService
+Subscription::ValidationService
+Subscription::SubscriptionContainer
+BGMenuGraphic::iStreamerLoadCompleteCallback
+BGShapeDrawer::NamedShape
+BGShapeDrawer::Line
+BGShapeDrawer::Circle
+BGShapeDrawer::NamedLine
+HelpersInstance::Target::HelperCriteria
+HelpersInstance::Target::RewardHelperCriteria
+HelpersInstance::Target::TaxJobHelperCriteria
+IMultiplaceable::EntryOperator
+DefaultJobReward::SingleSublandFilter
+DefaultJobReward::Filter
+LoginDiagnostics::CachedLoginData
+GameState_JobList::ExitAction
+State_TapBallMatch::AthleteMovementCallback
+enable_make_shared<LogicController, int, int, int, int>::make_shared_enabler
+enable_make_shared<RandomController, int, int, int, int>::make_shared_enabler
+enable_make_shared<LoopingController, int, int, int, int>::make_shared_enabler
+enable_make_shared<MovePickController, int, int, int, int>::make_shared_enabler
+enable_make_shared<SequenceController, int, int, int, int>::make_shared_enabler
+enable_make_shared<AnimationController, int, int, int, int>::make_shared_enabler
+enable_make_shared<LogicGateController, eastl::basic_string<char, eastl::allocator>, int, int, int>::make_shared_enabler
+enable_make_shared<MoveGroupController, int, int, int, int>::make_shared_enabler
+enable_make_shared<OverlayPhaseController, int, int, int, int>::make_shared_enabler
+enable_make_shared<PriorityListController, int, int, int, int>::make_shared_enabler
+State_HubFriendList::BaseListEntry
+State_HubFriendList::FriendListEntry
+BGMenuParserCommands::BranchState
+BGMenuParserCommands::ButtonState
+BGMenuParserCommands::ScrollState
+BGMenuParserCommands::StdStateBase
+BGMenuParserCommands::ComponentState<BGMenuCmds::Template>
+BGMenuParserCommands::ComponentState<BGMenuCmds::Component>
+BGMenuParserCommands::ComponentState<BGMenuCmds::Container>
+BGMenuParserCommands::TextEntryState
+BGMenuParserCommands::SimpleGroupState
+BGMenuParserCommands::CreateObjectStateBase
+BGMenuParserCommands::WaitForStartMenuState
+BGMenuParserCommands::IState
+BGMenuParserCommands::FillState
+JobCensusRulesComponent::JobCensusRule
+JobCensusRulesComponent::PickFromSetJobCensusRule
+JobCensusRulesComponent::SpotlightCharacterJobCensusRule
+GameState_BuildingSelected::NextBuilding
+SpecialEventGeneralBuffers::BufferSet::CachedValue<ProjectBoardParamSet>
+SpecialEventGeneralBuffers::BufferSet::CachedValueBase
+BuildingVisitBehaviorInstance::UnvisitedBuildingPredicate
+EA::EADP::PushNotification::BridgePushTNGCallback
+EA::EADP::PushNotification::BridgePushTNGStdCallback
+EA::Nimble::BaseInternal::NimbleCppComponent
+EA::Nimble::BridgeCallback
+EA::Nimble::SocialConnector::NimbleCppConnectorBaseService
+EA::Nimble::SocialConnector::NimbleCppLineConnectorService
+EA::Nimble::SocialConnector::NimbleCppAppleConnectorService
+EA::Nimble::SocialConnector::NimbleCppGoogleConnectorService
+EA::Nimble::SocialConnector::NimbleCppTwitterConnectorService
+EA::Nimble::SocialConnector::NimbleCppFacebookConnectorService
+EA::Nimble::SocialConnector::NimbleCppGameCenterConnectorService
+EA::Nimble::MTX::BridgeMTXCallback
+EA::Nimble::MTX::BridgePurchaseCallback
+EA::Nimble::Base::NimbleCppTask
+EA::Nimble::Base::NimbleCppError
+EA::Nimble::Base::NimbleCppTimer
+EA::Nimble::Base::BridgeLogCallback
+EA::Nimble::Base::NimbleCppTaskImpl
+EA::Nimble::Base::NimbleCppTimerImpl
+EA::Nimble::Base::NimbleCppHttpClient
+EA::Nimble::Base::BridgeWebViewCallback
+EA::Nimble::Base::NimbleCppSocketClient
+EA::Nimble::Base::NimbleCppHttpClientImpl
+EA::Nimble::Base::NimbleCppNetworkService
+EA::Nimble::Base::NimbleCppSocketClientImpl
+EA::Nimble::Base::BridgeNotificationCallback
+EA::Nimble::Base::NimbleCppAgeComplianceImpl
+EA::Nimble::Base::NimbleCppNetworkClientImpl
+EA::Nimble::Base::NimbleCppNetworkServiceImpl
+EA::Nimble::Base::ApplicationLifeCycleObserver
+EA::Nimble::Base::BridgeSynergyRequestCallback
+EA::Nimble::Base::NimbleCppAgeComplianceService
+EA::Nimble::Base::NimbleCppNetworkClientManager
+EA::Nimble::Base::BridgeNetworkConnectionCallback
+EA::Nimble::Base::BridgeSafetyNetAttestationCallback
+EA::Nimble::Base::BridgeSynergyNetworkConnectionCallback
+EA::Nimble::Base::LogSource
+EA::Nimble::Json::FastWriter
+EA::Nimble::Json::StyledWriter
+EA::Nimble::Json::Writer
+EA::Nimble::Nexus::NimbleCppJwtToken
+EA::Nimble::Nexus::NimbleCppNexusService
+EA::Nimble::Nexus::NimbleCppNexusServiceImpl
+EA::Nimble::Nexus::NimbleCppNexusSocialSharing
+EA::Nimble::Nexus::NimbleCppNexusDefaultService
+EA::Nimble::Nexus::NimbleCppNexusEAAuthenticator
+EA::Nimble::Nexus::NimbleCppNexusInternalService
+EA::Nimble::Nexus::NimbleCppNexusEAAccountService
+EA::Nimble::Nexus::NimbleCppNexusAuthenticatorBase
+EA::Nimble::Nexus::NimbleCppNexusLineAuthenticator
+EA::Nimble::Nexus::NimbleCppNexusSocialSharingImpl
+EA::Nimble::Nexus::NimbleCppNexusAppleAuthenticator
+EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl
+EA::Nimble::Nexus::NimbleCppNexusGoogleAuthenticator
+EA::Nimble::Nexus::NimbleCppNexusTwitterAuthenticator
+EA::Nimble::Nexus::NimbleCppNexusFacebookAuthenticator
+EA::Nimble::Nexus::NimbleCppNexusAnonymousAuthenticator
+EA::Nimble::Nexus::NimbleCppNexusGameCenterAuthenticator
+EA::Nimble::Nexus::NimbleCppNexusPersonaConflictResolver
+EA::Nimble::Friends::BridgeFriendsCallback
+EA::Nimble::Friends::BridgeUserSearchCallback
+EA::Nimble::Friends::BridgeFriendInvitationCallback
+EA::Nimble::Facebook::BridgeFacebookCallback
+EA::Nimble::Identity::Authenticator
+EA::Nimble::Identity::BridgeAccessTokenCallback
+EA::Nimble::Identity::BridgeAuthenticatorCallback
+EA::Nimble::Identity::BridgeServerAuthCodeCallback
+EA::Nimble::Identity::BridgeFriendsIdentityInfoCallback
+EA::Nimble::Identity::NimblePlainAuthenticationConductorBridge
+EA::Nimble::Identity::NimbleGenericAuthenticationConductorBridge
+EA::Nimble::Identity::NimbleAuthenticationDrivenMigrationConductorBridge
+EA::Nimble::Tracking::PinFpsEvent
+EA::Nimble::Tracking::PinErrorEvent
+EA::Nimble::Tracking::PinGroupEvent
+EA::Nimble::Tracking::PinLoginEvent
+EA::Nimble::Tracking::PinLogoutEvent
+EA::Nimble::Tracking::PinSurveyEvent
+EA::Nimble::Tracking::PinAccountEvent
+EA::Nimble::Tracking::PinBootEndEvent
+EA::Nimble::Tracking::PinFriendsEvent
+EA::Nimble::Tracking::PinGameEndEvent
+EA::Nimble::Tracking::PinMessageEvent
+EA::Nimble::Tracking::PinDownloadEvent
+EA::Nimble::Tracking::PinFavoriteEvent
+EA::Nimble::Tracking::PinModeExitEvent
+EA::Nimble::Tracking::PinPageViewEvent
+EA::Nimble::Tracking::PinRoundEndEvent
+EA::Nimble::Tracking::PinSequenceEvent
+EA::Nimble::Tracking::PinSettingsEvent
+EA::Nimble::Tracking::INimbleCppTracker
+EA::Nimble::Tracking::PinBootStartEvent
+EA::Nimble::Tracking::PinChallengeEvent
+EA::Nimble::Tracking::PinGameStartEvent
+EA::Nimble::Tracking::PinInventoryEvent
+EA::Nimble::Tracking::PinMilestoneEvent
+EA::Nimble::Tracking::PinModeEnterEvent
+EA::Nimble::Tracking::PinConnectionEvent
+EA::Nimble::Tracking::PinRoundStartEvent
+EA::Nimble::Tracking::NimbleCppTrackerPin
+EA::Nimble::Tracking::PinCustomErrorEvent
+EA::Nimble::Tracking::PinEntitlementEvent
+EA::Nimble::Tracking::PinPlayerLevelEvent
+EA::Nimble::Tracking::PinTransactionEvent
+EA::Nimble::Tracking::NimbleCppTrackerBase
+EA::Nimble::Tracking::PinRegistrationEvent
+EA::Nimble::Tracking::PinSocialMessageEvent
+EA::Nimble::Tracking::PinPlaySessionEndEvent
+EA::Nimble::Tracking::PinPlayerDecisionEvent
+EA::Nimble::Tracking::PinHardwareProfileEvent
+EA::Nimble::Tracking::NimbleCppTrackingService
+EA::Nimble::Tracking::PinPlaySessionStartEvent
+EA::Nimble::Tracking::NimbleCppTrackingWrangler
+EA::Nimble::Tracking::NimbleCppTrackingDbManager
+EA::Nimble::Tracking::PinMultiplayerMatchInfoEvent
+EA::Nimble::Tracking::PinMultiplayerMatchJoinEvent
+EA::Nimble::Tracking::NimbleCppAppLifeCycleEventLogger
+EA::Nimble::Tracking::PinEvent
+GameState_HubFriendActionHistory::HistoryEntry
+BuildingMenuConfigurationComponent::CustomCurrencyBar
+com::ea::simpsons::client::log::ClientLogMessage
+com::ea::simpsons::client::log::ClientLogMessage_ServerProvidedLogFields
+com::ea::simpsons::client::metrics::ClientMetricsMessage
+com::ea::simpsons::client::telemetry::ClientAccountId
+com::ea::simpsons::client::telemetry::SharedSessionGUID
+com::ea::simpsons::client::telemetry::ClientApplicationGUID
+com::ea::simpsons::client::telemetry::ClientTelemetryMessage
+com::ea::simpsons::client::telemetry::ClientTelemetryIdentifier
+com::ea::simpsons::client::telemetry::ServerTelemetryIdentifier
+com::ea::simpsons::client::telemetry::ClientTelemetryMessage_ClientProvidedTelemetry
+com::ea::simpsons::client::telemetry::ClientTelemetryMessage_ServerProvidedTelemetry
+com::ea::simpsons::client::telemetry::ClientTelemetryMessage_NimbleExtractedTelemetry
+com::ea::simpsons::client::telemetry::ClientTelemetryMessage_ClientProvidedTelemetry_DlcInfo
+com::ea::simpsons::client::telemetry::ClientTelemetryMessage_ClientProvidedTelemetry_MemoryStat
+Data::DataServer
+Data::LandMessage
+Data::TimeGateSet
+Data::TimedScript
+Data::VariableSet
+Data::CurrencyData
+Data::ErrorMessage
+Data::EventMessage
+Data::NameValueSet
+Data::RemoteServer
+Data::EventsMessage
+Data::PlayerSession
+Data::GambleResponse
+Data::PlayScriptData
+Data::PowerupMessage
+Data::InteractionData
+Data::ObjectVariables
+Data::TimedAttackData
+Data::CurrencySaveData
+Data::ExtraLandMessage
+Data::SpendableElement
+Data::SubscriptionData
+Data::UserIndirectData
+Data::AnonymousUserData
+Data::CharacterLostData
+Data::ExtraLandResponse
+Data::PurchaseErrorData
+Data::PurchasedItemData
+Data::SharedVariableSet
+Data::ShopCollectedData
+Data::SidebarUpdateData
+Data::DeleteTokenRequest
+Data::TimedAttackDataSet
+Data::VandalismEventData
+Data::AdvancedVariableSet
+Data::CharacterGainedData
+Data::DeleteTokenResponse
+Data::LandMessage_JobData
+Data::LandResponseMessage
+Data::UserResponseMessage
+Data::ClientConfigResponse
+Data::GetFriendDataRequest
+Data::KinesisCurrencyDelta
+Data::LandMessage_UserData
+Data::ProjectBoardParamSet
+Data::TimeGateSet_TimeGate
+Data::UsersResponseMessage
+Data::VariableSet_Variable
+Data::GetFriendDataResponse
+Data::LandMessage_QuestData
+Data::LandMessage_TimerData
+Data::OffersResponseMessage
+Data::WholeLandTokenRequest
+Data::EventMessage_EventData
+Data::GameplayConfigResponse
+Data::LandMessage_DNAMessage
+Data::LandMessage_FriendData
+Data::PurchaseRequestMessage
+Data::WholeLandTokenResponse
+Data::CurrencyResponseMessage
+Data::CustomFriendRequestData
+Data::LandMessage_BankDataSet
+Data::LandMessage_SidebarData
+Data::LandMessage_SubLandData
+Data::LandMessage_TerrainData
+Data::LandMessage_VectorFloat
+Data::LinkUserResponseMessage
+Data::PurchaseResponseMessage
+Data::KinesisLandUpdateMessage
+Data::LandMessage_BuildingData
+Data::LandMessage_EntityHeader
+Data::LandMessage_MinigameData
+Data::PlayScriptAtPositionData
+Data::DeleteUserResponseMessage
+Data::FriendInteractionParamSet
+Data::LandBackupResponseMessage
+Data::LandMessage_CharacterData
+Data::LandMessage_InnerLandData
+Data::LandMessage_ConsumableData
+Data::LandMessage_FakeFriendData
+Data::LandMessage_FriendListData
+Data::LandMessage_GameObjectInfo
+Data::LandMessage_QuestGroupData
+Data::LandMessage_SpendablesData
+Data::MatchmakingResponseMessage
+Data::PowerupMessage_PowerupData
+Data::LandMessage_ActionLimitData
+Data::LandMessage_AdHocObjectData
+Data::LandMessage_AmazonDimension
+Data::LandMessage_SkinUnlocksData
+Data::LandMessage_TimedScriptData
+Data::LandMessage_BonusUnlocksData
+Data::LandMessage_DailyTaskMessage
+Data::LandMessage_NotificationData
+Data::LandMessage_VectorFloatArray
+Data::LandMessage_CharacterSetsData
+Data::LandMessage_DelayedActionData
+Data::LandMessage_FriendActionCount
+Data::LandMessage_InventoryItemData
+Data::LandMessage_SpecialEventsData
+Data::WholeLandTokenResponseMessage
+Data::ExtraLandMessage_CurrencyDelta
+Data::LandMessage_EventCountListData
+Data::LandMessage_RoadMapDataMessage
+Data::ExtraLandResponse_CommunityGoal
+Data::LandMessage_BankDataSet_Deposit
+Data::LandMessage_CollectionItemsData
+Data::LandMessage_MemorabiliaItemData
+Data::OffersResponseMessage_OfferItem
+Data::LandMessage_BankDataSet_BankData
+Data::LandMessage_CharacterUnlocksData
+Data::LandMessage_JobCensusDataMessage
+Data::LandMessage_SavedRecommendations
+Data::LandMessage_UserData_SavedRating
+Data::PurchaseRequestMessage_DeviceIds
+Data::SharedVariableSet_SharedVariable
+Data::ExtraLandMessage_PushNotification
+Data::LandMessage_PremiumUnlockItemData
+Data::LandMessage_ProcessedPurchaseData
+Data::LandMessage_PushNotificationsData
+Data::LandMessage_TimedCharacterDataSet
+Data::ProjectBoardParamSet_ProjectParam
+Data::PurchaseRequestMessage_DeviceInfo
+Data::LandMessage_CustomFriendActionData
+Data::LandMessage_FriendData_SublandInfo
+Data::PurchaseRequestMessage_PaymentInfo
+Data::UserResponseMessage_ReverseMapping
+Data::ExtraLandMessage_CommunityGoalDelta
+Data::LandMessage_BankDataSet_DepositData
+Data::LandMessage_QuestData_ObjectiveData
+Data::AdvancedVariableSet_AdvancedVariable
+Data::GetFriendDataResponse_FriendDataPair
+Data::LandBackupResponseMessage_LandBackup
+Data::LandMessage_EventCountListData_Event
+Data::OffersResponseMessage_LevelUpXpOffer
+Data::ClientConfigResponse_ClientConfigItem
+Data::EventMessage_EventData_PlayScriptData
+Data::LandMessage_DNAMessage_DNAEventsEvent
+Data::LandMessage_GameObjectInfo_GameObject
+Data::LandMessage_GroupStorageBundleMessage
+Data::LandMessage_SidebarData_SidebarElement
+Data::LandMessage_UserData_StickerUnlockData
+Data::PurchaseRequestMessage_ApplicationInfo
+Data::LandMessage_BonusUnlocksData_BonusEntry
+Data::LoseResourcesForFriendActionRequestData
+Data::EventMessage_EventData_CharacterLostData
+Data::EventMessage_EventData_ShopCollectedData
+Data::EventMessage_EventData_SidebarUpdateData
+Data::ExtraLandMessage_MatchmakingRegistration
+Data::LandMessage_DNAMessage_DNATelemetryEvent
+Data::LandMessage_DelayedActionData_RewardData
+Data::OffersResponseMessage_ItemPopularityList
+Data::OffersResponseMessage_PriceOverrideOffer
+Data::EventMessage_EventData_ReturnBuildingData
+Data::EventMessage_EventData_VandalismEventData
+Data::EventMessage_EventData_CharacterGainedData
+Data::EventMessage_EventData_GiftMemorabiliaData
+Data::LandMessage_CharacterSetsData_CharacterSet
+Data::LandMessage_DailyTaskMessage_DailyTaskData
+Data::LandMessage_SpecialEventsData_SpecialEvent
+Data::EventMessage_EventData_StealBuildingEventData
+Data::EventMessage_EventData_CustomFriendRequestData
+Data::LandMessage_JobCensusDataMessage_JobCensusData
+Data::EventMessage_EventData_LoseResourcesRequestData
+Data::EventMessage_EventData_PlayScriptAtPositionData
+Data::LandMessage_NotificationData_ConsumableCallback
+Data::LandMessage_QuestData_ObjectiveData_DynamicData
+Data::FriendInteractionParamSet_FriendInteractionParam
+Data::LandMessage_NotificationData_MultiRewardCallback
+Data::LandMessage_NotificationData_NotificationCallback
+Data::LandMessage_DailyTaskMessage_DailyTaskCoolDownData
+Data::GetFriendDataResponse_FriendDataPair_FriendDataError
+Data::LandMessage_NotificationData_GainPrizeRewardCallback
+Data::LandMessage_TimedCharacterDataSet_TimedCharacterData
+Data::OffersResponseMessage_ItemPopularityList_PopularItem
+Data::LandMessage_NotificationData_MemorabiliaRewardCallback
+Data::LandMessage_QuestData_ObjectiveData_BuildingCustomData
+Data::LandMessage_QuestData_ObjectiveData_ItemCountCustomData
+Data::LandMessage_QuestData_ObjectiveData_ResourcesCustomData
+Data::LandMessage_DailyTaskMessage_DailyTaskRewardCoolDownData
+Data::LandMessage_GroupStorageBundleMessage_GroupStorageBundle
+Data::LandMessage_NotificationData_GainCharacterRewardCallback
+Data::LandMessage_QuestData_ObjectiveData_VisitFriendCustomData
+Data::LandMessage_DNAMessage_DNATelemetryEvent_DNATelemetryParam
+Data::LandMessage_NotificationData_ResourceAndItemRewardCallback
+Data::LandMessage_SpecialEventsData_SpecialEvent_GeneralBufferSets
+Data::LandMessage_JobCensusDataMessage_JobCensusData_JobCensusDataEntry
+Data::LandMessage_SpecialEventsData_SpecialEvent_SpecialEventPrizeDataSet
+Data::LandMessage_SpecialEventsData_SpecialEvent_GeneralBufferSets_BufferSet
+Data::LandMessage_GroupStorageBundleMessage_GroupStorageBundle_GroupStorageBundleRoadMap
+Data::LandMessage_GroupStorageBundleMessage_GroupStorageBundle_GroupStorageBundleEntryData
+Data::LandMessage_SpecialEventsData_SpecialEvent_SpecialEventPrizeDataSet_SpecialEventPrizeData
+Data::LinkData
+Data::NameValue
+Data::OrderData
+Data::OwnerList
+Data::TokenData
+Json::StyledWriter
+Json::Writer
+eastl::ref_count_sp
+eastl::default_delete<RewardData>
+eastl::default_delete<ScratcherInfo>
+eastl::default_delete<CachedUserInfo>
+eastl::default_delete<GridMapSearchContext>
+eastl::default_delete<RoadOnlySearchContext>
+eastl::default_delete<IconPositionResProvider>
+eastl::default_delete<BoardwalkOnlySearchContext>
+eastl::default_delete<BGIMesh>
+eastl::default_delete<GameState_PlaceLand::DisplayedLandCost>
+eastl::default_delete<tinyxml2::XMLDocument>
+eastl::ref_count_sp_t<RewardData*, eastl::allocator, eastl::default_delete<RewardData> >
+eastl::ref_count_sp_t<ScratcherInfo*, eastl::allocator, eastl::default_delete<ScratcherInfo> >
+eastl::ref_count_sp_t<CachedUserInfo*, eastl::allocator, eastl::default_delete<CachedUserInfo> >
+eastl::ref_count_sp_t<GridMapSearchContext*, eastl::allocator, eastl::default_delete<GridMapSearchContext> >
+eastl::ref_count_sp_t<RoadOnlySearchContext*, eastl::allocator, eastl::default_delete<RoadOnlySearchContext> >
+eastl::ref_count_sp_t<IconPositionResProvider*, eastl::allocator, eastl::default_delete<IconPositionResProvider> >
+eastl::ref_count_sp_t<BoardwalkOnlySearchContext*, eastl::allocator, eastl::default_delete<BoardwalkOnlySearchContext> >
+eastl::ref_count_sp_t<BGIMesh*, eastl::allocator, eastl::default_delete<BGIMesh> >
+eastl::ref_count_sp_t<GameState_PlaceLand::DisplayedLandCost*, eastl::allocator, eastl::default_delete<GameState_PlaceLand::DisplayedLandCost> >
+eastl::ref_count_sp_t<tinyxml2::XMLDocument*, eastl::allocator, eastl::default_delete<tinyxml2::XMLDocument> >
+eastl::ref_count_sp_t<eastl::vector<ObjectRequirement*, eastl::allocator>*, eastl::allocator, void (*)(eastl::vector<ObjectRequirement*, eastl::allocator>*)>
+eastl::ref_count_sp_t_inst<MoveActionCallback, eastl::allocator>
+eastl::ref_count_sp_t_inst<RAIIRequirementList, eastl::allocator>
+eastl::ref_count_sp_t_inst<FaceBuildingCallback, eastl::allocator>
+eastl::ref_count_sp_t_inst<JobPositionEndCallback, eastl::allocator>
+eastl::ref_count_sp_t_inst<HelpersInstanceCallback, eastl::allocator>
+eastl::ref_count_sp_t_inst<MoveToObjectInstanceCallback, eastl::allocator>
+eastl::ref_count_sp_t_inst<EndofIdleWanderScriptCallback, eastl::allocator>
+eastl::ref_count_sp_t_inst<SendCharacterToBuildingCallback, eastl::allocator>
+eastl::ref_count_sp_t_inst<CreateObjectWalkToBuildingCallback, eastl::allocator>
+eastl::ref_count_sp_t_inst<State_TapBallMatch::AthleteMovementCallback, eastl::allocator>
+eastl::ref_count_sp_t_inst<enable_make_shared<LogicController, int, int, int, int>::make_shared_enabler, eastl::allocator>
+eastl::ref_count_sp_t_inst<enable_make_shared<RandomController, int, int, int, int>::make_shared_enabler, eastl::allocator>
+eastl::ref_count_sp_t_inst<enable_make_shared<LoopingController, int, int, int, int>::make_shared_enabler, eastl::allocator>
+eastl::ref_count_sp_t_inst<enable_make_shared<MovePickController, int, int, int, int>::make_shared_enabler, eastl::allocator>
+eastl::ref_count_sp_t_inst<enable_make_shared<SequenceController, int, int, int, int>::make_shared_enabler, eastl::allocator>
+eastl::ref_count_sp_t_inst<enable_make_shared<AnimationController, int, int, int, int>::make_shared_enabler, eastl::allocator>
+eastl::ref_count_sp_t_inst<enable_make_shared<LogicGateController, eastl::basic_string<char, eastl::allocator>, int, int, int>::make_shared_enabler, eastl::allocator>
+eastl::ref_count_sp_t_inst<enable_make_shared<MoveGroupController, int, int, int, int>::make_shared_enabler, eastl::allocator>
+eastl::ref_count_sp_t_inst<enable_make_shared<OverlayPhaseController, int, int, int, int>::make_shared_enabler, eastl::allocator>
+eastl::ref_count_sp_t_inst<enable_make_shared<PriorityListController, int, int, int, int>::make_shared_enabler, eastl::allocator>
+eastl::enable_shared_from_this<LogicController>
+eastl::enable_shared_from_this<RandomController>
+eastl::enable_shared_from_this<LoopingController>
+eastl::enable_shared_from_this<MovePickController>
+eastl::enable_shared_from_this<SequenceController>
+eastl::enable_shared_from_this<AnimationController>
+eastl::enable_shared_from_this<LogicGateController>
+eastl::enable_shared_from_this<MoveGroupController>
+eastl::enable_shared_from_this<OverlayPhaseController>
+eastl::enable_shared_from_this<PriorityListController>
+google::protobuf::TextFormat::BaseTextGenerator
+google::protobuf::TextFormat::FieldValuePrinter
+google::protobuf::TextFormat::FastFieldValuePrinter
+google::protobuf::TextFormat::Finder
+google::protobuf::TextFormat::Parser::ParserImpl::ParserErrorCollector
+google::protobuf::TextFormat::Printer::TextGenerator
+google::protobuf::TextFormat::Printer::DebugStringFieldValuePrinter
+google::protobuf::TextFormat::Printer::FastFieldValuePrinterUtf8Escaping
+google::protobuf::EnumOptions
+google::protobuf::FileOptions
+google::protobuf::MessageLite
+google::protobuf::FieldOptions
+google::protobuf::OneofOptions
+google::protobuf::(anonymous namespace)::GeneratedMessageFactory
+google::protobuf::(anonymous namespace)::StringBaseTextGenerator
+google::protobuf::(anonymous namespace)::FieldValuePrinterWrapper
+google::protobuf::MethodOptions
+google::protobuf::DescriptorPool::ErrorCollector
+google::protobuf::MessageFactory
+google::protobuf::MessageOptions
+google::protobuf::ServiceOptions
+google::protobuf::SourceCodeInfo
+google::protobuf::DescriptorProto
+google::protobuf::EnumValueOptions
+google::protobuf::DescriptorBuilder::OptionInterpreter::AggregateOptionFinder
+google::protobuf::FileDescriptorSet
+google::protobuf::GeneratedCodeInfo
+google::protobuf::EnumDescriptorProto
+google::protobuf::FileDescriptorProto
+google::protobuf::UninterpretedOption
+google::protobuf::FieldDescriptorProto
+google::protobuf::OneofDescriptorProto
+google::protobuf::DynamicMessageFactory
+google::protobuf::ExtensionRangeOptions
+google::protobuf::MethodDescriptorProto
+google::protobuf::DescriptorPoolDatabase
+google::protobuf::ServiceDescriptorProto
+google::protobuf::SourceCodeInfo_Location
+google::protobuf::EnumValueDescriptorProto
+google::protobuf::MergedDescriptorDatabase
+google::protobuf::SimpleDescriptorDatabase
+google::protobuf::ZeroCopyCodedInputStream
+google::protobuf::EncodedDescriptorDatabase
+google::protobuf::GeneratedCodeInfo_Annotation
+google::protobuf::UninterpretedOption_NamePart
+google::protobuf::DescriptorProto_ReservedRange
+google::protobuf::io::FileInputStream::CopyingFileInputStream
+google::protobuf::io::FileInputStream
+google::protobuf::io::ArrayInputStream
+google::protobuf::io::FileOutputStream::CopyingFileOutputStream
+google::protobuf::io::FileOutputStream
+google::protobuf::io::ArrayOutputStream
+google::protobuf::io::CopyingInputStream
+google::protobuf::io::IstreamInputStream::CopyingIstreamInputStream
+google::protobuf::io::IstreamInputStream
+google::protobuf::io::StringOutputStream
+google::protobuf::io::CopyingOutputStream
+google::protobuf::io::LimitingInputStream
+google::protobuf::io::OstreamOutputStream::CopyingOstreamOutputStream
+google::protobuf::io::OstreamOutputStream
+google::protobuf::io::ZeroCopyInputStream
+google::protobuf::io::ZeroCopyOutputStream
+google::protobuf::io::ConcatenatingInputStream
+google::protobuf::io::CopyingInputStreamAdaptor
+google::protobuf::io::CopyingOutputStreamAdaptor
+google::protobuf::DescriptorProto_ExtensionRange
+google::protobuf::EnumDescriptorProto_EnumReservedRange
+google::protobuf::Closure
+google::protobuf::internal::ExtensionSet::LazyMessageExtension
+google::protobuf::internal::FieldSkipper
+google::protobuf::internal::MapFieldBase
+google::protobuf::internal::DynamicMapField
+google::protobuf::internal::ExtensionFinder
+google::protobuf::internal::FunctionClosure0
+google::protobuf::internal::InternalMetadata::ContainerBase
+google::protobuf::internal::InternalMetadata::Container<google::protobuf::UnknownFieldSet>
+google::protobuf::internal::MapFieldAccessor
+google::protobuf::internal::ImplicitWeakMessage
+google::protobuf::internal::RepeatedFieldWrapper<bool>
+google::protobuf::internal::RepeatedFieldWrapper<double>
+google::protobuf::internal::RepeatedFieldWrapper<float>
+google::protobuf::internal::RepeatedFieldWrapper<int>
+google::protobuf::internal::RepeatedFieldWrapper<unsigned int>
+google::protobuf::internal::RepeatedFieldWrapper<long>
+google::protobuf::internal::RepeatedFieldWrapper<unsigned long>
+google::protobuf::internal::RepeatedFieldAccessor
+google::protobuf::internal::MessageSetFieldSkipper
+google::protobuf::internal::RepeatedPtrFieldWrapper<google::protobuf::Message>
+google::protobuf::internal::RepeatedPtrFieldWrapper<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > >
+google::protobuf::internal::TypeDefinedMapFieldBase<google::protobuf::MapKey, google::protobuf::MapValueRef>
+google::protobuf::internal::GeneratedExtensionFinder
+google::protobuf::internal::UnknownFieldSetFieldSkipper
+google::protobuf::internal::CodedOutputStreamFieldSkipper
+google::protobuf::internal::DescriptorPoolExtensionFinder
+google::protobuf::internal::RepeatedFieldPrimitiveAccessor<bool>
+google::protobuf::internal::RepeatedFieldPrimitiveAccessor<double>
+google::protobuf::internal::RepeatedFieldPrimitiveAccessor<float>
+google::protobuf::internal::RepeatedFieldPrimitiveAccessor<int>
+google::protobuf::internal::RepeatedFieldPrimitiveAccessor<unsigned int>
+google::protobuf::internal::RepeatedFieldPrimitiveAccessor<long>
+google::protobuf::internal::RepeatedFieldPrimitiveAccessor<unsigned long>
+google::protobuf::internal::RepeatedPtrFieldStringAccessor
+google::protobuf::internal::RepeatedPtrFieldMessageAccessor
+google::protobuf::internal::RandomAccessRepeatedFieldAccessor
+tinyxml2::XMLComment
+tinyxml2::XMLElement
+tinyxml2::XMLPrinter
+tinyxml2::XMLUnknown
+tinyxml2::XMLVisitor
+tinyxml2::XMLDocument
+tinyxml2::XMLAttribute
+tinyxml2::XMLDeclaration
+tinyxml2::MemPool
+tinyxml2::XMLNode
+tinyxml2::XMLText
+tinyxml2::MemPoolT<104>
+tinyxml2::MemPoolT<72>
+tinyxml2::MemPoolT<88>
+tinyxml2::MemPoolT<96>
+RoadsUtil::RoadmapBoolRect
+RoadsUtil::IBoolRect
+NAME
+NETSCAPE_CERT_SEQUENCE
+NOCASE
+NONCONSUMABLE
+NONE
+NOTE
+NO_STORAGE_SPACE
+NO_SUCH_RESOURCE
+std::__ndk1::__back_ref<char>
+std::__ndk1::__function::__base<unsigned char* (unsigned char const*, unsigned long, unsigned char*)>
+std::__ndk1::__function::__base<void (EA::Nimble::SocialConnector::NimbleCppConnectorBaseService::State)>
+std::__ndk1::__function::__base<void (std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppNexusPersonaConflictResolver>)>
+std::__ndk1::__function::__base<void (EA::Nimble::Base::NimbleCppError const&)>
+std::__ndk1::__function::__base<void (EA::Nimble::Json::Value const&, EA::Nimble::Base::NimbleCppError const&)>
+std::__ndk1::__function::__base<void (std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&)>
+std::__ndk1::__function::__base<void (std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, EA::Nimble::Base::NimbleCppError const&)>
+std::__ndk1::__function::__base<void (std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, EA::Nimble::Base::NimbleCppError const&)>
+std::__ndk1::__function::__base<void (EA::Nimble::Base::NimbleCppHttpClient&)>
+std::__ndk1::__function::__base<void (EA::Nimble::Nexus::NimbleCppNexusService&, std::__ndk1::shared_ptr<std::__ndk1::map<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, EA::Nimble::Nexus::NimbleCppNexusPersona, std::__ndk1::less<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > >, std::__ndk1::allocator<std::__ndk1::pair<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const, EA::Nimble::Nexus::NimbleCppNexusPersona> > > >, EA::Nimble::Base::NimbleCppError const&)>
+std::__ndk1::__function::__base<void (EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusPersona const&, EA::Nimble::Base::NimbleCppError const&)>
+std::__ndk1::__function::__base<void (EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusService::StatusInfo const&)>
+std::__ndk1::__function::__base<void (bool, EA::Nimble::Base::NimbleCppError const&)>
+std::__ndk1::__function::__base<void ()>
+std::__ndk1::__function::__func<std::__ndk1::__bind<void (EA::Nimble::Base::NimbleCppSocketClientImpl::*)(), EA::Nimble::Base::NimbleCppSocketClientImpl*>, std::__ndk1::allocator<std::__ndk1::__bind<void (EA::Nimble::Base::NimbleCppSocketClientImpl::*)(), EA::Nimble::Base::NimbleCppSocketClientImpl*> >, void ()>
+std::__ndk1::__function::__func<std::__ndk1::__bind<void (EA::Nimble::Base::NimbleCppNetworkClientManager::*)(), EA::Nimble::Base::NimbleCppNetworkClientManager*>, std::__ndk1::allocator<std::__ndk1::__bind<void (EA::Nimble::Base::NimbleCppNetworkClientManager::*)(), EA::Nimble::Base::NimbleCppNetworkClientManager*> >, void ()>
+std::__ndk1::__function::__func<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppJwtToken::*)(EA::Nimble::Base::NimbleCppHttpClient&, std::__ndk1::function<void (EA::Nimble::Base::NimbleCppError const&)>), EA::Nimble::Nexus::NimbleCppJwtToken*, std::__ndk1::placeholders::__ph<1> const&, std::__ndk1::function<void (EA::Nimble::Base::NimbleCppError const&)>&>, std::__ndk1::allocator<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppJwtToken::*)(EA::Nimble::Base::NimbleCppHttpClient&, std::__ndk1::function<void (EA::Nimble::Base::NimbleCppError const&)>), EA::Nimble::Nexus::NimbleCppJwtToken*, std::__ndk1::placeholders::__ph<1> const&, std::__ndk1::function<void (EA::Nimble::Base::NimbleCppError const&)>&> >, void (EA::Nimble::Base::NimbleCppHttpClient&)>
+std::__ndk1::__function::__func<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppJwtToken>), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppJwtToken>&>, std::__ndk1::allocator<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppJwtToken>), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppJwtToken>&> >, void ()>
+std::__ndk1::__function::__func<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppJwtToken>, EA::Nimble::Base::NimbleCppError const&), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppJwtToken>&, std::__ndk1::placeholders::__ph<1> const&>, std::__ndk1::allocator<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppJwtToken>, EA::Nimble::Base::NimbleCppError const&), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppJwtToken>&, std::__ndk1::placeholders::__ph<1> const&> >, void (EA::Nimble::Base::NimbleCppError const&)>
+std::__ndk1::__function::__func<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, EA::Nimble::Base::NimbleCppError const&), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >&, std::__ndk1::placeholders::__ph<1> const&, std::__ndk1::placeholders::__ph<2> const&, std::__ndk1::placeholders::__ph<3> const&>, std::__ndk1::allocator<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, EA::Nimble::Base::NimbleCppError const&), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >&, std::__ndk1::placeholders::__ph<1> const&, std::__ndk1::placeholders::__ph<2> const&, std::__ndk1::placeholders::__ph<3> const&> >, void (std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, EA::Nimble::Base::NimbleCppError const&)>
+std::__ndk1::__function::__func<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::placeholders::__ph<1> const&>, std::__ndk1::allocator<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::placeholders::__ph<1> const&> >, void (EA::Nimble::Base::NimbleCppHttpClient&)>
+std::__ndk1::__function::__func<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, EA::Nimble::Base::NimbleCppError const&)>), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::placeholders::__ph<1> const&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, EA::Nimble::Base::NimbleCppError const&)>&>, std::__ndk1::allocator<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, EA::Nimble::Base::NimbleCppError const&)>), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::placeholders::__ph<1> const&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, EA::Nimble::Base::NimbleCppError const&)>&> >, void (EA::Nimble::Base::NimbleCppHttpClient&)>
+std::__ndk1::__function::__func<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&, std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusPersona const&, EA::Nimble::Base::NimbleCppError const&)>), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::placeholders::__ph<1> const&, std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusPersona const&, EA::Nimble::Base::NimbleCppError const&)>&>, std::__ndk1::allocator<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&, std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusPersona const&, EA::Nimble::Base::NimbleCppError const&)>), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::placeholders::__ph<1> const&, std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusPersona const&, EA::Nimble::Base::NimbleCppError const&)>&> >, void (EA::Nimble::Base::NimbleCppHttpClient&)>
+std::__ndk1::__function::__func<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(), EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl*>, std::__ndk1::allocator<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(), EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl*> >, void ()>
+std::__ndk1::__function::__func<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*>, std::__ndk1::allocator<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*> >, void ()>
+std::__ndk1::__function::__func<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusSocialSharingImpl::*)(EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusService::StatusInfo const&), EA::Nimble::Nexus::NimbleCppNexusSocialSharingImpl*, std::__ndk1::placeholders::__ph<1> const&, std::__ndk1::placeholders::__ph<2> const&>, std::__ndk1::allocator<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusSocialSharingImpl::*)(EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusService::StatusInfo const&), EA::Nimble::Nexus::NimbleCppNexusSocialSharingImpl*, std::__ndk1::placeholders::__ph<1> const&, std::__ndk1::placeholders::__ph<2> const&> >, void (EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusService::StatusInfo const&)>
+std::__ndk1::__function::__func<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&), EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl*, std::__ndk1::placeholders::__ph<1> const&>, std::__ndk1::allocator<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&), EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl*, std::__ndk1::placeholders::__ph<1> const&> >, void (EA::Nimble::Base::NimbleCppHttpClient&)>
+std::__ndk1::__function::__func<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl::*)(), EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl*>, std::__ndk1::allocator<std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl::*)(), EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl*> >, void ()>
+std::__ndk1::__function::__func<unsigned char* (*)(unsigned char const*, unsigned long, unsigned char*), std::__ndk1::allocator<unsigned char* (*)(unsigned char const*, unsigned long, unsigned char*)>, unsigned char* (unsigned char const*, unsigned long, unsigned char*)>
+std::__ndk1::__function::__func<void (*)(bool, EA::Nimble::Base::NimbleCppError const&), std::__ndk1::allocator<void (*)(bool, EA::Nimble::Base::NimbleCppError const&)>, void (bool, EA::Nimble::Base::NimbleCppError const&)>
+std::__ndk1::__l_anchor<char>
+std::__ndk1::__r_anchor<char>
+std::__ndk1::__alternate<char>
+std::__ndk1::__end_state<char>
+std::__ndk1::__lookahead<char, std::__ndk1::regex_traits<char> >
+std::__ndk1::__match_any<char>
+std::__ndk1::__match_char<char>
+std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >
+std::__ndk1::__empty_state<char>
+std::__ndk1::basic_filebuf<char, std::__ndk1::char_traits<char> >
+std::__ndk1::basic_istream<char, std::__ndk1::char_traits<char> >
+std::__ndk1::basic_ostream<char, std::__ndk1::char_traits<char> >
+std::__ndk1::basic_ifstream<char, std::__ndk1::char_traits<char> >
+std::__ndk1::basic_iostream<char, std::__ndk1::char_traits<char> >
+std::__ndk1::default_delete<EA::Nimble::Base::NimbleCppErrorBridge>
+std::__ndk1::default_delete<EA::Nimble::Base::NotificationListenerBridge>
+std::__ndk1::default_delete<std::__ndk1::__empty_state<char> >
+std::__ndk1::unary_function<EA::Nimble::Base::NimbleCppSocketClientImpl*, void>
+std::__ndk1::unary_function<EA::Nimble::Base::NimbleCppNetworkClientManager*, void>
+std::__ndk1::unary_function<EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, void>
+std::__ndk1::unary_function<EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl*, void>
+std::__ndk1::__has_one_state<char>
+std::__ndk1::__word_boundary<char, std::__ndk1::regex_traits<char> >
+std::__ndk1::basic_streambuf<char, std::__ndk1::char_traits<char> >
+std::__ndk1::basic_stringbuf<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >
+std::__ndk1::binary_function<EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppJwtToken>, void>
+std::__ndk1::binary_function<EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, EA::Nimble::Base::NimbleCppHttpClient&, void>
+std::__ndk1::binary_function<EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl*, EA::Nimble::Base::NimbleCppHttpClient&, void>
+std::__ndk1::__back_ref_icase<char, std::__ndk1::regex_traits<char> >
+std::__ndk1::__owns_one_state<char>
+std::__ndk1::__owns_two_states<char>
+std::__ndk1::__repeat_one_loop<char>
+std::__ndk1::bad_function_call
+std::__ndk1::__back_ref_collate<char, std::__ndk1::regex_traits<char> >
+std::__ndk1::__match_char_icase<char, std::__ndk1::regex_traits<char> >
+std::__ndk1::__weak_result_type<void (EA::Nimble::Base::NimbleCppSocketClientImpl::*)()>
+std::__ndk1::__weak_result_type<void (EA::Nimble::Base::NimbleCppNetworkClientManager::*)()>
+std::__ndk1::__weak_result_type<void (EA::Nimble::Nexus::NimbleCppJwtToken::*)(EA::Nimble::Base::NimbleCppHttpClient&, std::__ndk1::function<void (EA::Nimble::Base::NimbleCppError const&)>)>
+std::__ndk1::__weak_result_type<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppJwtToken>)>
+std::__ndk1::__weak_result_type<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppJwtToken>, EA::Nimble::Base::NimbleCppError const&)>
+std::__ndk1::__weak_result_type<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, EA::Nimble::Base::NimbleCppError const&)>
+std::__ndk1::__weak_result_type<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&)>
+std::__ndk1::__weak_result_type<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, EA::Nimble::Base::NimbleCppError const&)>)>
+std::__ndk1::__weak_result_type<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&, std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusPersona const&, EA::Nimble::Base::NimbleCppError const&)>)>
+std::__ndk1::__weak_result_type<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)()>
+std::__ndk1::__weak_result_type<void (EA::Nimble::Nexus::NimbleCppNexusSocialSharingImpl::*)(EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusService::StatusInfo const&)>
+std::__ndk1::__weak_result_type<void (EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&)>
+std::__ndk1::__weak_result_type<void (EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl::*)()>
+std::__ndk1::basic_stringstream<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >
+std::__ndk1::basic_istringstream<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >
+std::__ndk1::basic_ostringstream<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >
+std::__ndk1::__bracket_expression<char, std::__ndk1::regex_traits<char> >
+std::__ndk1::__match_char_collate<char, std::__ndk1::regex_traits<char> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Base::NimbleCppError, std::__ndk1::allocator<EA::Nimble::Base::NimbleCppError> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Base::NimbleCppTaskImpl, std::__ndk1::allocator<EA::Nimble::Base::NimbleCppTaskImpl> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Base::NimbleCppTimerImpl, std::__ndk1::allocator<EA::Nimble::Base::NimbleCppTimerImpl> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Base::NimbleCppThreadImpl, std::__ndk1::allocator<EA::Nimble::Base::NimbleCppThreadImpl> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Base::NimbleCppHttpClientImpl, std::__ndk1::allocator<EA::Nimble::Base::NimbleCppHttpClientImpl> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Base::NimbleCppSocketClientImpl, std::__ndk1::allocator<EA::Nimble::Base::NimbleCppSocketClientImpl> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Base::NimbleCppAgeComplianceImpl, std::__ndk1::allocator<EA::Nimble::Base::NimbleCppAgeComplianceImpl> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Base::NimbleCppNetworkServiceImpl, std::__ndk1::allocator<EA::Nimble::Base::NimbleCppNetworkServiceImpl> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Base::NimbleCppNetworkClientManager, std::__ndk1::allocator<EA::Nimble::Base::NimbleCppNetworkClientManager> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Base::LogBuffer, std::__ndk1::allocator<EA::Nimble::Base::LogBuffer> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Nexus::NimbleCppJwtToken, std::__ndk1::allocator<EA::Nimble::Nexus::NimbleCppJwtToken> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Nexus::NimbleCppNexusServiceImpl::Request, std::__ndk1::allocator<EA::Nimble::Nexus::NimbleCppNexusServiceImpl::Request> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Nexus::NimbleCppNexusEAAuthenticator, std::__ndk1::allocator<EA::Nimble::Nexus::NimbleCppNexusEAAuthenticator> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Nexus::NimbleCppNexusLineAuthenticator, std::__ndk1::allocator<EA::Nimble::Nexus::NimbleCppNexusLineAuthenticator> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Nexus::NimbleCppNexusSocialSharingImpl, std::__ndk1::allocator<EA::Nimble::Nexus::NimbleCppNexusSocialSharingImpl> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Nexus::NimbleCppNexusAppleAuthenticator, std::__ndk1::allocator<EA::Nimble::Nexus::NimbleCppNexusAppleAuthenticator> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl, std::__ndk1::allocator<EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Nexus::NimbleCppNexusGoogleAuthenticator, std::__ndk1::allocator<EA::Nimble::Nexus::NimbleCppNexusGoogleAuthenticator> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Nexus::NimbleCppNexusTwitterAuthenticator, std::__ndk1::allocator<EA::Nimble::Nexus::NimbleCppNexusTwitterAuthenticator> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Nexus::NimbleCppNexusFacebookAuthenticator, std::__ndk1::allocator<EA::Nimble::Nexus::NimbleCppNexusFacebookAuthenticator> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Nexus::NimbleCppNexusAnonymousAuthenticator, std::__ndk1::allocator<EA::Nimble::Nexus::NimbleCppNexusAnonymousAuthenticator> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Nexus::NimbleCppNexusGameCenterAuthenticator, std::__ndk1::allocator<EA::Nimble::Nexus::NimbleCppNexusGameCenterAuthenticator> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Facebook::FacebookBridge, std::__ndk1::allocator<EA::Nimble::Facebook::FacebookBridge> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Tracking::NimbleCppTrackerPin, std::__ndk1::allocator<EA::Nimble::Tracking::NimbleCppTrackerPin> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Tracking::NimbleCppTrackingWrangler, std::__ndk1::allocator<EA::Nimble::Tracking::NimbleCppTrackingWrangler> >
+std::__ndk1::__shared_ptr_emplace<EA::Nimble::Tracking::NimbleCppAppLifeCycleEventLogger, std::__ndk1::allocator<EA::Nimble::Tracking::NimbleCppAppLifeCycleEventLogger> >
+std::__ndk1::__shared_ptr_emplace<std::__ndk1::map<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, EA::Nimble::Nexus::NimbleCppNexusPersona, std::__ndk1::less<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > >, std::__ndk1::allocator<std::__ndk1::pair<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const, EA::Nimble::Nexus::NimbleCppNexusPersona> > >, std::__ndk1::allocator<std::__ndk1::map<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, EA::Nimble::Nexus::NimbleCppNexusPersona, std::__ndk1::less<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > >, std::__ndk1::allocator<std::__ndk1::pair<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const, EA::Nimble::Nexus::NimbleCppNexusPersona> > > > >
+std::__ndk1::__shared_ptr_emplace<std::__ndk1::map<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::less<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > >, std::__ndk1::allocator<std::__ndk1::pair<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > > > >, std::__ndk1::allocator<std::__ndk1::map<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::less<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > >, std::__ndk1::allocator<std::__ndk1::pair<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > > > > > >
+std::__ndk1::__shared_ptr_emplace<std::__ndk1::set<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::less<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > >, std::__ndk1::allocator<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > > >, std::__ndk1::allocator<std::__ndk1::set<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::less<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > >, std::__ndk1::allocator<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > > > > >
+std::__ndk1::__shared_ptr_emplace<std::__ndk1::mutex, std::__ndk1::allocator<std::__ndk1::mutex> >
+std::__ndk1::__shared_ptr_emplace<std::__ndk1::vector<EA::Nimble::Nexus::NimbleCppNexusPersona, std::__ndk1::allocator<EA::Nimble::Nexus::NimbleCppNexusPersona> >, std::__ndk1::allocator<std::__ndk1::vector<EA::Nimble::Nexus::NimbleCppNexusPersona, std::__ndk1::allocator<EA::Nimble::Nexus::NimbleCppNexusPersona> > > >
+std::__ndk1::__shared_ptr_emplace<std::__ndk1::vector<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::allocator<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > > >, std::__ndk1::allocator<std::__ndk1::vector<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::allocator<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > > > > >
+std::__ndk1::__shared_ptr_emplace<std::__ndk1::function<void (EA::Nimble::SocialConnector::NimbleCppConnectorBaseService::State)>, std::__ndk1::allocator<std::__ndk1::function<void (EA::Nimble::SocialConnector::NimbleCppConnectorBaseService::State)> > >
+std::__ndk1::__shared_ptr_emplace<std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusService::StatusInfo const&)>, std::__ndk1::allocator<std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusService::StatusInfo const&)> > >
+std::__ndk1::__shared_ptr_emplace<bool, std::__ndk1::allocator<bool> >
+std::__ndk1::__shared_ptr_pointer<EA::Nimble::Base::NimbleCppErrorBridge*, std::__ndk1::default_delete<EA::Nimble::Base::NimbleCppErrorBridge>, std::__ndk1::allocator<EA::Nimble::Base::NimbleCppErrorBridge> >
+std::__ndk1::__shared_ptr_pointer<EA::Nimble::Base::NotificationListenerBridge*, std::__ndk1::default_delete<EA::Nimble::Base::NotificationListenerBridge>, std::__ndk1::allocator<EA::Nimble::Base::NotificationListenerBridge> >
+std::__ndk1::__shared_ptr_pointer<std::__ndk1::__empty_state<char>*, std::__ndk1::default_delete<std::__ndk1::__empty_state<char> >, std::__ndk1::allocator<std::__ndk1::__empty_state<char> > >
+std::__ndk1::__basic_string_common<true>
+std::__ndk1::__empty_non_own_state<char>
+std::__ndk1::__match_any_but_newline<char>
+std::__ndk1::enable_shared_from_this<EA::Nimble::Base::NimbleCppTimerImpl>
+std::__ndk1::enable_shared_from_this<EA::Nimble::Base::NimbleCppNetworkClientImpl>
+std::__ndk1::enable_shared_from_this<EA::Nimble::Nexus::NimbleCppNexusAuthenticatorBase>
+std::__ndk1::__end_marked_subexpression<char>
+std::__ndk1::__begin_marked_subexpression<char>
+std::__ndk1::__bind<void (EA::Nimble::Base::NimbleCppSocketClientImpl::*)(), EA::Nimble::Base::NimbleCppSocketClientImpl*>
+std::__ndk1::__bind<void (EA::Nimble::Base::NimbleCppNetworkClientManager::*)(), EA::Nimble::Base::NimbleCppNetworkClientManager*>
+std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppJwtToken::*)(EA::Nimble::Base::NimbleCppHttpClient&, std::__ndk1::function<void (EA::Nimble::Base::NimbleCppError const&)>), EA::Nimble::Nexus::NimbleCppJwtToken*, std::__ndk1::placeholders::__ph<1> const&, std::__ndk1::function<void (EA::Nimble::Base::NimbleCppError const&)>&>
+std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppJwtToken>), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppJwtToken>&>
+std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppJwtToken>, EA::Nimble::Base::NimbleCppError const&), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::shared_ptr<EA::Nimble::Nexus::NimbleCppJwtToken>&, std::__ndk1::placeholders::__ph<1> const&>
+std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, EA::Nimble::Base::NimbleCppError const&), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >&, std::__ndk1::placeholders::__ph<1> const&, std::__ndk1::placeholders::__ph<2> const&, std::__ndk1::placeholders::__ph<3> const&>
+std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::placeholders::__ph<1> const&>
+std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, EA::Nimble::Base::NimbleCppError const&)>), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::placeholders::__ph<1> const&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, EA::Nimble::Base::NimbleCppError const&)>&>
+std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&, std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusPersona const&, EA::Nimble::Base::NimbleCppError const&)>), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*, std::__ndk1::placeholders::__ph<1> const&, std::__ndk1::function<void (EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusPersona const&, EA::Nimble::Base::NimbleCppError const&)>&>
+std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(), EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl*>
+std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusServiceImpl::*)(), EA::Nimble::Nexus::NimbleCppNexusServiceImpl*>
+std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusSocialSharingImpl::*)(EA::Nimble::Nexus::NimbleCppNexusService&, EA::Nimble::Nexus::NimbleCppNexusService::StatusInfo const&), EA::Nimble::Nexus::NimbleCppNexusSocialSharingImpl*, std::__ndk1::placeholders::__ph<1> const&, std::__ndk1::placeholders::__ph<2> const&>
+std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl::*)(EA::Nimble::Base::NimbleCppHttpClient&), EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl*, std::__ndk1::placeholders::__ph<1> const&>
+std::__ndk1::__bind<void (EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl::*)(), EA::Nimble::Nexus::NimbleCppNexusDefaultServiceImpl*>
+std::__ndk1::__loop<char>
+std::__ndk1::__node<char>
+std::__ndk1::basic_ios<char, std::__ndk1::char_traits<char> >

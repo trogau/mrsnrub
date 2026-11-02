@@ -6,7 +6,13 @@
    actions, outfits — as mini players stepping the individual frame PNGs on
    their per-frame delays (the delays are one PLAY of the cell, matching the
    original client's timeBetweenAnims model). Click a tile to make the map
-   character perform that cell (opts.onPreview). */
+   character perform that cell (opts.onPreview).
+   When the viewer opts into the dynamic .bcell endpoint (opts.dynFor, set
+   from window.VIEWER_DYNAMIC_BCELL), tiles play from the endpoint's single
+   sprite sheet per animation — sliced per-frame with the manifest's rects
+   and x_off/y_off offsets, the same geometry the map uses — and fall back
+   to the per-frame PNGs while a sheet loads or if the cell has no dynamic
+   art, so the panel never blanks out. */
 (function (global) {
     'use strict';
 
@@ -14,6 +20,18 @@
     var players = [];              // live players, advanced by ONE shared rAF
     var ticker = null;
     var cache = {};                // cid -> family json
+    var sheetImgs = {};            // dyn sheet url -> Image (one decode per cell)
+    // Tiles only fetch their dynamic sheet once they're scrolled near the
+    // sidebar viewport — a 150-tile card would otherwise decode 150 full
+    // sprite sheets (~8000 px wide each) the user never looked at.
+    var io = null;
+    if ('IntersectionObserver' in window)
+        io = new IntersectionObserver(function (es) {
+            for (var k = 0; k < es.length; k++) {
+                var pl = es[k].target && es[k].target._player;
+                if (pl) pl.seen(es[k].isIntersecting);
+            }
+        }, { rootMargin: '140px' });
     var MAX_W = 150, MAX_H = 130;  // cell display cap in the sidebar
     var TILE_CAP = 150;            // tiles per card (Homer owns 600+ cells)
 
@@ -69,6 +87,7 @@
         for (i = players.length - 1; i >= 0; i--) players[i].stop();
         players = [];
         if (ticker) { cancelAnimationFrame(ticker); ticker = null; }
+        if (io) io.disconnect();
         box.textContent = '';
         box.appendChild(label);
         var cells = (fam && fam.cells) || [];
@@ -167,59 +186,153 @@
         bar.appendChild(play);
         bar.appendChild(fast);
         t.appendChild(bar);
+        var seen = !io;                          // offscreen tiles stay pre-baked
+        if (io) {
+            t._player = { seen: function (v) {
+                seen = v;
+                if (v) { syncTrack(); draw(); }
+            } };
+            io.observe(t);
+        }
 
         var ctx = cv.getContext('2d');
         var imgs = new Array(c.frames.length);
         var p = { i: 0, t: 0, playing: true, rate: 1, last: 0 };
+        var track = null;
         function imgAt(i) {
             var im = imgs[i];
             if (im === undefined) {
                 im = imgs[i] = new Image();
                 im.decoding = 'async';
-                im.onload = function () { if (p.i === i) draw(); };
+                im.onload = function () { if (track && !track.dyn && p.i === i) draw(); };
                 im.src = B + 'assets/characters/' + c.frames[i].file;
             }
             return im.complete && im.naturalWidth ? im : null;
         }
-        function draw() {
-            var im = imgAt(p.i);
-            if (!im) { imgAt((p.i + 1) % c.frames.length); return; }
-            ctx.clearRect(0, 0, cv.width, cv.height);
-            ctx.imageSmoothingEnabled = s < 1;
-            ctx.drawImage(im, 0, 0, cv.width, cv.height);
+        /* ---- dynamic sheet path (opts.dynFor → web/api/bcell.php) -------
+           When the endpoint is on, the tile plays the cell's ONE sheet PNG:
+           manifest.images[] gives each image's rect in the sheet and
+           frames[] its placement at x_off/y_off from the character origin
+           — the same geometry the map uses. The canvas is sized to the
+           union bbox of all frames so inter-frame motion stays true. The
+           manifest is the viewer's shared dynCells entry (one fetch per
+           cell, shared with the map); the sheet URL decodes into one
+           Image shared by every tile that asks for it. */
+        function dynSheet() {
+            if (!opts.dynFor || !seen) return null;
+            var d = opts.dynFor(c);
+            if (!d || d.st !== 1 || !d.man || !d.man.frames ||
+                !d.man.frames.length || !d.url) return null;
+            var im = sheetImgs[d.url];
+            if (im === undefined) {
+                im = sheetImgs[d.url] = new Image();
+                im.decoding = 'async';
+                im.onload = function () { syncTrack(); draw(); };
+                im.onerror = function () { sheetImgs[d.url] = null; };
+                im.src = d.url;
+            }
+            return (im && im.complete && im.naturalWidth)
+                ? { man: d.man, img: im } : null;
         }
-        /* playback model — same as the map (charFrameFile) and the original
+        /* playback model — same as the map (charFrameIdx) and the original
            client (IdleAnimation / timeBetweenAnimsMin/Max, notes/01): the
            cell's delays are ONE play, then the player HOLDS frame 0
            (standby) through a randomised gap. Modulo-looping a 208 ms blink
-           cell played it ~5x/second. */
-        var cum = [], loopMs = 0, q;
-        for (q = 0; q < c.frames.length; q++) {
-            var d = c.frames[q].delay || 100;
-            cum.push(d);
-            loopMs += d;
-        }
-        if (!loopMs) loopMs = c.ms || 100;
-        var kh = 0;
+           cell played it ~5x/second. Shared by both art sources: a track
+           is just geometry + timing for one of them. */
+        var kh = 0, q;
         for (q = 0; q < c.key.length; q++) kh = (kh * 31 + c.key.charCodeAt(q)) | 0;
         kh = Math.abs(kh);
-        var gap = 2000 + (kh >>> 4) % 5000 + (loopMs > 1200 ? loopMs : 0);
-        var cyc = loopMs + gap;
+        function trackOf(dsn) {
+            if (!dsn) {
+                var cum = [], loop = 0;
+                for (q = 0; q < c.frames.length; q++) {
+                    cum.push(c.frames[q].delay || 100);
+                    loop += c.frames[q].delay || 100;
+                }
+                if (!loop) loop = c.ms || 100;
+                return { dyn: 0, n: c.frames.length, cum: cum, loopMs: loop,
+                         cyc: loop + 2000 + (kh >>> 4) % 5000 +
+                              (loop > 1200 ? loop : 0),
+                         sc: s, minx: 0, miny: 0, bw: c.w, bh: c.h };
+            }
+            var man = dsn.man;
+            if (!man._tr) {
+                var fr = man.frames, ims = man.images;
+                var x0 = 0, y0 = 0, x1 = 1, y1 = 1;
+                for (q = 0; q < fr.length; q++) {
+                    var f = fr[q], g = ims[f.image];
+                    if (!g) continue;
+                    if (f.x_off < x0) x0 = f.x_off;
+                    if (f.y_off < y0) y0 = f.y_off;
+                    if (f.x_off + g.w > x1) x1 = f.x_off + g.w;
+                    if (f.y_off + g.h > y1) y1 = f.y_off + g.h;
+                }
+                var bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
+                var cum2 = [], loop2 = 0;
+                for (q = 0; q < fr.length; q++) {
+                    cum2.push(fr[q].delay_ms > 0 ? fr[q].delay_ms : 100);
+                    loop2 += fr[q].delay_ms > 0 ? fr[q].delay_ms : 100;
+                }
+                if (!loop2) loop2 = c.ms || 100;
+                man._tr = { dyn: 1, n: fr.length, cum: cum2, loopMs: loop2,
+                            cyc: loop2 + 2000 + (kh >>> 4) % 5000 +
+                                 (loop2 > 1200 ? loop2 : 0),
+                            fr: fr, ims: ims,
+                            sc: Math.min(1, MAX_W / bw, MAX_H / bh),
+                            minx: x0, miny: y0, bw: bw, bh: bh };
+            }
+            man._tr.img = dsn.img;
+            return man._tr;
+        }
+        function syncTrack() {
+            var tk = trackOf(dynSheet());
+            if (opts.dynFor) {         // dead cell → red tile outline for triage
+                var dd = opts.dynFor(c);
+                t.classList.toggle('cdead', !!(dd && (dd.st === -1 ||
+                    (dd.st === 1 && sheetImgs[dd.url] === null))));
+            }
+            if (tk === track) return;
+            track = tk;
+            if (p.i >= tk.n) p.i = 0;
+            cv.width = Math.max(1, Math.round(tk.bw * tk.sc));
+            cv.height = Math.max(1, Math.round(tk.bh * tk.sc));
+        }
+        function draw() {
+            var t = track;
+            if (!t) return;
+            ctx.clearRect(0, 0, cv.width, cv.height);
+            if (t.dyn) {
+                var f = t.fr[p.i % t.n], g = t.ims[f.image];
+                if (!g) return;
+                ctx.imageSmoothingEnabled = t.sc < 1;
+                ctx.drawImage(t.img, g.x, g.y, g.w, g.h,
+                    (f.x_off - t.minx) * t.sc, (f.y_off - t.miny) * t.sc,
+                    g.w * t.sc, g.h * t.sc);
+                return;
+            }
+            var im = imgAt(p.i);
+            if (!im) { imgAt((p.i + 1) % c.frames.length); return; }
+            ctx.imageSmoothingEnabled = s < 1;
+            ctx.drawImage(im, 0, 0, cv.width, cv.height);
+        }
         function advance(now) {
             if (!p.playing) { p.last = now; return; }
             if (!p.last) p.last = now;
+            syncTrack();
             p.t += (now - p.last) * p.rate;
             p.last = now;
-            var pos = p.t % cyc, i2 = 0;
-            if (pos < loopMs) {
-                for (q = 0; q < cum.length; q++) {
-                    pos -= cum[q];
+            var t = track, pos = p.t % t.cyc, i2 = 0;
+            if (pos < t.loopMs) {
+                for (q = 0; q < t.cum.length; q++) {
+                    pos -= t.cum[q];
                     if (pos < 0) { i2 = q; break; }
                 }
             }                                        // else: standby hold
             if (i2 !== p.i || !p.drawn) { p.i = i2; p.drawn = 1; draw(); }
         }
-        imgAt(0);
+        syncTrack();
+        if (!track.dyn) imgAt(0);
         draw();
         players.push({
             stop: function () { p.playing = false; },

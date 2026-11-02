@@ -1,0 +1,296 @@
+<!doctype html>
+<!-- calib-pick.html — landmark correspondence picker for the City View
+     camera calibration (notes/06 §9). Static page, no server, no network;
+     open from file:// next to nothing else.
+
+     Workflow: click a landmark on the EXPORT image (left), then the same
+     landmark on the WORLD image (right) — a named pair is recorded.
+     Repeat for 8-12 well-spread landmarks, then Copy the paste-block and
+     hand it over. Coordinates are canonical:
+       export px  = FULL-RES screenshot pixels (ruler labels; image is 1/4)
+       grid tile  = calib-world.png labelled grid coords; town = grid-(12,136)
+     Pairs persist in localStorage (mrsnrub.calib.pairs) so a reload is safe.
+
+     The transforms below mirror tools/calib-images.py; tools/smoke-calib.cjs
+     fails if the two files drift apart. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calibration picker — export px &harr; world tiles</title>
+<style>
+    :root { color-scheme: dark; }
+    body { margin: 0; font: 13px/1.45 'HelveticaNeue', Helvetica, Arial, sans-serif;
+        background: #10151f; color: #cdd6e4; display: flex; flex-direction: column;
+        height: 100vh; }
+    header { flex: none; padding: 8px 14px; background: #171e2b; border-bottom: 1px solid #2c3a52; }
+    header h1 { margin: 0; font-size: 15px; color: #ffe9a8; font-weight: normal; }
+    header .sub { color: #8b97ab; font-size: 12px; }
+    #status { color: #9fe08a; }
+    .bar { flex: none; padding: 6px 14px; background: #141a26; border-bottom: 1px solid #223047;
+        display: flex; gap: 8px; align-items: center; }
+    .bar button { background: #223047; color: #cdd6e4; border: 1px solid #33455f;
+        border-radius: 4px; padding: 3px 9px; font: inherit; cursor: pointer; }
+    .bar button:hover { background: #2c3e5c; }
+    #panes { flex: 1 1 auto; display: flex; gap: 10px; padding: 10px 14px;
+        overflow: hidden; min-height: 0; }
+    .pane { flex: 1 1 50%; overflow: auto; border: 1px solid #223047; border-radius: 5px;
+        background: #0c111a; position: relative; }
+    .pane h2 { position: sticky; left: 0; top: 0; margin: 0; font-size: 12px;
+        background: rgba(23, 30, 43, 0.92); padding: 3px 8px; z-index: 5; font-weight: normal;
+        color: #ffe9a8; pointer-events: none; }   /* clicks pass through to the map */
+    .wrap { position: relative; width: fit-content; }   /* markers are % of the
+        wrapper: it must shrink-wrap the img, not the pane, or dots land wrong */
+    .wrap img { display: block; image-rendering: pixelated; }
+    .mk { position: absolute; width: 11px; height: 11px; border-radius: 50%;
+        transform: translate(-50%, -50%); pointer-events: none; border: 2px solid #fff; }
+    .mk.pending { animation: pulse 0.9s infinite alternate; }
+    @keyframes pulse { from { box-shadow: 0 0 0 0 rgba(255,255,255,.7);} to { box-shadow: 0 0 0 6px rgba(255,255,255,0);} }
+    /* ---- bottom: pairs + paste block -------------------------------------- */
+    #bottom { flex: none; max-height: 44vh; overflow: auto; border-top: 1px solid #2c3a52;
+        background: #131a26; padding: 8px 14px; display: flex; gap: 14px; }
+    #pairs { flex: 1 1 55%; }
+    #pairs table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    #pairs th, #pairs td { border-bottom: 1px solid #223047; padding: 2px 6px;
+        text-align: left; white-space: nowrap; }
+    #pairs th { color: #8b97ab; font-weight: normal; }
+    #pairs input.name { background: #0c111a; color: inherit; border: 1px solid #2c3a52;
+        border-radius: 3px; padding: 1px 5px; width: 12em; font: inherit; }
+    #pairs button { background: none; border: 0; color: #7f8ea6; cursor: pointer; font: inherit; }
+    #pairs button:hover { color: #ff9c9c; }
+    #pairs tr.repick { background: #1d2a3f; }
+    #out { flex: 1 1 45%; display: flex; flex-direction: column; gap: 6px; }
+    #out textarea { flex: 1; min-height: 120px; background: #0c111a; color: #b8e0a8;
+        border: 1px solid #2c3a52; border-radius: 4px; font: 11px/1.35 monospace;
+        padding: 6px; white-space: pre; resize: vertical; }
+    #hint { color: #8b97ab; font-size: 11px; }
+</style>
+</head>
+<body>
+<header>
+    <h1>Landmark calibration picker</h1>
+    <div class="sub">Click a landmark on the <b>export</b> (left), then the same one on the
+        <b>world</b> (right). Aim for 8&ndash;12 pairs, spread across the map (corners + centre).
+        <span id="status">Pick a point on the export image&hellip;</span></div>
+</header>
+<div class="bar">
+    zoom:
+    <button data-z="0.25">25%</button>
+    <button data-z="0.5">50%</button>
+    <button data-z="1">100%</button>
+    <button data-z="2">200%</button>
+    <span style="flex:1"></span>
+    <button id="btn-clear">clear all pairs</button>
+</div>
+<div id="panes">
+    <div class="pane" id="paneA">
+        <h2>export &mdash; <code>Tapped Out screenshot</code> (ruler = full-res px)</h2>
+        <div class="wrap"><img id="imgA" src="../mapdump/registration/calib-export.png"
+            alt="calib-export.png missing: run tools/calib-images.py"></div>
+    </div>
+    <div class="pane" id="paneB">
+        <h2>world &mdash; <code>calib-world.png</code> (white grid = tiles, red pins = named landmarks)</h2>
+        <div class="wrap"><img id="imgB" src="../mapdump/registration/calib-world.png"
+            alt="calib-world.png missing: run tools/calib-images.py"></div>
+    </div>
+</div>
+<div id="bottom">
+    <div id="pairs"></div>
+    <div id="out">
+        <div id="hint">Paste this block into chat when done (0 pairs):</div>
+        <textarea id="paste" readonly spellcheck="false"></textarea>
+        <div><button id="btn-copy">copy to clipboard</button>
+            <span id="copymsg" style="color:#9fe08a"></span></div>
+    </div>
+</div>
+<script>
+'use strict';
+(function () {
+    /* ---- transforms — must match tools/calib-images.py (smoke-calib checks) */
+    var EXPORT_SCALE = 4;      // calib-export.png is 1/SCALE of the screenshot
+    var WORLD_XLO = -80;       // world png: px = (tile - WORLD_XLO) * WORLD_PPT
+    var WORLD_PPT = 2;         // png px per tile
+    var TOWN_OX = 12, TOWN_OY = 136;   // grid = town + (ox, oy)
+    var STORE = 'mrsnrub.calib.pairs';
+    /* initial display zoom (image-natural multiples; buttons override). The
+       export at 1× showed whole blocks as a few px — 1.5× reads better. */
+    var DEFAULT_ZOOM = { a: 1.5, b: 1 };
+
+    var imgA = document.getElementById('imgA');
+    var imgB = document.getElementById('imgB');
+    var status = document.getElementById('status');
+    var pairsEl = document.getElementById('pairs');
+    var paste = document.getElementById('paste');
+    var hint = document.getElementById('hint');
+
+    /* pairs: [{name, ax, ay, bx, by}] — a* = export full-res px,
+       b* = world GRID tile coords */
+    var pairs = [];
+    try { pairs = JSON.parse(localStorage.getItem(STORE) || '[]'); } catch (e) { pairs = []; }
+    var pendingA = null, pendingB = null;   // {x,y} canonical coords
+    var repick = null;                      // {i, side} row being re-clicked
+
+    function save() { try { localStorage.setItem(STORE, JSON.stringify(pairs)); } catch (e) {} }
+    function fmt(v, d) { return (Math.round(v * Math.pow(10, d)) / Math.pow(10, d)).toFixed(d); }
+
+    function setZoom(img, f) { img.style.width = Math.round(img.naturalWidth * f) + 'px'; }
+    function zoomAll(f) { setZoom(imgA, f); setZoom(imgB, f); }
+
+    /* natural (1/1 image px) coords of a click, robust to CSS zoom */
+    function nat(e, img) {
+        var r = img.getBoundingClientRect();
+        return {
+            x: (e.clientX - r.left) * img.naturalWidth / r.width,
+            y: (e.clientY - r.top) * img.naturalHeight / r.height
+        };
+    }
+    function marker(img, p, cls) {
+        if (!img.naturalWidth || !img.naturalHeight) return { style: {} };   // not loaded yet
+        var m = document.createElement('div');
+        m.className = 'mk ' + cls;
+        m.style.left = (p.x / img.naturalWidth * 100) + '%';
+        m.style.top = (p.y / img.naturalHeight * 100) + '%';
+        img.parentNode.appendChild(m);
+        return m;
+    }
+    function clearPendingMarkers() {
+        var ms = document.querySelectorAll('.mk.pending');
+        for (var i = 0; i < ms.length; i++) ms[i].parentNode.removeChild(ms[i]);
+    }
+
+    imgA.addEventListener('click', function (e) {
+        var n = nat(e, imgA);
+        var p = { x: n.x * EXPORT_SCALE, y: n.y * EXPORT_SCALE };
+        if (repick && repick.side === 'a') { pairs[repick.i].ax = p.x; pairs[repick.i].ay = p.y;
+            repick = null; save(); refresh(); status.textContent = 'pair A updated.'; return; }
+        pendingA = p;
+        clearPendingMarkers();
+        marker(imgA, n, 'pending').style.background = '#ff3c3c';
+        status.textContent = 'export px ' + fmt(p.x, 1) + ', ' + fmt(p.y, 1) +
+            ' — now click the same spot on the world map.';
+    });
+    imgB.addEventListener('click', function (e) {
+        var n = nat(e, imgB);
+        var p = { x: n.x / WORLD_PPT + WORLD_XLO, y: n.y / WORLD_PPT };
+        if (repick && repick.side === 'b') { pairs[repick.i].bx = p.x; pairs[repick.i].by = p.y;
+            repick = null; save(); refresh(); status.textContent = 'pair B updated.'; return; }
+        if (!pendingA) { status.textContent = 'click the export side FIRST.'; return; }
+        pendingB = p;
+        marker(imgB, n, 'pending').style.background = '#ffd400';
+        pairs.push({ name: 'landmark ' + (pairs.length + 1),
+            ax: pendingA.x, ay: pendingA.y, bx: pendingB.x, by: pendingB.y });
+        pendingA = pendingB = null;
+        clearPendingMarkers();
+        save(); refresh();
+        status.textContent = pairs.length + ' pairs — ' +
+            (pairs.length >= 8 ? 'enough to solve; add spread if corners are missing.'
+                               : 'keep going (aim 8-12).');
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { pendingA = pendingB = null; repick = null;
+            clearPendingMarkers(); refresh(); status.textContent = 'cleared pending.'; }
+    });
+
+    /* ---- pairs table -------------------------------------------------------- */
+    function refresh() {
+        var h = ['<table><tr><th>#</th><th>name</th><th>export px</th><th>grid tile</th>',
+            '<th>town tile</th><th></th></tr>'];
+        for (var i = 0; i < pairs.length; i++) {
+            var p = pairs[i];
+            h.push('<tr' + (repick && repick.i === i ? ' class="repick"' : '') + '>' +
+                '<td>' + (i + 1) + '</td>' +
+                '<td><input class="name" data-i="' + i + '" value="' +
+                    String(p.name).replace(/"/g, '&quot;') + '"></td>' +
+                '<td>' + fmt(p.ax, 1) + ', ' + fmt(p.ay, 1) +
+                    ' <button data-a="' + i + '">re-pick</button></td>' +
+                '<td>' + fmt(p.bx, 1) + ', ' + fmt(p.by, 1) +
+                    ' <button data-b="' + i + '">re-pick</button></td>' +
+                '<td>' + fmt(p.bx - TOWN_OX, 1) + ', ' + fmt(p.by - TOWN_OY, 1) + '</td>' +
+                '<td><button data-del="' + i + '">del</button></td></tr>');
+        }
+        h.push('</table>');
+        pairsEl.innerHTML = h.join('');
+        /* wire */
+        var ins = pairsEl.querySelectorAll('input.name');
+        for (var a = 0; a < ins.length; a++) (function (el) {
+            el.addEventListener('change', function () {
+                pairs[+el.getAttribute('data-i')].name = el.value; save(); makePaste();
+            });
+        })(ins[a]);
+        var bs = pairsEl.querySelectorAll('button');
+        for (var b = 0; b < bs.length; b++) (function (btn) {
+            btn.addEventListener('click', function () {
+                var i;
+                if ((i = btn.getAttribute('data-del')) !== null) { pairs.splice(+i, 1); save(); }
+                else if ((i = btn.getAttribute('data-a')) !== null) {
+                    repick = { i: +i, side: 'a' };
+                    status.textContent = 'click a new export point for pair ' + (+i + 1) + '.';
+                } else if ((i = btn.getAttribute('data-b')) !== null) {
+                    repick = { i: +i, side: 'b' };
+                    status.textContent = 'click a new world point for pair ' + (+i + 1) + '.';
+                }
+                refresh();
+            });
+        })(bs[b]);
+        drawMarkers();       // markers first: they don't depend on the paste
+        makePaste();         // block, and vice versa — keep them independent
+    }
+    function drawMarkers() {
+        var old = pairsEl.ownerDocument.querySelectorAll('.mk.done');
+        for (var i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
+        for (var k = 0; k < pairs.length; k++) {
+            var p = pairs[k];
+            marker(imgA, { x: p.ax / EXPORT_SCALE, y: p.ay / EXPORT_SCALE }, 'done')
+                .style.background = '#ff3c3c';
+            marker(imgB, { x: (p.bx - WORLD_XLO) * WORLD_PPT, y: p.by * WORLD_PPT }, 'done')
+                .style.background = '#ffd400';
+        }
+    }
+
+    /* ---- paste block -------------------------------------------------------- */
+    function makePaste() {
+        var L = ['# CITY-VIEW CALIB — correspondence pairs (tools/calib-pick.html)',
+            '# export px: FULL-RES screenshot px (calib-export.png ruler labels)',
+            '# grid: calib-world.png tile labels (town = grid - 12,136)',
+            '# name | export px x,y | grid tile x,y'];
+        for (var i = 0; i < pairs.length; i++) {
+            var p = pairs[i];
+            L.push(p.name + ' | ' + fmt(p.ax, 1) + ',' + fmt(p.ay, 1) +
+                ' | ' + fmt(p.bx, 1) + ',' + fmt(p.by, 1));
+        }
+        paste.value = L.join('\n');
+        hint.textContent = 'Paste this block into chat when done (' + pairs.length + ' pairs):';
+    }
+
+    document.getElementById('btn-copy').addEventListener('click', function () {
+        var msg = document.getElementById('copymsg');
+        paste.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        if (!ok && navigator.clipboard) {
+            navigator.clipboard.writeText(paste.value).then(
+                function () { msg.textContent = 'copied'; },
+                function () { msg.textContent = 'select the box + Ctrl-C'; });
+            return;
+        }
+        msg.textContent = ok ? 'copied' : 'select the box + Ctrl-C';
+    });
+    document.getElementById('btn-clear').addEventListener('click', function () {
+        if (!pairs.length || confirm('delete all ' + pairs.length + ' pairs?')) {
+            pairs = []; pendingA = null; save(); refresh();
+        }
+    });
+    var zb = document.querySelectorAll('.bar button[data-z]');
+    for (var z = 0; z < zb.length; z++) (function (btn) {
+        btn.addEventListener('click', function () { zoomAll(+btn.getAttribute('data-z')); });
+    })(zb[z]);
+
+    /* initial zoom + marker redraw need the decoded images (naturalWidth) */
+    imgA.addEventListener('load', function () { setZoom(imgA, DEFAULT_ZOOM.a); drawMarkers(); });
+    imgB.addEventListener('load', function () { setZoom(imgB, DEFAULT_ZOOM.b); drawMarkers(); });
+
+    refresh();
+})();
+</script>
+</body>
+</html>

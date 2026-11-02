@@ -1,0 +1,7866 @@
+{
+ "version": 3,
+ "generated": "2026-10-21",
+ "packs_scanned": 438,
+ "byName": {
+  "1979ONDA": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "360BuffetTable": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "50ftMagnifyingGlass": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "7200OunceSquishee": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ALittleBitOfLenny": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ATFVan": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ATMPosIBot": {
+   "idle": "RiseOfTheRobotsInOut_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "AcneGreaseCoTruck": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "AdultSkateboards": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "AfricanTreeResort": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "AgencyHeadquarters": {
+   "idle": "EspionageMode_Neutral_HQ",
+   "tapVerb": null
+  },
+  "AirFortress": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "AircraftCarrier": {
+   "idle": "Neutral_Base",
+   "tapVerb": null
+  },
+  "AircraftCarrier_Top": {
+   "idle": "Neutral_Top",
+   "tapVerb": null
+  },
+  "Alien": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "AlienBush": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "AlienControlCenter": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "AlienFlower1": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "AlienFlower2": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "AlienFlower3": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "AlienPodField": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "AlienPortalDevice": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "AlienSporeCannon": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "AllSmellingTower": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveTwiceNoLoop"
+  },
+  "AlternateUniverseComputer": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "Ambulance": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "AmericanFlag": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "AncientBurialGround": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "AncientMultiplayerGame": {
+   "idle": "AncientMultiplayerGameController",
+   "tapVerb": null
+  },
+  "AncientOrnamentalPond": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "AngelFossil": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "AngryChristmasTrees": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "AnimalFeedingArea": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "AnimalHighWire": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "AnimatedFountain1": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "AnimatedFountain2": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "AnimatedFountain3": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "AnimatedFountain4": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "AnimatedFountain5": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "AnimatronicBears": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "AnkleSoaker": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "AntiGutenberg3000": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "AntiGutenberg3000JobLocation": {
+   "idle": "Empty",
+   "tapVerb": null
+  },
+  "ApusApocalypseJeep": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "AquaWorldFishingPlatform": {
+   "idle": "AquaWorldModular03Base",
+   "tapVerb": null
+  },
+  "AquaWorldFishingPlatform_Top": {
+   "idle": "AquaWorldModular03Top",
+   "tapVerb": null
+  },
+  "AquaWorldFuelTank": {
+   "idle": "Neutral_Base",
+   "tapVerb": "Active_BaseNoLoop"
+  },
+  "AquaWorldFuelTank_Top": {
+   "idle": "Neutral_Top",
+   "tapVerb": null
+  },
+  "AquaWorldMainGuardTower": {
+   "idle": "Neutral_Base",
+   "tapVerb": null
+  },
+  "AquaWorldMainGuardTower_Top": {
+   "idle": "Active_Top",
+   "tapVerb": null
+  },
+  "AquaWorldPrisonTower": {
+   "idle": "AquaWorldModular01Base",
+   "tapVerb": null
+  },
+  "AquaWorldPrisonTower_Top": {
+   "idle": "AquaWorldModular01Top",
+   "tapVerb": null
+  },
+  "AquaWorldWharf": {
+   "idle": "Neutral_Base",
+   "tapVerb": null
+  },
+  "AquaWorldWharf_Top": {
+   "idle": "Active_Top",
+   "tapVerb": null
+  },
+  "ArcDeTriomphe": {
+   "idle": "Active",
+   "tapVerb": "Neutral",
+   "tapVars": [
+    "State"
+   ]
+  },
+  "ArcadeCabinets": {
+   "idle": "ArcadeCabinets_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ArcadeCabinetsArrangement"
+   ]
+  },
+  "ArcadeCabinetsWall": {
+   "idle": "ArcadeCabinets_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ArcadeCabinetsArrangement"
+   ]
+  },
+  "ArkOfTheStonecovenant": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ArtieHoloPresent": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "Atlantis": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "AtomicBomb": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "AttackHelicopter": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "AudienceResearchTable": {
+   "idle": "AudienceResearchTable_Active",
+   "tapVerb": null
+  },
+  "AutoYard": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "AutomatedTrackingMachineSecretATM": {
+   "idle": "EspionageMode_Neutral_Simple",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "AuxillaryAgencyHQ": {
+   "idle": "EspionageMode_Neutral_HQ",
+   "tapVerb": null
+  },
+  "AwardShowEnforcementBot": {
+   "idle": "RiseOfTheRobotsInOut_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "BBQ": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BBQGrill": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "BBQPig": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BaboonCountyUSA": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "HabitatLevel"
+   ]
+  },
+  "BackwaterBrewery": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BackyardWrestlingRing": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "BagpipeBus": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BalanceBeam": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BaleOfHay": {
+   "idle": "GenericTwoWay_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "BalesOfHay": {
+   "idle": "GenericTwoWay_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "BallOfDeath": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BananaLeafWindmill": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BarTrollPrize1": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BarTrollPrize2": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BarTrollPrize3": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BarbecuePit": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BarbedWireFence": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BarnacleBayLamppost": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "BarnacleBayMarina": {
+   "idle": "Base",
+   "tapVerb": null
+  },
+  "BarnacleBayMarinaSouth": {
+   "idle": "BarnacleBayMarinaSouth",
+   "tapVerb": null
+  },
+  "BarnacleBayMarinaWest": {
+   "idle": "BarnacleBayMarinaWest",
+   "tapVerb": null
+  },
+  "Barrier": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BartBalloon": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BartSnowman": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BartSnowman_NoBonus": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BartsBigWheel": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BartsMoonMansion": {
+   "idle": "Neutral",
+   "tapVerb": "Tap"
+  },
+  "BartsTreehouse": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BasketballGame": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BathtubBrewery": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "BattleVan": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "Battlescape": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Bazaar": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BazaarEast": {
+   "idle": "Neutral_East",
+   "tapVerb": null
+  },
+  "BazaarSouth": {
+   "idle": "Neutral_South",
+   "tapVerb": null
+  },
+  "BeachChair": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BeachFrontPathway": {
+   "idle": "neutral",
+   "tapVerb": null
+  },
+  "BeachFrontPathway_Back": {
+   "idle": "back",
+   "tapVerb": null
+  },
+  "BeachFrontPathway_Front": {
+   "idle": "front",
+   "tapVerb": null
+  },
+  "BeachHideaway": {
+   "idle": "BeachHideawaySandBottom",
+   "tapVerb": null
+  },
+  "BeachHideawayTop": {
+   "idle": "BeachHideawaySandTop",
+   "tapVerb": null
+  },
+  "BeachHouse": {
+   "idle": "ActiveEmpty",
+   "tapVerb": null
+  },
+  "BeachTowelAndUmbrella": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BearCave": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Beefeater": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BeefyBishopsBarbershop": {
+   "idle": "NeutralNoLoop",
+   "tapVerb": null
+  },
+  "BeerBottleFountain": {
+   "idle": "TavernTroubleInOut_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "Beerquarium": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Bench00": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Bench01": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Bench02": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BentOverLamppost": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BigBugHouse": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "BigCatCountry": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "HabitatLevel"
+   ]
+  },
+  "BigTTree": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BillionaireHaven": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BionautShip": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "BlackHole": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BlackLeatherPlane": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BlazingGuy": {
+   "idle": "BlazingGuyController",
+   "tapVerb": null
+  },
+  "BlazingGuyAttendees": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "BleedingGumsCloud": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BlockoDungeonSet": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Bloodmobile": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BlueEggBasket": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BlueElectricCar": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BlueHouse": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BlueNerdKnight": {
+   "idle": "OccasionalActiveZiffCorpSignDec",
+   "tapVerb": null
+  },
+  "BlueNerdMage": {
+   "idle": "OccasionalActiveZiffCorpSignDec",
+   "tapVerb": null
+  },
+  "BlueNerdRogue": {
+   "idle": "OccasionalActiveZiffCorpSignDec",
+   "tapVerb": null
+  },
+  "BlueNerdWarrior": {
+   "idle": "OccasionalActiveZiffCorpSignDec",
+   "tapVerb": null
+  },
+  "BluePrideHydrant": {
+   "idle": "Neutral_Blue",
+   "tapVerb": "Active_BlueNoLoop"
+  },
+  "BoardwalkBench": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BoardwalkFence": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BoardwalkFountain": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BoardwalkFountain_Water": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BoardwalkLampPost": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BoardwalkTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BombShelter": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BonnieAndClydeDeathCar": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "BonzaiBeings": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BooberellasStreetCart": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BookBurningMobile": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BottomlessPit": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "BoulangeriePatisserie": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": "Neutral",
+   "tapVars": [
+    "State"
+   ]
+  },
+  "BourbonStreetBand": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "BowlingLane": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BoxingRing": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BrickTownhomes": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "BridgeBottom": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BridgeTop": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BrokenDownDryer": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BrokenDownWasher": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BrotherFaithVan": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BrownBouncyHorse": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "BuffaloMassacre": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "BulletTrainBillboard": {
+   "idle": "Generic_Four_Way_Tap_010203",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "BullyBus": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "BullyVernPrize1": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BullyVernPrize2": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BullyVernPrize3": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "BumblebeeMansTacos": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BurgerSoldiers": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "BurnsCoffin": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BurnsDragonPrize1": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BurnsDragonPrize2": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BurnsDragonPrize3": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BurnsEscapePod": {
+   "idle": null,
+   "tapVerb": "TapTwoRandom_Tap1Tap2"
+  },
+  "BurnsExcessPile": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "BurnsFeverSnowman": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BurnsFountain": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BurnsHelicopter": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "BurnsLimo": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "BurnsSlantDrillingCo": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "BurnsVintageLimousine": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "BushSculpture": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ButterflyTent": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "BuzzColaAIMachine": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "CONRAD": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "CaesarsPowWowCasinoSign": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "CafeKafka": {
+   "idle": "EspionageMode_Neutral_InOut",
+   "tapVerb": null
+  },
+  "CagedTomTurkey": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Campfire": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "CampingTent": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "CanadianFootballPlayers": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "CanaryMBirdHouse": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "CandyAppleIsland": {
+   "idle": "neutral_bottom",
+   "tapVerb": "Active_Bottom"
+  },
+  "CandyAppleIslandTop": {
+   "idle": "neutral_top",
+   "tapVerb": null
+  },
+  "Cannon": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Canyonero": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "CappuccinoRoyale": {
+   "idle": "EspionageMode_Neutral_Simple",
+   "tapVerb": null
+  },
+  "CarlsDadCaverns": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "CarnabyStreetEast": {
+   "idle": "CarnabyStreetEastController",
+   "tapVerb": null
+  },
+  "CarnabyStreetSouth": {
+   "idle": "Neutral_South",
+   "tapVerb": null
+  },
+  "CarnivalFloat": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "CasinoConciergeKiosk": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "CasinoVIP": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "CatBus": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Catapult": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Cauldron": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "CemeteryPlot": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "ChainFence": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Channel6NewsVan": {
+   "idle": "Neutral",
+   "tapVerb": "Tap"
+  },
+  "CheckpointParkBench": {
+   "idle": "EspionageMode_Neutral_Simple",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "CheddarbarrelCombine": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "CheeringCrowd": {
+   "idle": "Crowd_Neutral",
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "CheeseTruck": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "CherubBirdBath": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "CherubTopiary": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ChessTable": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ChestOfSacredArtifacts": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ChickenCoop": {
+   "idle": "ChickenNeutral",
+   "tapVerb": null
+  },
+  "ChickenCoop_Grind": {
+   "idle": "ChickenNeutral",
+   "tapVerb": null
+  },
+  "ChickenPulledChariot": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "ChiliBlasters": {
+   "idle": "EatChiliController",
+   "tapVerb": null
+  },
+  "ChimpRefuge": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "ChineseJunk": {
+   "idle": "Neutral_Base",
+   "tapVerb": null
+  },
+  "ChineseJunk_Top": {
+   "idle": "Neutral_Top",
+   "tapVerb": null
+  },
+  "Chocobots": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "ChokeCam": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "ChopperRide": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ChoppingLog": {
+   "idle": "NeutralNoLoop",
+   "tapVerb": null
+  },
+  "ChristmasBeaverDam": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "ChristmasCabin": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ChristmasCarousel": {
+   "idle": "Base",
+   "tapVerb": null
+  },
+  "ChristmasClamsFiftyAPound": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ChristmasFloat": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ChubbyChaserChariot": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Cinnabun": {
+   "idle": "Cinnabun_Active",
+   "tapVerb": null
+  },
+  "CircleOfDeath": {
+   "idle": "Active_01",
+   "tapVerb": null
+  },
+  "CircusCannon": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "CircusCaravan": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "CircusLion": {
+   "idle": null,
+   "tapVerb": "TapTwoRandom"
+  },
+  "CircusRings": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "CircusSeal": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "CircusSign": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "CircusSignEast": {
+   "idle": "CircusSignEastController",
+   "tapVerb": null
+  },
+  "CircusSignSouth": {
+   "idle": "CircusSignSouthController",
+   "tapVerb": null
+  },
+  "CircusTrain": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "CircusTrainCar01": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "CircusTrainCar02": {
+   "idle": "GenericInOut_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "CircusTrainCar03": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "CircusTrainCar05": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "ClassicAmericanCar": {
+   "idle": "Active",
+   "tapVerb": "ClassicAmericanCar_Active_2"
+  },
+  "ClassicMansionEntrance": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ClassicMansionFrontBalcony": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ClassicMansionGarage": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ClassicMansionGarden": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ClassicMansionHotTub": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ClassicMansionMiddleBuilding": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ClassicMansionPalm01": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ClassicMansionPalm02": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ClassicMansionSideBalcony": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ClassicMansionSideBuilding": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ClassicMansionSmallBalcony": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ClassicMansionSmallPlant": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ClassyFountain": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "CletusCornField": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "CletusFarm": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ClownBus": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "ClownCar": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "ClownFireTruck": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "ClownGarbageCan": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "CobblestoneWall": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "CoffeeKart": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ColdTrain": {
+   "idle": "ColdTrain_Active",
+   "tapVerb": null
+  },
+  "ConcertLights": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "ConstructionSite": {
+   "idle": "ConstructionSiteActive",
+   "tapVerb": null
+  },
+  "ContraceptionOverlook": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "CookieCastle": {
+   "idle": "CookieCastleController",
+   "tapVerb": null
+  },
+  "Coolsville": {
+   "idle": "CoolsvilleController",
+   "tapVerb": null
+  },
+  "CornField": {
+   "idle": "CornField_Controller",
+   "tapVerb": null
+  },
+  "CottonCandyStand": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "CountyFairSign": {
+   "idle": "Base",
+   "tapVerb": null
+  },
+  "CountyFairSignEast": {
+   "idle": "East",
+   "tapVerb": null
+  },
+  "CountyFairSignSouth": {
+   "idle": "South",
+   "tapVerb": null
+  },
+  "CoveredBridge": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "CowgirlSign": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "CozyHammock": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "CrappyRV": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "CrashedUFO": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "CrashedUFOOld": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "CrateOfFireworks": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "CrazyCatSleigh": {
+   "idle": "NeutralFastBreak",
+   "tapVerb": "Tap"
+  },
+  "CrazyPlane": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "CrazyPrincessViewingArea": {
+   "idle": "Generic_Three_Way_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "CrematoriumBot": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "CremoBot": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "CrockyWaters": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "CrouchingPandaHiddenEggroll": {
+   "idle": "EspionageMode_Neutral_Simple",
+   "tapVerb": null
+  },
+  "CrowdOfBullies": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "CrowdOfCosplayers": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "CrowdOfCrankyElderly": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "CrowdOfElves": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "CrowdOfFlandersFamilyMembers": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "CrowdOfGamers": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "CrowdOfGolfers": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "CrowdOfLawyers": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "CrowdOfPresidentialKids": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "CryoStasisMemorial": {
+   "idle": "CryoStasisMemorial",
+   "tapVerb": null
+  },
+  "CubicZirconia": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "CultFlyingSaucer": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "CursedDesk": {
+   "idle": "CursedDeskController",
+   "tapVerb": null
+  },
+  "CursedShip": {
+   "idle": "Neutral_Base",
+   "tapVerb": null
+  },
+  "CursedShipTop": {
+   "idle": "Neutral_Top",
+   "tapVerb": null
+  },
+  "CurveTrack": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "CyclingSpotlight": {
+   "idle": "Neutral",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "DMVLimo": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DaVinciAircraft": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "DamBottomLeft": {
+   "idle": "DamBottomLeft",
+   "tapVerb": null
+  },
+  "DamBottomRight": {
+   "idle": "DamBottomRight",
+   "tapVerb": null
+  },
+  "DamMiddle": {
+   "idle": "DamMiddle",
+   "tapVerb": null
+  },
+  "DamTopLeft": {
+   "idle": "DamTopLeft",
+   "tapVerb": null
+  },
+  "DamTopRight": {
+   "idle": "DamTopRight",
+   "tapVerb": null
+  },
+  "DancingChildren": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "DangerPool": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "DarkCarriage": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DeadDropMailbox": {
+   "idle": "EspionageMode_Neutral_InOut",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DeadTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "DeathDrop": {
+   "idle": "ActiveTestDeathDrop",
+   "tapVerb": null
+  },
+  "DeathTable": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Debris_00": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Debris_01": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Debris_02": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Debris_03": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Debris_04": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Debris_TutorialTargetHomer": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Debris_TutorialTargetLisa": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "DeepDarkWoods": {
+   "idle": "DeepDarkWoods_ActiveController",
+   "tapVerb": "Tap"
+  },
+  "DeepDomeDrill": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DemonCar": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "DemonicCaptureChairs": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Dentz": {
+   "idle": "EspionageMode_Neutral_InOut",
+   "tapVerb": null
+  },
+  "DerbySouvenirsStand": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "DesertBoxTent": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "DesertDomeTent": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "DesertPlanetSculpture": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "DespairHeightsSign": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "DestroyedHolidayWheel": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "DevilDonutsCart": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DevilFloat": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "DevilsDeluge": {
+   "idle": null,
+   "tapVerb": "Tap_02"
+  },
+  "DietSign": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DigSite": {
+   "idle": "DigSite_Neutral",
+   "tapVerb": "DigSite_Neutral"
+  },
+  "DingALingBrosTent": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "DinosaurLake": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DiscountSafariEntrance": {
+   "idle": "Base",
+   "tapVerb": null
+  },
+  "DiscountSafariEntranceEast": {
+   "idle": "East",
+   "tapVerb": null
+  },
+  "DiscountSafariEntranceSouth": {
+   "idle": "South",
+   "tapVerb": null
+  },
+  "DiscouverVancouverBus": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "DizzyDuffTopiary": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "DodgeballCourt": {
+   "idle": null,
+   "tapVerb": "Active_Ball"
+  },
+  "DogGang": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "DonutBoat": {
+   "idle": "BoatloadOfDonuts_Base",
+   "tapVerb": null
+  },
+  "DonutBoatTop": {
+   "idle": "BoatloadOfDonuts_Top",
+   "tapVerb": null
+  },
+  "DonutTortureDevice": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "DonutTruck": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DonutVein01": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "DonutVeinMined"
+   ]
+  },
+  "DonutVein02": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "DonutVeinMined"
+   ]
+  },
+  "DonutVein03": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "DonutVeinMined"
+   ]
+  },
+  "DoorbellFiestaVan": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DoubleDeckerBus": {
+   "idle": null,
+   "tapVerb": "QuickActive"
+  },
+  "DraculaLaLandEast": {
+   "idle": "DraculaLaLandEastController",
+   "tapVerb": null
+  },
+  "DraculaLaLandSouth": {
+   "idle": "Neutral_South",
+   "tapVerb": null
+  },
+  "DragonOfSpringfieldia": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "DragonTennisBallShooter": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "DragonflyRock": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DrivingRange": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "DrivingRange_Level2": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "DrivingRange_Level3": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "DronePack": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "DuffBarneyBlimp": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DuffBeerCar": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DuffBeerTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "DuffBeeramid": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "DuffBlimp": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DuffGardensStage": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "DuffMcSharkTank": {
+   "idle": "DuffMcSharkTankController",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "State"
+   ]
+  },
+  "DuffPartyBus": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DuffPartyLiner": {
+   "idle": "ActiveBottom",
+   "tapVerb": "ActiveBottomNoLoop"
+  },
+  "DuffPartyLiner_Top": {
+   "idle": "ActiveTop",
+   "tapVerb": null
+  },
+  "DuffStatueOfLiberty": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DukeDruthersAutoDetailingBillboard": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "Dumpster": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "DunkTank": {
+   "idle": null,
+   "tapVerb": "TapTwoRandom"
+  },
+  "DunkTheMonk": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "DunkingDevice": {
+   "idle": "ActiveFastBreak",
+   "tapVerb": null
+  },
+  "DupesSign": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "EARLsLighthouse": {
+   "idle": "earlslighthousebase",
+   "tapVerb": "ActiveBase"
+  },
+  "EARLsLighthouse_Top": {
+   "idle": "earlslighthousetop",
+   "tapVerb": null
+  },
+  "EPAHoverjet": {
+   "idle": "EspionageMode_Neutral_InOut",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "EPATruck": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "EarthlandRealmsBlockoDragon": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "EasterBanner": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "EasterEggPile": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "EasterFence": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "EasterFloat": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "EasterGate": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "EasterIslandGod": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "EasterPond": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "EasterTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "EdgyDuffTopiary": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "EgyptianOuthouse": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "EgyptianPlayground": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "EgyptianTent": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "EiffelTower": {
+   "idle": "Neutral_eiffeltowerBase",
+   "tapVerb": null
+  },
+  "EiffelTowerEast": {
+   "idle": "Neutral_eiffeltowerEast",
+   "tapVerb": null
+  },
+  "EiffelTowerSouth": {
+   "idle": "Neutral_eiffeltowersouth",
+   "tapVerb": null
+  },
+  "EiffelTowerWest": {
+   "idle": "Neutral_eiffeltowerWest",
+   "tapVerb": null
+  },
+  "Eisenhowers4x4": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ElectricTree": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "ElegantGrill": {
+   "idle": "active",
+   "tapVerb": null
+  },
+  "ElementaryPlayStage": {
+   "idle": "NeutralNoLoop",
+   "tapVerb": null
+  },
+  "Elephant": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "ElfCannon": {
+   "idle": "Neutral",
+   "tapVerb": "FireCannonIn"
+  },
+  "ElfCannonControl": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ElfDayCareDoor": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ElfEarsMachine": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ElfHome": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ElfPortal": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ElfToyWorkshopBell": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveBellNoLoop"
+  },
+  "EliteYachtClub": {
+   "idle": "EliteYachtClubBottom",
+   "tapVerb": null
+  },
+  "EliteYachtClubTop": {
+   "idle": "EliteYachtClubTop",
+   "tapVerb": null
+  },
+  "EscalatorToNowhere": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "EvilCandyCave": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "ExcellencePrizeStatue": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ExoticTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FBIAgents": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "FBIVan": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "FairyFields": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FakeTollBooth": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FamousMilkCans": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FancyBush": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FancyFence": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FancyGate": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FancyIgloo": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FancyLampost": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FancyTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FancyWall": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FancyWrestlingRing": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FemaleGnome": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FerrisWheel": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FestiveCandycane": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FestiveCarolers": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "FestiveFancyLawnBell": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FestiveHotDrinkStand": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FestiveLawnAngel": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FestiveLawnBell": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FestiveLightPlunger": {
+   "idle": "Neutral",
+   "tapVerb": "Tap",
+   "tapVars": [
+    "Toggle"
+   ]
+  },
+  "FestiveNutcracker": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FestiveTrashcanFire": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FeverCabin": {
+   "idle": "Neutral",
+   "tapVerb": "QuickActive"
+  },
+  "FicusPlant": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FieldTripMemorial": {
+   "idle": "FieldTripMemorial_Neutral",
+   "tapVerb": null,
+   "tapVars": [
+    "TapState"
+   ]
+  },
+  "FiftyYearIceCreamSupply": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "FilthWagon": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "FirIsMurderChristmasTree": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FireHydrant": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FireTruck": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveThree"
+  },
+  "FireworksBarge": {
+   "idle": "fireworksbargebase",
+   "tapVerb": "ActiveBase"
+  },
+  "FireworksBarge_Top": {
+   "idle": "fireworksbargetop",
+   "tapVerb": null
+  },
+  "FireworksControlPanel": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "FireworksFactory": {
+   "idle": "FireworksFactory_Active",
+   "tapVerb": null
+  },
+  "FirstBankOfSpringfieldATM": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "FirstEverChristmasTree": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "FiveAlarmChili": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FlakeBlaster": {
+   "idle": null,
+   "tapVerb": "TapTwoRandom"
+  },
+  "FlamingGreenDerbyCar": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "FlandersCarPosIBot": {
+   "idle": "RiseOfTheRobotsInOut_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "FlandersFamilyTome": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "FlandersFrozenCar": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FlandersPersonalHellEast": {
+   "idle": "FlandersHellEast",
+   "tapVerb": null
+  },
+  "FlandersPersonalHellSouth": {
+   "idle": "FlandersHellSouth",
+   "tapVerb": null
+  },
+  "FleetAPita": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FlowerCartOfLove": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "Flowers00": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Flowers01": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Flowers02": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Flowers03": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FlyingBats": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FlyingBrachiosaurus": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "FlyingCar": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FogburyCemetery": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "FogburyPortLighthouseAndPier": {
+   "idle": "FogburyPortLighthouseAndPier_Neutral",
+   "tapVerb": null
+  },
+  "FogburyPortSign": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "FoggySwamp": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FoodTruckGraveyard": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "FootballTarget": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FootballUprights": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ForestCave": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ForestGrove": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "ForestStream": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "ForgottenGrave": {
+   "idle": "Neutral",
+   "tapVerb": "Dirt_Active"
+  },
+  "FortressOfChoclitude": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FortuneTellerMachine": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "Fountain": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FountainOfLove": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FountainOfTomorrow": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FragrantSpyacinthsSecretFlowerBed": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "FreakShowTent": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Freakmobile": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FrenchFountain": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FriedDoughStand": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FrinkTheticEggGeneratorMki": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "FrinkTheticEggGeneratorMkii": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "Frinkiac7": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "FrinkosonicMHV": {
+   "idle": "Neutral",
+   "tapVerb": "Animation"
+  },
+  "FrinksMechanoSpider": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FrontierCamp": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "FrontierCemetery": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FrontierTownEast": {
+   "idle": "FrontierTownEastController",
+   "tapVerb": null
+  },
+  "FrontierTownSouth": {
+   "idle": "Neutral_South",
+   "tapVerb": null
+  },
+  "FrontierWagon": {
+   "idle": "FrontierWagon_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "FrontierWagonArrangement"
+   ]
+  },
+  "FrontierWaterTower": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FruitBatSignal": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FuriousFliers": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FutureDuffSign": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FutureLimo": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "FutureMilitaryJeep": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "FutureMonument": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "FutureStreetLamp": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "FuturisticJet": {
+   "idle": "Neutral",
+   "tapVerb": "Active5Loops"
+  },
+  "FuturisticMonorailStation": {
+   "idle": "Empty",
+   "tapVerb": null
+  },
+  "FuturisticMonorailStationBase": {
+   "idle": "NeutralBase",
+   "tapVerb": null
+  },
+  "FuturisticMonorailStationTop": {
+   "idle": "NeutralTop",
+   "tapVerb": null
+  },
+  "FuturisticStreetlight": {
+   "idle": "StreetLightController",
+   "tapVerb": null,
+   "tapVars": [
+    "PlayTrans",
+    "State"
+   ]
+  },
+  "Gallows": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "GarbageBin": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GarbageCan01": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GarbageIsland": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "GarbagePile": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GarbageTruck": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Gargoyle": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "GargoyleWall": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GasPump": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GateToNowhere": {
+   "idle": "Active",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Gauntlet01": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Gauntlet02": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Gauntlet03": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Gauntlet04": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Gazebo": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GeriatricParkExplorationPods": {
+   "idle": "GenericInOut_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "GeriatricParkFrontGate": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "GateTappedToOpen"
+   ]
+  },
+  "GeriatricParkGateEast": {
+   "idle": "GeriatricParkGateEastController",
+   "tapVerb": null
+  },
+  "GeriatricParkGateSouth": {
+   "idle": "GeriatricParkGateSouthController",
+   "tapVerb": null
+  },
+  "GeriatricParkHelicopter": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "GeriatricParkJeep": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "GhostZapper": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "GiantBurningGoat": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "GiantCrystalBall": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "GiantFerrisWheel": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "GiantGrasshopper": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GiantLobsterScorpion": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "GiantMonster": {
+   "idle": "FightingGiantMonster",
+   "tapVerb": null
+  },
+  "GiantOutdoorFireplace": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GiantRobot": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "GiantSnakeInATree": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "GiantSnakeInATree_Prem": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "GiantSnowGlobe": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "GingerbreadHouseDeco": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "GingerbreadSimpsonsHouse": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "GiveApesTheVoteBillboard": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Globe": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "GlobexBalloon": {
+   "idle": "EspionageMode_Neutral_InOut",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "GlobexCompound": {
+   "idle": "EspionageMode_Neutral_InOut",
+   "tapVerb": null
+  },
+  "GlobexOperations": {
+   "idle": "EspionageNeutralActive_Toggle",
+   "tapVerb": "ActiveNoLoop",
+   "tapVars": [
+    "State"
+   ]
+  },
+  "GlobexRnD": {
+   "idle": "EspionageNeutralActive_Toggle",
+   "tapVerb": "ActiveNoLoop",
+   "tapVars": [
+    "State"
+   ]
+  },
+  "GnomeBox": {
+   "idle": "GnomeBoxAnimationController",
+   "tapVerb": null
+  },
+  "GnomeInTheHomeDomeAutomatons": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "GoGoRay": {
+   "idle": "GoGoRayController",
+   "tapVerb": "Tap"
+  },
+  "GoldBars": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "GoldFancyTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GoldFancyTree2": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GoldMailbox": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GoldPalmTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GoldPalmTree2": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GoldSmallPlant": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GoldSmallPlant2": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GoldTrain": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "GolddiggersSign": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "GoldenCalfIdol": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GoldenCock": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "GoldenGiftBag": {
+   "idle": "Neutral",
+   "tapVerb": "Opening_Water"
+  },
+  "GoldenWrestlerStatue": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "GolfCart": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "GolfClubs": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "GolfCourse": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GolfCourseFountain": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "GolfGreen": {
+   "idle": "Active_2",
+   "tapVerb": null
+  },
+  "GolfNDieRetirementVillage": {
+   "idle": "GolfNDieRetirementVillage_Active",
+   "tapVerb": null
+  },
+  "GolfTeeBox": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "Gondola": {
+   "idle": "Neutral_Base",
+   "tapVerb": null
+  },
+  "GondolaTop": {
+   "idle": "Neutral_Base",
+   "tapVerb": null
+  },
+  "GoneFission": {
+   "idle": "GoneFissionBottom",
+   "tapVerb": "ActiveBottomNoLoop"
+  },
+  "GorgeousGrampaBillboard": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GraffitiWall01": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GraffitiWall02": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GrampaSnowman": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GrampaSnowman_NoBonus": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GrandCanal1": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "GrandCanal3": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "GrandpaVanHoutensRV": {
+   "idle": "GrandpaVanHoutensRVController",
+   "tapVerb": "Tap"
+  },
+  "GrapeStompingVat": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "GraysonMathersSportsCar": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "GreatPlains": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "HabitatLevel"
+   ]
+  },
+  "GreatWallMainTower": {
+   "idle": "Master",
+   "tapVerb": null
+  },
+  "GreenBin": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GreenPracticeSnake": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "GreenPrideHydrant": {
+   "idle": "Neutral_Green",
+   "tapVerb": "Active_GreenNoLoop"
+  },
+  "GreenpeaceBoat": {
+   "idle": "greenpeaceboatbase",
+   "tapVerb": null
+  },
+  "GreenpeaceBoat_Top": {
+   "idle": "greenpeaceboattop",
+   "tapVerb": null
+  },
+  "GreyhoundSleigh": {
+   "idle": "NeutralFastBreak",
+   "tapVerb": "Tap"
+  },
+  "GulpNBlow": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HailAntsSign": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HalfPipe": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HalloweenHorrorNightBillboard": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "HangingStreetLamp": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HauntedCrossroads": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HauntedStables": {
+   "idle": "SequentialActive03",
+   "tapVerb": null
+  },
+  "HeartCloud": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "HeathrowTeleportationDepartures": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HeavenlyDeafJam": {
+   "idle": "NeutralNoLoop",
+   "tapVerb": null
+  },
+  "HeavenlyGarage": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "HeavenlyGolfCourse": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "HeavenlyWaterSlide": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "Helicopter": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HellGlobe": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "HellGraduationBannerEast": {
+   "idle": "HellGraduationBannerEast",
+   "tapVerb": null
+  },
+  "HellGraduationBannerSouth": {
+   "idle": "HellGraduationBannerSouth",
+   "tapVerb": null
+  },
+  "HellKids": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "HellScientists": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "HellfirePepperCactus": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HellfishMonument": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HellfishTreasureChest": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HeroClothesline": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HiGlowWasteBarrels": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HiddenResearchFacility": {
+   "idle": "EspionageMode_Neutral_Simple",
+   "tapVerb": null
+  },
+  "HideawayBridge": {
+   "idle": "BeachHideawaySandBottom",
+   "tapVerb": null
+  },
+  "HideawayBridgeTop": {
+   "idle": "BeachHideawaySandTop",
+   "tapVerb": null
+  },
+  "HideawayDeck": {
+   "idle": "BeachHideawaySandBottom",
+   "tapVerb": null
+  },
+  "HideawayDeckTop": {
+   "idle": "BeachHideawaySandTop",
+   "tapVerb": null
+  },
+  "HideawayGazebo": {
+   "idle": "BeachHideawaySandBottom",
+   "tapVerb": null
+  },
+  "HideawayGazeboTop": {
+   "idle": "BeachHideawaySandTop",
+   "tapVerb": null
+  },
+  "HideawayHut": {
+   "idle": "BeachHideawaySandBottom",
+   "tapVerb": null
+  },
+  "HideawayHutTop": {
+   "idle": "BeachHideawaySandTop",
+   "tapVerb": null
+  },
+  "HideawayPlatform": {
+   "idle": "BeachHideawaySandBottom",
+   "tapVerb": null
+  },
+  "HideawayPlatformTop": {
+   "idle": "BeachHideawaySandTop",
+   "tapVerb": null
+  },
+  "HideawayPool": {
+   "idle": "BeachHideawaySandBottom",
+   "tapVerb": null
+  },
+  "HideawayPoolTop": {
+   "idle": "BeachHideawaySandTop",
+   "tapVerb": null
+  },
+  "HideawayStairs": {
+   "idle": "HideawayStairsBottom",
+   "tapVerb": null
+  },
+  "HideawayStairsTop": {
+   "idle": "HideawayStairsTop",
+   "tapVerb": null
+  },
+  "HideawayWalkway": {
+   "idle": "BeachHideawaySandBottom",
+   "tapVerb": null
+  },
+  "HideawayWalkwayNoRoof": {
+   "idle": "BeachHideawaySandBottom",
+   "tapVerb": null
+  },
+  "HideawayWalkwayNoRoofTop": {
+   "idle": "BeachHideawaySandTop",
+   "tapVerb": null
+  },
+  "HideawayWalkwayTop": {
+   "idle": "BeachHideawaySandTop",
+   "tapVerb": null
+  },
+  "HieroglyphWall": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HighVoltageTransformer": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HipHopStage": {
+   "idle": "HipHopStage_OverlayController",
+   "tapVerb": null
+  },
+  "Hokora": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HolidayTotemPole": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HolidayTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HollowSnakeTrunk": {
+   "idle": "OccasionalActiveSnakeDec",
+   "tapVerb": null
+  },
+  "HoloBench": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloBoardwalkTree": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloExoticTree": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloFlag": {
+   "idle": "Neutral",
+   "tapVerb": null,
+   "tapVars": [
+    "HoloFlagState"
+   ]
+  },
+  "HoloFlowerHedge": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloHedgeFenceLarge": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloHedgeFenceSmall": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloLampPost": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloRoseBush": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloTheater": {
+   "idle": "Neutral",
+   "tapVerb": "Active_In",
+   "tapVars": [
+    "State"
+   ]
+  },
+  "HoloTree": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloTree0": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloTree1": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloTree2": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloTree3": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloTree4": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloTree5": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloTree6": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloTree7": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoloTulips": {
+   "idle": "HoloNeutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HomerFeverSnowman": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HomerSnowman": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HomerSnowman_NoBonus": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HomerWhale": {
+   "idle": "HomerWhaleBase",
+   "tapVerb": null
+  },
+  "HomerWhaleTop": {
+   "idle": "HomerWhaleTop",
+   "tapVerb": null
+  },
+  "HomercleseStatue": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HomersBallet": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HomersBombShelter": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HomersCar": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HomersGrave": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HomersHammock": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HomersHedge": {
+   "idle": "NeutralNoLoop",
+   "tapVerb": null
+  },
+  "HomersMotorcycle": {
+   "idle": "HomersMotorcycleController",
+   "tapVerb": "Tap"
+  },
+  "HomersPool": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HomersSnowmobile": {
+   "idle": "HomersSnowmobileController",
+   "tapVerb": null
+  },
+  "Homertron": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HorseDrawnSUV": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HorseTrough": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HotDogCart": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "HotDogCookerBot": {
+   "idle": "RiseOfTheRobotsInOut_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "HotDogMaker": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HotDogStand": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HotSprings": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HotSquisheeStation": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HotTub": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Houseboat": {
+   "idle": "HouseBoatBase",
+   "tapVerb": null
+  },
+  "Houseboat_Top": {
+   "idle": "HouseBoatTopController",
+   "tapVerb": null
+  },
+  "HoverBench": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HoverCopter": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "HoverStreetSign": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HowardsFlowers": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "HumanFoosballTable": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "HumanSizedBodyBagsTruck": {
+   "idle": "GenericToggle_Neutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "HumanTestSubject": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "IChooChooChooseYouTrain": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "IansCar": {
+   "idle": "IansCarController",
+   "tapVerb": "Tap"
+  },
+  "IceCreamTruck": {
+   "idle": null,
+   "tapVerb": "ActiveTwo"
+  },
+  "IceFence": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "IceFishingShack": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "IceGod": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "IcePalace": {
+   "idle": "NeutralFastBreak",
+   "tapVerb": null
+  },
+  "IceSculpture": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "IceSculptureCouchGagScene": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "IceSkatingRink": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "ImonaRollaGay": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ImpossibleTower": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ImprovisedSnare": {
+   "idle": "ImprovisedSnare",
+   "tapVerb": "Tap"
+  },
+  "InflatableGorillaAndBaboons": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "IronRailing": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "IronWall": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Ishidoro": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "ItchyAndScratchyHelicopter": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ItchyAndScratchyLandBanner": {
+   "idle": "Base",
+   "tapVerb": null
+  },
+  "ItchyAndScratchyLandBannerEast": {
+   "idle": "East",
+   "tapVerb": null
+  },
+  "ItchyAndScratchyLandBannerSouth": {
+   "idle": "South",
+   "tapVerb": null
+  },
+  "ItchyAndScratchyLandGate": {
+   "idle": "Base",
+   "tapVerb": null
+  },
+  "ItchyAndScratchyLandGateEast": {
+   "idle": "Neutral_East",
+   "tapVerb": null
+  },
+  "ItchyAndScratchyLandGateSouth": {
+   "idle": "Neutral_South",
+   "tapVerb": null
+  },
+  "ItchyAndScratchyRocket": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "ItchyParkingLot": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "ItchyParkingLot"
+   ]
+  },
+  "JackOLantern": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "JackOLanternBouncyHouse": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "JackpotRealty": {
+   "idle": "InActiveOut",
+   "tapVerb": null
+  },
+  "JakesUnisex": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "JapaneseLanternSmall": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": "ActiveNoLoop",
+   "tapVars": [
+    "State"
+   ]
+  },
+  "JavaServer": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "JayGsPool": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "JebediahStatue": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "JesusChristSuperCar": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "JesusFish": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "JetEngineBike": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "JetSki": {
+   "idle": "JetskiBase",
+   "tapVerb": null
+  },
+  "JetSki_Top": {
+   "idle": "JetskiTop",
+   "tapVerb": null
+  },
+  "JewishHeaven": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "JewishWalkOfFameEast": {
+   "idle": "JewishWalkOfFameEastController",
+   "tapVerb": null
+  },
+  "JewishWalkOfFameSouth": {
+   "idle": "Neutral_South",
+   "tapVerb": null
+  },
+  "JogyesaTemple": {
+   "idle": "JogyesaTempleController",
+   "tapVerb": null
+  },
+  "JunkBase": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "K9Unit": {
+   "idle": "Generic_Three_Way_Toggle_0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "KangTopiary": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KearneymonPrize1": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "KearneymonPrize2": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "KearneymonPrize3": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "KeyToTheCity": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "KhlavKalashStand": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KidWall": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "Killy": {
+   "idle": "RiseOfTheRobotsInOut_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "KingChiliTent": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "KingHomersSkyscraper": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KingMitothinStatue": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "KingToots": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KingWintersCave": {
+   "idle": "Neutral",
+   "tapVerb": "QuickActive"
+  },
+  "Kiosk": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KitchenCarnival": {
+   "idle": "NeutralFastBreak",
+   "tapVerb": "Active_01_NoLoop"
+  },
+  "KlubKrustyPool": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Knightboat": {
+   "idle": "knightboatbase",
+   "tapVerb": "ActiveBase"
+  },
+  "Knightboat_Top": {
+   "idle": "knightboattop",
+   "tapVerb": null
+  },
+  "KnockOverTheFuzzyGuy": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KnotWhatItSeams": {
+   "idle": "EspionageMode_Neutral_InOut",
+   "tapVerb": null
+  },
+  "KodosTopiary": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustkateersSet": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "KrustyBurgerOilRig": {
+   "idle": "OilRigBase",
+   "tapVerb": null
+  },
+  "KrustyBurgerOilRig_Top": {
+   "idle": "OilRigTop",
+   "tapVerb": null
+  },
+  "KrustyChristmasSlimeBillboard": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "KrustyFountain": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustyKristmasKarolBillboard": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "KrustySleigh": {
+   "idle": "NeutralFastBreak",
+   "tapVerb": null
+  },
+  "KrustyStage": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "KrustyStation": {
+   "idle": "Empty",
+   "tapVerb": null
+  },
+  "KrustyStationBase": {
+   "idle": "NeutralBase",
+   "tapVerb": null
+  },
+  "KrustyStationMod1": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustyStationMod2": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustyStationMod3": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustyStationMod4": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustyStationTop": {
+   "idle": "NeutralTop",
+   "tapVerb": null
+  },
+  "KrustylandBench": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandDebris1": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandDebris2": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandDebris3": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandDebris4": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandDebris5": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandDebris6": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandDebris7": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandDebris8": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandDebris9": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandEntrance": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "KrustylandEntranceBase": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "KrustylandFence": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandFleetAPita": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandFlowers01": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandFlowers02": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandFlowers03": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandFlowers04": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandFriedDoughStand": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandGarbageBin": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandHotDogStand": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandParkedCars": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandParkingLot": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "KrustylandParkingLot"
+   ]
+  },
+  "KrustylandPopcornStand": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandShrub01": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandShrub02": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandShrub03": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandShrub04": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandShrub05": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandShuttleToKrustyland": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandShuttleToSpringfield": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandTree01": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandTree02": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandTree03": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandTree04": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandTree05": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandTree06": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandTree07": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandTree08": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustylandTree09": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustyluStudios": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "KrustysChristmasSpecialBillboard": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "KrustysSportsCar": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "LadyJusticeStatue": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "LamborgottiFasterossa": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LampPost": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LampPostFestiveBell": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LampPostFestiveBow": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LampPostFestiveWreath": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LandOctopusPen": {
+   "idle": "Neutral",
+   "tapVerb": null,
+   "tapVars": [
+    "Tap"
+   ]
+  },
+  "LaramieVendingMachine": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LardLandFerrisWheel": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "LardLandFountain": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "LargeGiftBag": {
+   "idle": "Neutral",
+   "tapVerb": "Opening_Water"
+  },
+  "LargeHedge": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LargeIceberg": {
+   "idle": "Neutral_Base",
+   "tapVerb": "Active_BaseNoLoop"
+  },
+  "LargeIceberg_Top": {
+   "idle": "Neutral_Top",
+   "tapVerb": null
+  },
+  "LargePaganTent": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "LargePresent": {
+   "idle": "Neutral",
+   "tapVerb": "Opening_Water"
+  },
+  "LaserLight": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "LawnChair": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LeftHandedRoadster": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "LeftoriumExpress": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LemonadeStand": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LeprechaunStatue": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LibertyBell": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "LifeSizePrinceAlbertInACan": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "LifeSizedSpruceMoose": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "LifeSizedVisibleMan": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "LightupElderGod": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Limo": {
+   "idle": "Neutral",
+   "tapVerb": "Tap"
+  },
+  "LincolnMemorial": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LionelBudgieDVM": {
+   "idle": "NeutralNoLoop",
+   "tapVerb": null
+  },
+  "LisaMSimpsonFoundationRocket": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "LisaSnowman": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LisaSnowman_NoBonus": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LisaStatue": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LittleLadyJustice": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Live4EverBoat": {
+   "idle": "Live4EverBoatBottom",
+   "tapVerb": null
+  },
+  "Live4EverBoatTop": {
+   "idle": "Live4EverBoatTop",
+   "tapVerb": null
+  },
+  "LobsterIsland": {
+   "idle": "Neutral_Base",
+   "tapVerb": null
+  },
+  "LobsterIsland_Top": {
+   "idle": "Neutral_Top",
+   "tapVerb": null
+  },
+  "LogPile": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "LogRideEntrance": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LogRideStraightShort": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LollipopFlowers": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LoveBench": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LovePlanter": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LoveTester": {
+   "idle": null,
+   "tapVerb": "Tap1"
+  },
+  "LovelyFence": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LovelyFlowerCart": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LovelyGazebo": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LovelyLampost": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LowBlowBoxing": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "LuciteContainer": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "LuminescentFlowers": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "LuxuryYacht": {
+   "idle": "YachtBase",
+   "tapVerb": null
+  },
+  "LuxuryYacht_Top": {
+   "idle": "YachtTop",
+   "tapVerb": null
+  },
+  "MabelsWagon": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "MacaronisShed": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MafiaCar": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MaggieSnowman": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MaggieSnowman_NoBonus": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MagicMirror": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "MagicalEssenceSucker": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MaleGnome": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MalibuStacyCart": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "MallStation": {
+   "idle": "Empty",
+   "tapVerb": null
+  },
+  "MallStationBase": {
+   "idle": "NeutralBase",
+   "tapVerb": null
+  },
+  "MallStationMod1": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MallStationMod2": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MallStationMod3": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MallStationMod4": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MallStationTop": {
+   "idle": "NeutralTop",
+   "tapVerb": null
+  },
+  "Manhole": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ManholeStation": {
+   "idle": "EspionageMode_Neutral_InOut",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MarchingBandArcade": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "MargeSnowman": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MargeSnowman_NoBonus": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MargeTetherballStatue": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MargesStationWagon": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "MarineOne": {
+   "idle": "MarineOneController",
+   "tapVerb": "Active01In"
+  },
+  "MarineWorldFountain": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "MarineWorldSign": {
+   "idle": "Base",
+   "tapVerb": null
+  },
+  "MarineWorldSignEast": {
+   "idle": "East",
+   "tapVerb": null
+  },
+  "MarineWorldSignSouth": {
+   "idle": "South",
+   "tapVerb": null
+  },
+  "MarsColony": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MarshmallowTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MartianVacation": {
+   "idle": "MartianVacation_Active_Controller",
+   "tapVerb": "Tap"
+  },
+  "MaudePraiselandStatue": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Mausoleum": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MayanCalendarPiece01": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MayanCalendarPiece02": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MayanCalendarPiece03": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MayanCalendarPiece04": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MayanCalendarPiece05": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MayanCalendarPiece06": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MayanCalendarWhole": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MeatPropagandaBillboard": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MechRobot": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop",
+   "tapVars": [
+    "MechRobotActive"
+   ]
+  },
+  "MechanicalGhost": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MedievalGate": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MediumIceberg": {
+   "idle": "Neutral_Base",
+   "tapVerb": "Active_BaseNoLoop"
+  },
+  "MediumIceberg_Top": {
+   "idle": "Neutral_Top",
+   "tapVerb": null
+  },
+  "MegaPlayscape": {
+   "idle": "Empty",
+   "tapVerb": null
+  },
+  "MermaidPettingZoo": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MeteorEgg": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MightyPigsPracticeRink": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MikesSlicesPizzaTruck": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "MilhouseBounceHouse": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "MilhouseChineseDragon": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "MilhousePoolAndZipline": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "MilhouseSquisheeMachine": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "MilhousesScooter": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "MilhousesTrailer": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MiniGolfCastle": {
+   "idle": "Active",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MiniNuclearWarhead": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MinnowPond": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MirroredBowlarama": {
+   "idle": "Empty",
+   "tapVerb": null
+  },
+  "MirroredBowlaramaBase": {
+   "idle": "NeutralBase",
+   "tapVerb": null
+  },
+  "MirroredBowlaramaTop": {
+   "idle": "NeutralTop",
+   "tapVerb": null
+  },
+  "MirroredGMart": {
+   "idle": "Empty",
+   "tapVerb": null
+  },
+  "MirroredGMartBase": {
+   "idle": "NeutralBase",
+   "tapVerb": null
+  },
+  "MirroredGMartTop": {
+   "idle": "NeutralTop",
+   "tapVerb": null
+  },
+  "MirroredGloboWarmHelicopter": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "MirroredLeftorium": {
+   "idle": "Empty",
+   "tapVerb": null
+  },
+  "MirroredLeftoriumBase": {
+   "idle": "NeutralBase",
+   "tapVerb": null
+  },
+  "MirroredLeftoriumTop": {
+   "idle": "NeutralTop",
+   "tapVerb": null
+  },
+  "MirroredStreetlight": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "MirroredToiletGator": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "MissileBunker": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "MoHoHouse": {
+   "idle": "MoHoHouse_Active",
+   "tapVerb": null
+  },
+  "MobCrowd": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "MobileDome": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ModernMansionArtStatue": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ModernMansionAwning": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ModernMansionFountain": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ModernMansionGarage": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ModernMansionLowerBalcony": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ModernMansionMiddleBuilding": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ModernMansionPool": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ModernMansionSideBuilding01": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ModernMansionSideBuilding02": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ModernMansionSolarPanel": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ModernMansionUpperBalcony": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MoesConvertible": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "MoesExpressLemonade": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MoneyMountain": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MoneyPool": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MoneyTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MonkeyBars": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MonorailCanyonBridge": {
+   "idle": "Empty",
+   "tapVerb": null
+  },
+  "MonorailStation": {
+   "idle": "Empty",
+   "tapVerb": null
+  },
+  "MonorailStationMod1": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MonorailStationMod2": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MonorailStationMod3": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MonorailStationMod4": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MonorailTunnel": {
+   "idle": "Empty",
+   "tapVerb": null
+  },
+  "MonorailTunnel_Back": {
+   "idle": "neutral_base",
+   "tapVerb": null
+  },
+  "MonorailTunnel_Front": {
+   "idle": "neutral_top",
+   "tapVerb": null
+  },
+  "MonsterCouch": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MorticianCarriage": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MotorcycleWithSidecar": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MountCarlmore": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MountFuji": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop",
+   "tapVars": [
+    "Active"
+   ]
+  },
+  "MountainTunnel01_Back": {
+   "idle": "MountainTunnel_01_Back",
+   "tapVerb": null
+  },
+  "MountainTunnel01_Front": {
+   "idle": "MountainTunnel_01_Front",
+   "tapVerb": null
+  },
+  "MountainTunnel02_Back": {
+   "idle": "MountainTunnel_02_Back",
+   "tapVerb": null
+  },
+  "MountainTunnel02_Front": {
+   "idle": "MountainTunnel_02_Front",
+   "tapVerb": null
+  },
+  "MountainTunnel03_Back": {
+   "idle": "MountainTunnel_03_Back",
+   "tapVerb": null
+  },
+  "MountainTunnel03_Front": {
+   "idle": "MountainTunnel_03_Front",
+   "tapVerb": null
+  },
+  "MovementarianAdTruck": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "MovementarianRecruiters": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "MrMcGrewsStovepipeOven": {
+   "idle": "McGrewOvenController",
+   "tapVerb": null
+  },
+  "MrPlowsPlow": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "MrPowersCar": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MrSparkleBillboard": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "MtSplashmoreSlide": {
+   "idle": "MtSplashmoreActive",
+   "tapVerb": null
+  },
+  "MulberryIsland": {
+   "idle": "MulberryIslandBase",
+   "tapVerb": null
+  },
+  "MulberryIsland_Top": {
+   "idle": "MulberryIslandTop",
+   "tapVerb": null
+  },
+  "MultiColoredSpotlight": {
+   "idle": "Neutral",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "MultiVac": {
+   "idle": "MultiVac_Neutral",
+   "tapVerb": null
+  },
+  "MurderedSnowman": {
+   "idle": "Neutral",
+   "tapVerb": "Tap"
+  },
+  "Murderhorn": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Murderpuss": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "MuseumOfZippers": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "MusicAutomaton": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "NWBMonorailBridgeSub": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "NWCBridgeFixedTop": {
+   "idle": "NWCBridgeFixedTop",
+   "tapVerb": null
+  },
+  "NativityScene": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "NaturalFabergeEgg": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "NedsPlowCar": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "NerosFountain": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "NerosPalaceArch": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "NerosWall": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "NewYearsBall": {
+   "idle": "NewYearsBallDrop",
+   "tapVerb": "Tap1"
+  },
+  "NewarkNewarkSign": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "NewspaperDispenser": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "NightmarePile": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "NinjaHomerPracticeSnake": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "NorthPoleStation": {
+   "idle": "Empty",
+   "tapVerb": null
+  },
+  "NorthPoleStationBase": {
+   "idle": "NeutralBase",
+   "tapVerb": null
+  },
+  "NorthPoleStationTop": {
+   "idle": "NeutralTop",
+   "tapVerb": null
+  },
+  "NotALaserSharkPool": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "NotResponsibleForInjuriesPark": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "NothingToSeeHereSecretFoliage": {
+   "idle": "NothingToSeeHere_Neutral",
+   "tapVerb": "ActiveNoLoop",
+   "tapVars": [
+    "State"
+   ]
+  },
+  "ObstacleShrub": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "OceanSuite": {
+   "idle": null,
+   "tapVerb": "Tap_Base"
+  },
+  "OceanSuiteTop": {
+   "idle": "BeachSuiteTop",
+   "tapVerb": null
+  },
+  "OdinsOfShelbyville": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "OfferingStone": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "OilWell": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "OktoberfestGate": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "OldEnglishStation": {
+   "idle": "Empty",
+   "tapVerb": null
+  },
+  "OldEnglishStationBase": {
+   "idle": "NeutralBase",
+   "tapVerb": null
+  },
+  "OldEnglishStationTop": {
+   "idle": "NeutralTop",
+   "tapVerb": null
+  },
+  "OldFaithless": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "OldGrayMare": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "OldMine": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "OldPhoneBooth": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "OldRuins": {
+   "idle": "DigSite_Neutral",
+   "tapVerb": null
+  },
+  "OldTreeSpirit": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "OldWestStageBackground": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "OlmecHead": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "OrangeHouse": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "OrangePrideHydrant": {
+   "idle": "Neutral_Orange",
+   "tapVerb": "Active_OrangeNoLoop"
+  },
+  "OrbOfIsis": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "OriginalBrownHouse": {
+   "idle": "OriginalBrownHouse_Active",
+   "tapVerb": null
+  },
+  "OrnatePier": {
+   "idle": "base",
+   "tapVerb": null
+  },
+  "OrnatePier_Back": {
+   "idle": "backarch",
+   "tapVerb": null
+  },
+  "OrnatePier_Front": {
+   "idle": "frontarch",
+   "tapVerb": null
+  },
+  "OrphanAlley": {
+   "idle": "Neutral_Base",
+   "tapVerb": null
+  },
+  "OrphanAlley_Back": {
+   "idle": "Neutral_Top",
+   "tapVerb": null
+  },
+  "OrphanAlley_Back2": {
+   "idle": "Neutral_Top2",
+   "tapVerb": null
+  },
+  "OrphanAlley_Back3": {
+   "idle": "Neutral_Top3",
+   "tapVerb": null
+  },
+  "OrthodoxAmbulance": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "OscarsObstaclesTruck": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "OutdoorFeastTableSeat": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "OutdoorHalfCourt": {
+   "idle": "Neutral",
+   "tapVerb": "Active_02",
+   "tapVars": [
+    "LastShot",
+    "SuccessRate"
+   ]
+  },
+  "PaDubbaTheDubsteppa": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "PaZIFFicPrincess": {
+   "idle": "Neutral_Base",
+   "tapVerb": null
+  },
+  "PaZIFFicPrincess_Top": {
+   "idle": "Neutral_Top",
+   "tapVerb": null
+  },
+  "PaddyWagon": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "PaganCauldron": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PaganHall": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PaganHut": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PageantStage": {
+   "idle": "PageantStageController",
+   "tapVerb": null
+  },
+  "Pagoda": {
+   "idle": null,
+   "tapVerb": "Active15Loops"
+  },
+  "PainlessDentistry": {
+   "idle": "EspionageMode_Neutral_Simple",
+   "tapVerb": null
+  },
+  "PaintedHome1": {
+   "idle": "PaintedNeutral",
+   "tapVerb": null
+  },
+  "PaintedHome2": {
+   "idle": "PaintedNeutral",
+   "tapVerb": null
+  },
+  "PaintedHome3": {
+   "idle": "PaintedNeutral",
+   "tapVerb": null
+  },
+  "PaintedHome4": {
+   "idle": "PaintedNeutral",
+   "tapVerb": null
+  },
+  "PaintedHome5": {
+   "idle": "PaintedNeutral",
+   "tapVerb": null
+  },
+  "PaintedHome6": {
+   "idle": "PaintedNeutral",
+   "tapVerb": null
+  },
+  "PaintedHome7": {
+   "idle": "PaintedNeutral",
+   "tapVerb": null
+  },
+  "PaintedHome8": {
+   "idle": "PaintedNeutral",
+   "tapVerb": null
+  },
+  "PaintedHome9": {
+   "idle": "PaintedNeutral",
+   "tapVerb": null
+  },
+  "PaintedHorse": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ParachuteTarget": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Parcology": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ParentsIslandGate": {
+   "idle": "Base",
+   "tapVerb": null
+  },
+  "ParentsIslandGateEast": {
+   "idle": "Active_East",
+   "tapVerb": null
+  },
+  "ParentsIslandGateSouth": {
+   "idle": "Active_South",
+   "tapVerb": null
+  },
+  "ParkedHoverCar": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ParkingLot": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ParkingLotLotLot_LightPoles": {
+   "idle": "ParkingLotLotLot_Top",
+   "tapVerb": null
+  },
+  "ParkingMeter": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PartyElephant": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PartyLimo": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PastelPicketFence": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PatioTable": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PatrioticBoxOfFireworks": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PavilionTent1": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PavilionTent2": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PavilionTent3": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PeaceMarkerRayGun": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "PeopleCatcherTruck": {
+   "idle": null,
+   "tapVerb": "PeopleCatcherTruckController"
+  },
+  "PerfectBeerTruck": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PerfectGameBalloon": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PersonalizedTalkingAstrolabe": {
+   "idle": null,
+   "tapVerb": "Active"
+  },
+  "PetCemetery": {
+   "idle": "CemeteryIdle",
+   "tapVerb": null
+  },
+  "PhoneBooth": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PhoneBooth2": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PicnicSpot": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "PieApult": {
+   "idle": null,
+   "tapVerb": "TapTwoRandom"
+  },
+  "PieManEpicStatue": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PieWall": {
+   "idle": "Empty",
+   "tapVerb": null,
+   "tapVars": [
+    "PieState",
+    "PieStateAnim"
+   ]
+  },
+  "PiesAndExplosivesPile": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PigsOfParadisePen": {
+   "idle": "Neutral",
+   "tapVerb": null,
+   "tapVars": [
+    "Tap"
+   ]
+  },
+  "PileOfPresents": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "TapState"
+   ]
+  },
+  "PinkBouncyHorse": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "PinkEggBasket": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PinkHouse": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PinkbeardyYogurt": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "PinwheelFirework": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PirateShip": {
+   "idle": "Neutral_Base",
+   "tapVerb": "Active_BaseNoLoop"
+  },
+  "PirateShipTop": {
+   "idle": "Neutral_Top",
+   "tapVerb": null
+  },
+  "Plane": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PlaneBot": {
+   "idle": "Neutral02",
+   "tapVerb": "Active02",
+   "tapVars": [
+    "State"
+   ]
+  },
+  "Planter": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PlasticPrison": {
+   "idle": "PlasticPrison_ActiveOnOff",
+   "tapVerb": null,
+   "tapVars": [
+    "PlasticPrisonActive"
+   ]
+  },
+  "PlowKingsPlow": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PodPatch": {
+   "idle": "PodPatchActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "PoliceBoat": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "PoliceCallBox": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "PoliceCar": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PoliceHelicopter": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "PoliceMotorcycle": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "PoliceTank": {
+   "idle": null,
+   "tapVerb": "Active03"
+  },
+  "PoloField": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PompeiiRuins": {
+   "idle": null,
+   "tapVerb": "Active"
+  },
+  "PoochieParadeBalloon": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PoochiesCar": {
+   "idle": "PoochiesCar_Active",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PopStage": {
+   "idle": "PopStage_OverlayController",
+   "tapVerb": null
+  },
+  "PopcornStand": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PoppaWheelies": {
+   "idle": "PoppaWheelies_Active",
+   "tapVerb": null
+  },
+  "PopsicleStickDiscoStu": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PopsicleStickPattyAndSelma": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PopsicleStickSkyscraper": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PortalGateLeft": {
+   "idle": "PortalGateLeft",
+   "tapVerb": null
+  },
+  "PortalGateRight": {
+   "idle": "PortalGateRight",
+   "tapVerb": null
+  },
+  "PortalGateTop": {
+   "idle": "PortalGateTop",
+   "tapVerb": null
+  },
+  "PortalToRigel7": {
+   "idle": "PortalGateBase",
+   "tapVerb": null
+  },
+  "PotBellyPigeonFeeder": {
+   "idle": "BuildingActiveTap",
+   "tapVerb": "Tap"
+  },
+  "PotOGoldFloat": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PowerPlantBuildings": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PowerPlantLot": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PrehistoricJungle": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PresentDepot": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PrideBillboard": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PrideCar": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "PrideCrosswalk_Blue": {
+   "idle": "Active_Blue",
+   "tapVerb": null
+  },
+  "PrideCrosswalk_Green": {
+   "idle": "Active_Green",
+   "tapVerb": null
+  },
+  "PrideCrosswalk_Orange": {
+   "idle": "Active_Orange",
+   "tapVerb": null
+  },
+  "PrideCrosswalk_Red": {
+   "idle": "Active_Red",
+   "tapVerb": null
+  },
+  "PrideCrosswalk_Yellow": {
+   "idle": "Active_Yellow",
+   "tapVerb": null
+  },
+  "Princess": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "PrisonBus": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PrivateIsland": {
+   "idle": "privateislandbase",
+   "tapVerb": null
+  },
+  "PrivateIsland2": {
+   "idle": "privateislandbase",
+   "tapVerb": null
+  },
+  "PrivateIsland3": {
+   "idle": "privateislandbase",
+   "tapVerb": null
+  },
+  "PrivateIsland4": {
+   "idle": "privateislandbase",
+   "tapVerb": null
+  },
+  "PrivateIsland_Complete": {
+   "idle": "privateislandbase",
+   "tapVerb": null
+  },
+  "ProjectBoard": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PromPhotoBooth": {
+   "idle": "Active_01",
+   "tapVerb": null
+  },
+  "PterodactylNest": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "PublicRestroomWithConfusingSignage": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "PumpkinCarriage": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "PumpkinPatch": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PurpleBouncyHorse": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "PurplePracticeSnake": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "PurplePrideHydrant": {
+   "idle": "Neutral_Purple",
+   "tapVerb": "Active_PurpleNoLoop"
+  },
+  "Pylon": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Pyre": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "QuantumTunnel": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "QueasyDuffTopiary": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "QueensCarriage": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "QueensGuard": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Quicksand": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Quimborghini": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "RabbitHedge": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "RadMobile": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "RadioactiveManBillboard": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "RadioactiveManBillboard01": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "RainbowFlag": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "RainbowTree": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "RaptureBus": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "RatTrapDeliveryTruck": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "RayGun": {
+   "idle": "Neutral",
+   "tapVerb": "Active_Miss"
+  },
+  "RealityChannelVan": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Reanimator": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "RecyclingBin": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "RedBrickWall": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "RedDragon": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "RedElectricCar": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "RedNerdKnight": {
+   "idle": "OccasionalActiveZiffCorpSignDec",
+   "tapVerb": null
+  },
+  "RedNerdMage": {
+   "idle": "OccasionalActiveZiffCorpSignDec",
+   "tapVerb": null
+  },
+  "RedNerdRogue": {
+   "idle": "OccasionalActiveZiffCorpSignDec",
+   "tapVerb": null
+  },
+  "RedNerdWarrior": {
+   "idle": "OccasionalActiveZiffCorpSignDec",
+   "tapVerb": null
+  },
+  "RedPracticeSnake": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "RedPrideHydrant": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "RedstarBarge": {
+   "idle": "RedstarBargeBase",
+   "tapVerb": null
+  },
+  "RedstarBarge_Top": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "RedstarHelicopter": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "Refrigeratorium": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Reindeer": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "RemorsefulDuffTopiary": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ResidentialMailbox": {
+   "idle": "Generic_Three_Way_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "RetirementCastleExcursionShuttle": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "ReunionLimo": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "RigellianInfantPodTransmitter": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "RigellianQueen": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "RigellianShrub": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "RingToss": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "RoadMonsterXXXL550": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "RoadsideCarFootballLauncher": {
+   "idle": null,
+   "tapVerb": "Tap02"
+  },
+  "RobbyTheAutomaton": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "RobotAnt1": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "RobotAnt2": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "RobotAnt3": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "RobotAnt4": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "RobotHomer": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "RobotWalker": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "RockAndAHardPlace": {
+   "idle": "RockAndAHardPlace_Active",
+   "tapVerb": null
+  },
+  "RockCampEntrance": {
+   "idle": "BridgeBase",
+   "tapVerb": null
+  },
+  "RockCampEntranceEast": {
+   "idle": "RockCampGateEast",
+   "tapVerb": null
+  },
+  "RockCampEntranceSouth": {
+   "idle": "RockCampGateSouth",
+   "tapVerb": null
+  },
+  "RockNeonSign": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null
+  },
+  "RockPile01": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "RockPile02": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "RockPile03": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "RockStage": {
+   "idle": "RockStage_OverlayController",
+   "tapVerb": null
+  },
+  "RocketLaunchPlatform_Built": {
+   "idle": "RocketLaunch_Neutral",
+   "tapVerb": null
+  },
+  "RocketLaunchPlatform_Farm": {
+   "idle": "RocketLaunch_Neutral",
+   "tapVerb": null
+  },
+  "RocketPigs": {
+   "idle": "MakeAMeatAngelController",
+   "tapVerb": null
+  },
+  "RollerCoasterWeirdos": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "RommelwoodStatue": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "RonaldReaganReeducationCenter": {
+   "idle": "ReeducationCenter_Neutral",
+   "tapVerb": null
+  },
+  "RoseArch": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "RoseBush": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Rowboat": {
+   "idle": "Neutral_Base",
+   "tapVerb": null
+  },
+  "RowboatTop": {
+   "idle": "Neutral_Top",
+   "tapVerb": null
+  },
+  "RoyalMyPod": {
+   "idle": "RoyalMyPod_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "Active01",
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "RudeCrowd": {
+   "idle": "Crowd_Neutral",
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "Ruins": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "RustyTheClownParadeBalloon": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SCurveTrack": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SPDBlimp": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SPF60Adventure": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SWATVan": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SacredParchment": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SaltMandala": {
+   "idle": "Generic_Three_Way_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "SandBunker": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "SandTrapATV": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SandsOfSpaceBattleCar": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SandsOfSpaceBillboard": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "SandsOfSpaceCostumeRack": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "SandsOfSpaceCrystalMonument": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "SandsOfSpaceExteriorSet": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SandsOfSpaceInteriorSet": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "SandsOfSpaceLaserDrill": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SandsOfSpaceSpaceship": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "SantaTeresaTram": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SantasLittleHelperSnowdog": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SantasLittleHelperSnowdog_NoBonus": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SantasLittleHelperTopiary": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SantasPlaneSled": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SatansAnvil": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SatansPath": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SatelliteStation": {
+   "idle": "Neutral",
+   "tapVerb": "Tap"
+  },
+  "ScammerAndZDogVendingMachine": {
+   "idle": "ScammerVdogVending_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ScammerVdogVendingArrangement"
+   ]
+  },
+  "ScaryDock": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "SchoolBus": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Scooter": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ScoutTent": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "ScratchyParkingLot": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "ScratchyParkingLot"
+   ]
+  },
+  "ScreamapillarPond": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SeasonalWorkers": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "SecretAgentCar": {
+   "idle": "EspionageMode_Neutral_Simple",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SecretBusShelter": {
+   "idle": "EspionageMode_Neutral_Simple",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SecretSingingStone": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SeeSaw": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SelfFlyingSled": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SensoryDeprivationTank": {
+   "idle": "GenericInOut_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "SepulchreOfEvil": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SerfsonsHouse": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "ShamrockTopiary": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ShinningHotel": {
+   "idle": "Active_6",
+   "tapVerb": null
+  },
+  "ShintoShrine": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Shipwreck": {
+   "idle": "Active_Bottom",
+   "tapVerb": null
+  },
+  "Shipwreck_Top": {
+   "idle": "Active_Top",
+   "tapVerb": null
+  },
+  "ShivaStatue": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ShootingCar": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ShoppingCartPileUp": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "ShowerComputer": {
+   "idle": "NeutralNoLoop",
+   "tapVerb": "Tap"
+  },
+  "Shrub00": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Shrub01": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Shrub02": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Shrub03": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Shrub04": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SiddmarthasPonies": {
+   "idle": "Generic_Three_Way_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "SideshowMelMonsterTruck": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SideshowMelSleigh": {
+   "idle": "NeutralFastBreak",
+   "tapVerb": null
+  },
+  "SideshowYou": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SimpsonCarPosIBot": {
+   "idle": "RiseOfTheRobotsInOut_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "SimpsonsDerbyCar": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SimpsonsGingerbreadCouch": {
+   "idle": "Empty",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "SimpsonsHouseboat": {
+   "idle": "SimpsonsBoatBase",
+   "tapVerb": null
+  },
+  "SimpsonsHoverCar": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SingingStone1": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SingingStone2": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SingingStone3": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SingingStone4": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SingingStone5": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SingingStone6": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SingingStone7": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SirLoveALot": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SirenMasthead": {
+   "idle": "Neutral_Base",
+   "tapVerb": null
+  },
+  "SirenMastheadTop": {
+   "idle": "Neutral_Top",
+   "tapVerb": null
+  },
+  "SitNRotate": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "SkiLift": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SkinnerBoxKite": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SkipsDiner": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SkullIsland": {
+   "idle": "Neutral_Base",
+   "tapVerb": null
+  },
+  "SkullIsland_Top": {
+   "idle": "Neutral_Top",
+   "tapVerb": null
+  },
+  "SkyFingerMonument": {
+   "idle": "SkyFingerMonumentController",
+   "tapVerb": null
+  },
+  "Skylight": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null
+  },
+  "SleazyDuffTopiary": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Slide": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SlimuAuditorium": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "SmallGiftBag": {
+   "idle": "Neutral",
+   "tapVerb": "Opening_Water"
+  },
+  "SmallHedge": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SmallIceberg": {
+   "idle": "Neutral_Base",
+   "tapVerb": null
+  },
+  "SmallIceberg_Top": {
+   "idle": "Neutral_Top",
+   "tapVerb": null
+  },
+  "SmallIsland1": {
+   "idle": "SmallIsland01Base",
+   "tapVerb": null
+  },
+  "SmallIsland1_Top": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SmallIsland2": {
+   "idle": "SmallIsland02Base",
+   "tapVerb": null
+  },
+  "SmallIsland2_Top": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SmallIsland3": {
+   "idle": "SmallIsland03Base",
+   "tapVerb": null
+  },
+  "SmallIsland3_Top": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SmallPaganTent": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SmallPresent": {
+   "idle": "Neutral",
+   "tapVerb": "Opening_Water"
+  },
+  "SmallRubblePile": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "SnakeEgg": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveIN"
+  },
+  "SnakeRocks": {
+   "idle": "OccasionalActiveSnakeDec",
+   "tapVerb": null
+  },
+  "SnakeSpeakers": {
+   "idle": "Neutral",
+   "tapVerb": "QuickActive"
+  },
+  "SnakeStatue": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SnakeStump": {
+   "idle": "OccasionalActiveSnakeDec",
+   "tapVerb": null
+  },
+  "SnakeWithRudolph": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Snapdragon": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SnowMobile": {
+   "idle": "NeutralFastBreak",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "SnowballIISnowcat": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SnowballIISnowcat_NoBonus": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SnowpersonSecurityGuard": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SoccerNet": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SoilantRedFactory": {
+   "idle": "DrCrabsFactory_Active",
+   "tapVerb": null
+  },
+  "SoilantRedFactory_Complete": {
+   "idle": "DrCrabsFactory_Complete_Active",
+   "tapVerb": null
+  },
+  "SolidGoldBrickWall": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SolidGoldFence": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SolvangAir": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SouthPole": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SouthernCrackerFountain": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpaceShuttle": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SpaceSimulator": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SpaceStation": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SpeakerStack": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "SpecialAppleTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpecialBench": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpecialDumpster": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "SpecialFireShrub": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpecialOrangeTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpecialPlanter": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpecialPlayTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpecialWoodenFence": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpellementaryCastleGates": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SpellementaryCastleWalls": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SpellementaryCorridors_East": {
+   "idle": "East",
+   "tapVerb": null
+  },
+  "SpellementaryCorridors_South": {
+   "idle": "South",
+   "tapVerb": null
+  },
+  "SpellementaryCourtyard": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SpellementaryDormitoryTower": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SpellementaryLibrary": {
+   "idle": "SpellementaryLibrary_Active",
+   "tapVerb": null
+  },
+  "SpiderBartTrees": {
+   "idle": "GenericInOut_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "SpiderWillie": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SpookyBrambles": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SpookyDarkPlunger": {
+   "idle": null,
+   "tapVerb": "Tap",
+   "tapVars": [
+    "Toggle"
+   ]
+  },
+  "SpookyGorge": {
+   "idle": "SpookyGorgeActive",
+   "tapVerb": "Tap"
+  },
+  "SpookyGrove": {
+   "idle": "Active",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SpookyShed": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SpookyTent": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SpookyTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpookyWall": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpringKingNedsConvertible": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SpringfieldAirport": {
+   "idle": "Airport",
+   "tapVerb": null
+  },
+  "SpringfieldAirport_Base": {
+   "idle": "Base",
+   "tapVerb": null
+  },
+  "SpringfieldAirport_Plane": {
+   "idle": "Airplane",
+   "tapVerb": null
+  },
+  "SpringfieldAquarium": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "SpringfieldBBQFestEast": {
+   "idle": "SpringfieldBBQFestEastController",
+   "tapVerb": null
+  },
+  "SpringfieldBBQFestMid": {
+   "idle": "SpringfieldBBQFestMidController",
+   "tapVerb": null
+  },
+  "SpringfieldBBQFestNorth": {
+   "idle": "Neutral_North",
+   "tapVerb": null
+  },
+  "SpringfieldBBQFestSouth": {
+   "idle": "SpringfieldBBQFestSouthController",
+   "tapVerb": null
+  },
+  "SpringfieldBBQFestWest": {
+   "idle": "SpringfieldBBQFestWestController",
+   "tapVerb": null
+  },
+  "SpringfieldCemetery": {
+   "idle": "CemeteryIdle",
+   "tapVerb": null
+  },
+  "SpringfieldChristmasTreeFarm": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpringfieldChristmasTreeFarmEast": {
+   "idle": "SpringfieldChristmasTreeFarmEast_Controller",
+   "tapVerb": null
+  },
+  "SpringfieldChristmasTreeFarmSouth": {
+   "idle": "South_Neutral",
+   "tapVerb": null
+  },
+  "SpringfieldCursedForest": {
+   "idle": "CursedForestController",
+   "tapVerb": null
+  },
+  "SpringfieldDam": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpringfieldDemoDerbySign": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "EastState",
+    "SouthState"
+   ]
+  },
+  "SpringfieldDemoDerbySignEast": {
+   "idle": "DemoDerbySignEastController",
+   "tapVerb": null
+  },
+  "SpringfieldDemoDerbySignSouth": {
+   "idle": "DemoDerbySignSouthController",
+   "tapVerb": null
+  },
+  "SpringfieldDogPark": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SpringfieldDryCleaner": {
+   "idle": "EspionageMode_Neutral_Simple",
+   "tapVerb": null
+  },
+  "SpringfieldFalls": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpringfieldForeverCemetery": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "SpringfieldGamesCauldron": {
+   "idle": "SpringfieldGamesCauldron_Active",
+   "tapVerb": "Active_Out",
+   "tapVars": [
+    "State"
+   ]
+  },
+  "SpringfieldGorge": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SpringfieldHeightsEntrance": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpringfieldHeightsEntranceSmall": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpringfieldHeightsGate": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpringfieldHeightsTunnel": {
+   "idle": "neutral",
+   "tapVerb": null
+  },
+  "SpringfieldHeightsTunnel_Back": {
+   "idle": "back",
+   "tapVerb": null
+  },
+  "SpringfieldHeightsTunnel_Front": {
+   "idle": "front",
+   "tapVerb": null
+  },
+  "SpringfieldHenge": {
+   "idle": "SpringfieldHengeNeutralController",
+   "tapVerb": null
+  },
+  "SpringfieldLake": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpringfieldMaximumSecurityPrisonTop": {
+   "idle": "SpringfieldMaximumSecurityPrisonTop_Neutral",
+   "tapVerb": null
+  },
+  "SpringfieldMemorialBridge": {
+   "idle": "GenericInOut_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "SpringfieldMuseum": {
+   "idle": "SequentialActive2",
+   "tapVerb": null
+  },
+  "SpringfieldMysterySpot": {
+   "idle": "BuildingActiveTap",
+   "tapVerb": "Tap"
+  },
+  "SpringfieldNationalPark": {
+   "idle": null,
+   "tapVerb": "Active",
+   "tapVars": [
+    "Random"
+   ]
+  },
+  "SpringfieldOfTomorrowSign": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpringfieldParkEntrance": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpringfieldPenitentiaryBus": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SpringfieldPetFairBooth": {
+   "idle": "Generic_Four_Way_Toggle_0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "SpringfieldPublicSchoolsSnowmobile": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SpringfieldScaleModel": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SpringfieldSign": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpringfieldSkatePark": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "SpringfieldSwapMeet": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpringfieldSwapMeetEast": {
+   "idle": "Neutral_East",
+   "tapVerb": null
+  },
+  "SpringfieldSwapMeetSouth": {
+   "idle": "Neutral_South",
+   "tapVerb": null
+  },
+  "SpringfieldTireyard": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpringfieldZooEntrance": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "SpringfieldZooEntranceEast": {
+   "idle": "East",
+   "tapVerb": null
+  },
+  "SpringfieldZooEntranceSouth": {
+   "idle": "South",
+   "tapVerb": null
+  },
+  "SpringfieldsLittleItalyEast": {
+   "idle": "SpringfieldsLittleItalyEastController",
+   "tapVerb": null
+  },
+  "SpringfieldsLittleItalySouth": {
+   "idle": "Neutral_South",
+   "tapVerb": null
+  },
+  "SpruceCaboose": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SpyCarriage": {
+   "idle": "EspionageMode_Neutral_Simple",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SquidAndSailor": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "SquidportEntrance": {
+   "idle": "Base",
+   "tapVerb": null
+  },
+  "Squidport_Back": {
+   "idle": "backarch",
+   "tapVerb": null
+  },
+  "Squidport_Front": {
+   "idle": "frontarch",
+   "tapVerb": null
+  },
+  "SquisheeMachineBot": {
+   "idle": "RiseOfTheRobotsInOut_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "StackingSheep": {
+   "idle": "Empty",
+   "tapVerb": null,
+   "tapVars": [
+    "SheepState",
+    "SheepStateAnim"
+   ]
+  },
+  "StadiumBleachers01": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "StadiumBleachers02": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "StadiumBleachers03": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "StadiumEntrance": {
+   "idle": "SequentialActive4",
+   "tapVerb": null
+  },
+  "StadiumFence": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "StadiumLights": {
+   "idle": "Neutral",
+   "tapVerb": "Active",
+   "tapVars": [
+    "Toggle"
+   ]
+  },
+  "StampyParadeBalloon": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "StandardStationBase": {
+   "idle": "NeutralBase",
+   "tapVerb": null
+  },
+  "StandardStationTop": {
+   "idle": "NeutralTop",
+   "tapVerb": null
+  },
+  "StardustDriveIn": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "StarlineCommander": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "StolenBumperCar": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "StoneGate": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "StoneGateEast": {
+   "idle": "Neutral_East",
+   "tapVerb": null
+  },
+  "StoneGateSouth": {
+   "idle": "Neutral_South",
+   "tapVerb": null
+  },
+  "StoneOfTriumph": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "StonecutterTable": {
+   "idle": "Neutral2",
+   "tapVerb": null
+  },
+  "StonecutterTableSeat": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "StopSign": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "StormyIsland": {
+   "idle": "Neutral_Base",
+   "tapVerb": "Active_BaseNoLoop"
+  },
+  "StormyIsland_Top": {
+   "idle": "Neutral_Top",
+   "tapVerb": null
+  },
+  "StraightTrack": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "StraightTrack2x": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "StreetSoccerCourt": {
+   "idle": null,
+   "tapVerb": "ActiveThree"
+  },
+  "StrikeThree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "StrupoStatue": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SuffoclockOfSandyDoom": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SugarloafMountain": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SumatranCenturyFlower": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "SummoningCircle": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "Sundial": {
+   "idle": "GenericActive01Neutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "SuperJeb": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SurlyDuffTopiary": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "SurveillancePost": {
+   "idle": "EspionageMode_Neutral_InOut",
+   "tapVerb": null
+  },
+  "SurveillanceVan": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "SwampLand": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "SwapMeetStage": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Swing": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TBallStand": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TabithaVixxStage": {
+   "idle": "Active_01",
+   "tapVerb": "Tap"
+  },
+  "Tailgate": {
+   "idle": "TailgateBottom",
+   "tapVerb": null
+  },
+  "TanBouncyHorse": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "TarPit": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "TarotTable": {
+   "idle": "TarotTableActiveController",
+   "tapVerb": null
+  },
+  "TasteOfDuffTruck": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "TasteOfSpringfieldFestival_East": {
+   "idle": "Neutral_East",
+   "tapVerb": null
+  },
+  "TasteOfSpringfieldFestival_South": {
+   "idle": "Neutral_South",
+   "tapVerb": null
+  },
+  "TaylorHouse": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "TeenysChoiceChimpDiapers": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "TeleporterAlpha": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TeleporterBillboard": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TeleporterOmega": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TeleporterTheta": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TeleporterZeta": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TennisCourt": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TennisMachine": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "TentacleTree": {
+   "idle": "ChickenNeutral",
+   "tapVerb": null
+  },
+  "Terminal": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "TetanusTerminal": {
+   "idle": "Empty",
+   "tapVerb": null
+  },
+  "TetanusTerminalBase": {
+   "idle": "NeutralBase",
+   "tapVerb": null
+  },
+  "TetanusTerminalMod1": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TetanusTerminalMod2": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TetanusTerminalMod3": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TetanusTerminalMod4": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TetanusTerminalTop": {
+   "idle": "NeutralTop",
+   "tapVerb": null
+  },
+  "Tetherball": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "ThanksGivingBalloonBlinky": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ThanksGivingBalloonItchy": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ThanksGivingBalloonSantasLittle": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ThanksGivingBalloonScratchy": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ThanksGivingBalloonSnowball2": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TheActualNorthPoleEast": {
+   "idle": "TheActualNorthPoleEastController",
+   "tapVerb": null
+  },
+  "TheActualNorthPoleSouth": {
+   "idle": "Neutral_South",
+   "tapVerb": null
+  },
+  "TheCollectorLuciteStatue": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TheCollectorsCar": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "TheEmuExperience": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "HabitatLevel"
+   ]
+  },
+  "TheGrandPumpkin": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "TheGrumpleParadeBalloon": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TheHomer": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "TheKillotuine": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "TheMayflower": {
+   "idle": "TheMayflowerBase",
+   "tapVerb": "ActiveBase"
+  },
+  "TheMayflower_Top": {
+   "idle": "TheMayflowerTop",
+   "tapVerb": null
+  },
+  "TheNorthPole": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TheParalyzer": {
+   "idle": null,
+   "tapVerb": "ActiveNoInOrOutNoLoop"
+  },
+  "TheRappinRabbis": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "TheRichTexanSleigh": {
+   "idle": "NeutralFastBreak",
+   "tapVerb": null
+  },
+  "TheRottingPelican": {
+   "idle": "TheRottingPelicanBase",
+   "tapVerb": null
+  },
+  "TheRottingPelican_Top": {
+   "idle": "TheRottingPelicanTop_Neutral",
+   "tapVerb": null
+  },
+  "TheStableAtTheInn": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "TheSunSphere": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TheVoid": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "ThreeEyedSushi": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ThreeEyedWhale": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "TimeMobile": {
+   "idle": "NeutralNoLoop",
+   "tapVerb": null
+  },
+  "TimeSnowboarderDisplay": {
+   "idle": "Empty",
+   "tapVerb": null,
+   "tapVars": [
+    "TimeSnowboarderState",
+    "TimeSnowboarderStateAnim"
+   ]
+  },
+  "TimeTravelDeliveryService": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "TinkleInTheWind": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "TipsyDuffTopiary": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TortureConveyorBelt": {
+   "idle": "TortureConveyorBeltController",
+   "tapVerb": null
+  },
+  "TortureLocker": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "TortureStand": {
+   "idle": "TortureStandController",
+   "tapVerb": null
+  },
+  "TowerOfBabel": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "TowerOfTetanus": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "TownSquare": {
+   "idle": "Active_Base",
+   "tapVerb": null
+  },
+  "TownSquare_East": {
+   "idle": "East",
+   "tapVerb": null
+  },
+  "TownSquare_Middle": {
+   "idle": "Middle",
+   "tapVerb": null
+  },
+  "TownSquare_North": {
+   "idle": "North",
+   "tapVerb": null
+  },
+  "TownSquare_South": {
+   "idle": "South",
+   "tapVerb": null
+  },
+  "TownSquare_West": {
+   "idle": "West",
+   "tapVerb": null
+  },
+  "TowneCentreAtSpringfieldeGlenneEast": {
+   "idle": "TowneCentreAtSpringfieldeGlenneEastController",
+   "tapVerb": null
+  },
+  "TowneCentreAtSpringfieldeGlenneSouth": {
+   "idle": "Neutral_South",
+   "tapVerb": null
+  },
+  "ToxicWasteLake": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "ToyTownEast": {
+   "idle": "ToyTownEastController",
+   "tapVerb": null
+  },
+  "ToyTownSouth": {
+   "idle": "Neutral_South",
+   "tapVerb": null
+  },
+  "ToyTrain": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "TrainingDummy": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TrainingGrounds": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "TrainingPlane": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "TrainingWall": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Trashcan": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TravelingCircus": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Tree00": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Tree01": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Tree02": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Tree03": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Tree04": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Tree05": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Tree06": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Tree07": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Tree08": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TreestachesLair": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TropicalIsland": {
+   "idle": "TropicalIslandBase",
+   "tapVerb": null
+  },
+  "TropicalIsland_Top": {
+   "idle": "TropicalIslandTop",
+   "tapVerb": null
+  },
+  "TruckShack": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "TruckTruckTruck": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Truckasaurus": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "TruckasaurusII": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "TubeSlide": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TundraHopper": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "TurkeyStuffingMachine": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "TwelveDayDryCleaners": {
+   "idle": "EspionageMode_Neutral_Simple",
+   "tapVerb": null
+  },
+  "USArmyAlienHuntingHelicopter": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "USSTomClancy": {
+   "idle": "usstomclancyBottom",
+   "tapVerb": null
+  },
+  "USSTomClancy_Top": {
+   "idle": "usstomclancyTop",
+   "tapVerb": null
+  },
+  "UltraLuxuryYacht": {
+   "idle": "UltraLuxuryYachtBottom",
+   "tapVerb": null
+  },
+  "UltraLuxuryYachtTop": {
+   "idle": "UltraLuxuryYachtTop",
+   "tapVerb": null
+  },
+  "UltranetEast": {
+   "idle": "UltranetEastController",
+   "tapVerb": null
+  },
+  "UltranetSouth": {
+   "idle": "Neutral_South",
+   "tapVerb": null
+  },
+  "UndergroundPiano": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "UnfinishedShed": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "UnidentifiedFlyingPumpkin": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "UnlicensedTaxi": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "UnrulyCrowd": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "CrowdState"
+   ]
+  },
+  "UtersCandyParadise": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "VacantCloud": {
+   "idle": "Generic_Three_Way_Toggle0102",
+   "tapVerb": null,
+   "tapVars": [
+    "ToggleState"
+   ]
+  },
+  "VacationToVenusSign": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ValentinesBalloons": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ValentinesPond": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ValentinesTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ValetBooth": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "VampireCasket": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "VehiclePileup": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "VenusDeMilo": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "VictorianUFO": {
+   "idle": "Active",
+   "tapVerb": "Tap"
+  },
+  "VigilantTownSquare": {
+   "idle": "Active_Base",
+   "tapVerb": "active_base"
+  },
+  "VigilantTownSquare_East": {
+   "idle": "EspionageMode_Neutral_TownSquare_East",
+   "tapVerb": null
+  },
+  "VigilantTownSquare_Middle": {
+   "idle": "EspionageMode_Neutral_TownSquare_Middle",
+   "tapVerb": null
+  },
+  "VigilantTownSquare_North": {
+   "idle": "EspionageMode_Neutral_TownSquare_North",
+   "tapVerb": null
+  },
+  "VigilantTownSquare_South": {
+   "idle": "EspionageMode_Neutral_TownSquare_South",
+   "tapVerb": null
+  },
+  "VigilantTownSquare_West": {
+   "idle": "EspionageMode_Neutral_TownSquare_West",
+   "tapVerb": null
+  },
+  "Vineyard": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "VolleyballNet": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "WWIITank": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "WailingWall": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "WalkOfFameStar": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Warmongers": {
+   "idle": null,
+   "tapVerb": null,
+   "tapVars": [
+    "HabitatLevel"
+   ]
+  },
+  "WatchfulBillboard": {
+   "idle": "EspionageMode_Neutral_Camera",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "WaterShowFountain": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "WaterslideTree": {
+   "idle": "WaterslideTreeController",
+   "tapVerb": null
+  },
+  "Wavewalker": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "WeatherStation": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "WeinerWall": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "WelcomeToSpringfieldArch": {
+   "idle": "Base",
+   "tapVerb": null
+  },
+  "WelcomeToSpringfieldArchEast": {
+   "idle": "Neutral_East",
+   "tapVerb": null
+  },
+  "WelcomeToSpringfieldArchSouth": {
+   "idle": "Neutral_South",
+   "tapVerb": null
+  },
+  "WelcomeToSpringfieldSign": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "WetNWackyWorldSign": {
+   "idle": "Base",
+   "tapVerb": null
+  },
+  "WetNWackyWorldSignEast": {
+   "idle": "East",
+   "tapVerb": null
+  },
+  "WetNWackyWorldSignSouth": {
+   "idle": "South",
+   "tapVerb": null
+  },
+  "WetSariContest": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "WhackAMole": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "WhackingDayBanner": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "WhackingMugsStalls": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "WhackingStickStall": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "WhackingTShirtStall": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Whale": {
+   "idle": "WhaleBase",
+   "tapVerb": "ActiveBase"
+  },
+  "WhaleTop": {
+   "idle": "WhaleTop",
+   "tapVerb": null
+  },
+  "WheatField": {
+   "idle": "WheatField_Controller",
+   "tapVerb": null
+  },
+  "WheelOfChance": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "WhiteDragon": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "WhiteHouse": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "WhiteSpotlight": {
+   "idle": "Neutral",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "WhiteWitchBurnsSleigh": {
+   "idle": "NeutralFastBreak",
+   "tapVerb": null
+  },
+  "WhitewashedFence": {
+   "idle": "NeutralNoLoop",
+   "tapVerb": null
+  },
+  "Wickerman": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "WiggopsPrize1": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "WiggopsPrize2": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "WiggopsPrize3": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "WildAnimalKingdomSign": {
+   "idle": "Base",
+   "tapVerb": null
+  },
+  "WildAnimalKingdomSignEast": {
+   "idle": "East",
+   "tapVerb": null
+  },
+  "WildAnimalKingdomSignSouth": {
+   "idle": "South",
+   "tapVerb": null
+  },
+  "WilliesShack": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "WillysTractor": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "WindSock": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "Windmill": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "Windmill_Grind": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "WineBarrels": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "WishingWell": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "WolfRock": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "WoodChipper": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "WoodenFence": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "WoodenSoldiers": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "WoolyMammothPen": {
+   "idle": "Neutral",
+   "tapVerb": null,
+   "tapVars": [
+    "Tap"
+   ]
+  },
+  "WorkFromHomeStation": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "WorldwideBroadcastDish": {
+   "idle": "Active",
+   "tapVerb": null
+  },
+  "WormTrain": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "WreckedBrownHouse": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "WrestlersDressingRoom": {
+   "idle": "GenericActiveNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "State"
+   ]
+  },
+  "XPCollider": {
+   "idle": "XPColliderChargeCheck",
+   "tapVerb": null
+  },
+  "XRayMachine": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "XRayMachine_SecretAgents": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "XRayTruck": {
+   "idle": "Neutral",
+   "tapVerb": "ActiveNoLoop"
+  },
+  "YeOldeCherryTree": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "YellowDragon": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "YellowElectricCar": {
+   "idle": null,
+   "tapVerb": "ActiveNoLoop"
+  },
+  "YellowPracticeSnake": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "YellowPrideHydrant": {
+   "idle": "Neutral_Yellow",
+   "tapVerb": "Active_YellowNoLoop"
+  },
+  "YellowSubmersible": {
+   "idle": "SubmersibleBottom",
+   "tapVerb": null
+  },
+  "YellowSubmersible_Top": {
+   "idle": "submersibletop",
+   "tapVerb": null
+  },
+  "YokelTruck": {
+   "idle": null,
+   "tapVerb": "Tap"
+  },
+  "YouOnlyOwnTwice": {
+   "idle": "EspionageMode_Neutral_InOut",
+   "tapVerb": null
+  },
+  "YourPictureOnARembrandt": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ZenithCityBin": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ZenithCityMailBox": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ZiffCorpSign": {
+   "idle": "OccasionalActiveZiffCorpSignDec",
+   "tapVerb": null
+  },
+  "ZiffMansion": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ZombieSandwich": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ZombieYearsBillboard": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "ZombiesAndGhoulsBillboard": {
+   "idle": "GenericActiveInOutNeutral_Toggle",
+   "tapVerb": null,
+   "tapVars": [
+    "ActiveIn",
+    "ActiveOut",
+    "State"
+   ]
+  },
+  "ZooViewingPlatform": {
+   "idle": "GenericActiveNeutral_Tap",
+   "tapVerb": "Tap"
+  },
+  "Zoominator": {
+   "idle": "Neutral",
+   "tapVerb": null
+  },
+  "ZoominatorStraightShort": {
+   "idle": "Neutral",
+   "tapVerb": null
+  }
+ },
+ "layers": {
+  "50ftMagnifyingGlass": [
+   "Neutral"
+  ],
+  "EscalatorToNowhere": [
+   "StairsUL",
+   "Stairs",
+   "Characters",
+   "StairsOV"
+  ],
+  "PopsicleStickSkyscraper": [
+   "Neutral"
+  ],
+  "SitNRotate": [
+   "Active"
+  ]
+ },
+ "controllers": {
+  "ArcadeCabinets_Toggle": {
+   "kind": "cycle",
+   "var": "ArcadeCabinetsArrangement",
+   "poses": [
+    "Neutral",
+    "Tap_01",
+    "Tap_02"
+   ]
+  },
+  "Crowd_Neutral": {
+   "kind": "cycle",
+   "var": "CrowdState",
+   "poses": [
+    "Neutral",
+    "Neutral01",
+    "Neutral02"
+   ]
+  },
+  "DuffMcSharkTankController": {
+   "kind": "inout",
+   "var": "State",
+   "in": "Active_In",
+   "loop": "Active",
+   "out": "Active_Out"
+  },
+  "FrontierWagon_Toggle": {
+   "kind": "cycle",
+   "var": "FrontierWagonArrangement",
+   "poses": [
+    "Neutral",
+    "Toggle02",
+    "Toggle01"
+   ]
+  },
+  "GenericActive01Neutral_Toggle": {
+   "kind": "active",
+   "var": "State",
+   "loop": "Active_01"
+  },
+  "GenericActiveInOutNeutral_Toggle": {
+   "kind": "inout",
+   "var": "State",
+   "in": "Active_In",
+   "loop": "Active",
+   "out": "Active_Out"
+  },
+  "GenericActiveNeutral_Toggle": {
+   "kind": "active",
+   "var": "State",
+   "loop": "Active"
+  },
+  "GenericInOut_Toggle": {
+   "kind": "inout",
+   "var": "State",
+   "in": "In",
+   "loop": "Active",
+   "out": "Out"
+  },
+  "GenericThreeWayToggle_Tap1Tap2": {
+   "kind": "cycle",
+   "var": "ToggleState",
+   "poses": [
+    "Neutral",
+    "Tap1",
+    "Tap2"
+   ]
+  },
+  "GenericToggle_Neutral_Toggle": {
+   "kind": "active",
+   "var": "State",
+   "loop": "Toggle"
+  },
+  "GenericTwoWay_Toggle": {
+   "kind": "active",
+   "var": "State",
+   "loop": "Toggle01"
+  },
+  "Generic_Four_Way_Tap_010203": {
+   "kind": "cycle",
+   "var": "ToggleState",
+   "poses": [
+    "Neutral",
+    "Tap01",
+    "Tap02",
+    "Tap03"
+   ]
+  },
+  "Generic_Four_Way_Toggle_0102": {
+   "kind": "cycle",
+   "var": "ToggleState",
+   "poses": [
+    "Neutral",
+    "Toggle_01",
+    "Toggle_02",
+    "Toggle_03"
+   ]
+  },
+  "Generic_Three_Way_Toggle": {
+   "kind": "cycle",
+   "var": "ToggleState",
+   "poses": [
+    "Neutral",
+    "Tap01",
+    "Tap02"
+   ]
+  },
+  "Generic_Three_Way_Toggle0102": {
+   "kind": "cycle",
+   "var": "ToggleState",
+   "poses": [
+    "Neutral",
+    "Toggle02",
+    "Toggle01"
+   ]
+  },
+  "Generic_Three_Way_Toggle_0102": {
+   "kind": "cycle",
+   "var": "ToggleState",
+   "poses": [
+    "Neutral",
+    "Toggle_02",
+    "Toggle_01"
+   ]
+  },
+  "NothingToSeeHere_Neutral": {
+   "kind": "active",
+   "var": "State",
+   "loop": "Neutral2"
+  },
+  "PodPatchActiveInOutNeutral_Toggle": {
+   "kind": "inout",
+   "var": "State",
+   "in": "Active_In",
+   "loop": "Active",
+   "out": "Active_Out"
+  },
+  "RiseOfTheRobotsInOut_Toggle": {
+   "kind": "inout",
+   "var": "State",
+   "in": "In",
+   "loop": "NeutralBot",
+   "out": "Out"
+  },
+  "ScammerVdogVending_Toggle": {
+   "kind": "cycle",
+   "var": "ScammerVdogVendingArrangement",
+   "poses": [
+    "Neutral",
+    "Tap_01",
+    "Tap_02"
+   ]
+  },
+  "TavernTroubleInOut_Toggle": {
+   "kind": "inout",
+   "var": "State",
+   "in": "In",
+   "loop": "Active",
+   "out": "Out"
+  }
+ }
+}

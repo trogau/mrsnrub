@@ -1,0 +1,654 @@
+{
+ "AnimalHabitatWall_Big": {
+  "NE": "ZooWallTallNE",
+  "NW": "ZooWallTallNW",
+  "SE": "ZooWallTallSE",
+  "SW": "ZooWallTallSW"
+ },
+ "AnimalHabitatWall_Small": {
+  "NE": "ZooWallShortNE",
+  "NW": "ZooWallShortNW",
+  "SE": "ZooWallShortSE",
+  "SW": "ZooWallShortSW"
+ },
+ "BarbedWireFence": {
+  "SE": "BarbedWireFenceSE",
+  "SW": "BarbedWireFenceSW",
+  "NE": "BarbedWireFenceNE",
+  "NW": "BarbedWireFenceNW"
+ },
+ "BarnacleBayLamppost": {
+  "SE": "BarnacleBayLampPostSE",
+  "SW": "BarnacleBayLampPostSW",
+  "NE": "BarnacleBayLampPostNE",
+  "NW": "BarnacleBayLampPostNW"
+ },
+ "BeachHideaway": {
+  "SE": "BeachHideawaySE",
+  "SW": "BeachHideawaySW",
+  "NE": "BeachHideawayNE",
+  "NW": "BeachHideawayNW"
+ },
+ "BeachHideawayTop": {
+  "SE": "BeachHideawaySE",
+  "SW": "BeachHideawaySW",
+  "NE": "BeachHideawayNE",
+  "NW": "BeachHideawayNW"
+ },
+ "BiohazardWall": {
+  "SE": "BiohazardWallSE",
+  "SW": "BiohazardWallSW",
+  "NE": "BiohazardWallNE",
+  "NW": "BiohazardWallNW"
+ },
+ "BoardwalkFence": {
+  "SE": "BoardwalkFenceSE",
+  "SW": "BoardwalkFenceSW",
+  "NW": "BoardwalkFenceNW",
+  "NE": "BoardwalkFenceNE"
+ },
+ "BrambleHedge": {
+  "SE": "BrambleWallSE",
+  "SW": "BrambleWallSW",
+  "NE": "BrambleWallNE",
+  "NW": "BrambleWallNW"
+ },
+ "BuzzColaFence": {
+  "NE": "BuzzColaFenceNE",
+  "NW": "BuzzColaFenceNW",
+  "SE": "BuzzColaFenceSE",
+  "SW": "BuzzColaFenceSW"
+ },
+ "CandyCaneFencing": {
+  "NE": "CandyCaneFenceNE",
+  "NW": "CandyCaneFenceNW",
+  "SE": "CandyCaneFenceSE",
+  "SW": "CandyCaneFenceSW"
+ },
+ "CardboardWall": {
+  "SE": "BoxinghamPalaceWallSE",
+  "SW": "BoxinghamPalaceWallSW",
+  "NE": "BoxinghamPalaceWallNE",
+  "NW": "BoxinghamPalaceWallNW"
+ },
+ "ChainFence": {
+  "SE": "ChainLinkFenceSE",
+  "SW": "ChainLinkFenceSW",
+  "NE": "ChainLinkFenceNE",
+  "NW": "ChainLinkFenceNW"
+ },
+ "ChristmasFence": {
+  "SE": "ChristmasFenceSE",
+  "SW": "ChristmasFenceSW",
+  "NE": "ChristmasFenceNE",
+  "NW": "ChristmasFenceNW"
+ },
+ "CircusFence": {
+  "SE": "CircusFenceSE",
+  "SW": "CircusFenceSW",
+  "NE": "CircusFenceNE",
+  "NW": "CircusFenceNW"
+ },
+ "ClassicMansionFrontBalcony": {
+  "SE": "MansionClassicFrontBalconySE",
+  "SW": "MansionClassicFrontBalconySW",
+  "NE": "MansionClassicFrontBalconyNE",
+  "NW": "MansionClassicFrontBalconyNW"
+ },
+ "ClassicMansionSideBalcony": {
+  "SE": "MansionClassicSideBalconySE",
+  "SW": "MansionClassicSideBalconySW",
+  "NE": "MansionClassicSideBalconyNE",
+  "NW": "MansionClassicSideBalconyNW"
+ },
+ "ClassicMansionSmallBalcony": {
+  "SE": "MansionClassicSmallBalconySE",
+  "SW": "MansionClassicSmallBalconySW",
+  "NE": "MansionClassicSmallBalconyNE",
+  "NW": "MansionClassicSmallBalconyNW"
+ },
+ "ConcertLights": {
+  "NE": "ConcertLightsNE",
+  "NW": "ConcertLightsNW",
+  "SE": "ConcertLightsSE",
+  "SW": "ConcertLightsSW"
+ },
+ "ConcreteWall": {
+  "SE": "concretewallse",
+  "SW": "concretewallsw",
+  "NE": "concretewallne",
+  "NW": "concretewallnw"
+ },
+ "CornerTrench": {
+  "SE": "Trench02",
+  "SW": "Trench02Down",
+  "NW": "Trench03",
+  "NE": "Trench02Up"
+ },
+ "CourtKnights": {
+  "SE": "CourtKnightsSE",
+  "SW": "CourtKnightsSW",
+  "NE": "CourtKnightsNE",
+  "NW": "CourtKnightsNW"
+ },
+ "CurveTrack": {
+  "SE": "TrackCurveSE",
+  "SW": "TrackCurveSW",
+  "NW": "TrackCurveNW",
+  "NE": "TrackCurveNE"
+ },
+ "CyclingSpotlight": {
+  "SE": "SpotlightCyclingSE",
+  "SW": "SpotlightCyclingSW",
+  "NE": "SpotlightCyclingNE",
+  "NW": "SpotlightCyclingNW"
+ },
+ "DesertBearSculpture": {
+  "SE": "DesertJunkSculptureBearSE",
+  "SW": "DesertJunkSculptureBearSW",
+  "NE": "DesertJunkSculptureBearNE",
+  "NW": "DesertJunkSculptureBearNW"
+ },
+ "DesertChimpSculpture": {
+  "SE": "DesertJunkSculptureChimpSE",
+  "SW": "DesertJunkSculptureChimpSW",
+  "NE": "DesertJunkSculptureChimpNE",
+  "NW": "DesertJunkSculptureChimpNW"
+ },
+ "DesertCreatureSculpture": {
+  "SE": "DesertJunkSculptureCreatureSE",
+  "SW": "DesertJunkSculptureCreatureSW",
+  "NE": "DesertJunkSculptureCreatureNE",
+  "NW": "DesertJunkSculptureCreatureNW"
+ },
+ "DesertDogSculpture": {
+  "SE": "DesertJunkSculptureDogSE",
+  "SW": "DesertJunkSculptureDogSW",
+  "NE": "DesertJunkSculptureDogNE",
+  "NW": "DesertJunkSculptureDogNW"
+ },
+ "DesertDragonSculpture": {
+  "SE": "DesertJunkSculptureDragonSE",
+  "SW": "DesertJunkSculptureDragonSW",
+  "NE": "DesertJunkSculptureDragonNE",
+  "NW": "DesertJunkSculptureDragonNW"
+ },
+ "DesertGatorSculpture": {
+  "SE": "DesertJunkSculptureGatorSE",
+  "SW": "DesertJunkSculptureGatorSW",
+  "NE": "DesertJunkSculptureGatorNE",
+  "NW": "DesertJunkSculptureGatorNW"
+ },
+ "DesertHorseSculpture": {
+  "SE": "DesertJunkSculpturePonySE",
+  "SW": "DesertJunkSculpturePonySW",
+  "NE": "DesertJunkSculpturePonyNE",
+  "NW": "DesertJunkSculpturePonyNW"
+ },
+ "DesertPersonSculpture": {
+  "SE": "DesertJunkSculpturePersonSE",
+  "SW": "DesertJunkSculpturePersonSW",
+  "NE": "DesertJunkSculpturePersonNE",
+  "NW": "DesertJunkSculpturePersonNW"
+ },
+ "DonutBench": {
+  "SE": "DonutBenchSE",
+  "SW": "DonutBenchSW",
+  "NE": "DonutBenchNE",
+  "NW": "DonutBenchNW"
+ },
+ "DonutFence": {
+  "SE": "DonutFenceSE",
+  "SW": "DonutFenceSW",
+  "NE": "DonutFenceNE",
+  "NW": "DonutFenceNW"
+ },
+ "DonutTrashCan": {
+  "SE": "LardLandTrashCanSE",
+  "SW": "LardLandTrashCanSW",
+  "NE": "LardLandTrashCanNE",
+  "NW": "LardLandTrashCanNW"
+ },
+ "DuffFence": {
+  "NE": "DuffFenceNE",
+  "NW": "DuffFenceNW",
+  "SE": "DuffFenceSE",
+  "SW": "DuffFenceSW"
+ },
+ "EasterFence": {
+  "SE": "EasterFenceSE",
+  "SW": "EasterFenceSW",
+  "NE": "EasterFenceNE",
+  "NW": "EasterFenceNW"
+ },
+ "EasterGate": {
+  "SE": "eastergatese",
+  "SW": "eastergatesw",
+  "NE": "eastergatene",
+  "NW": "eastergatenw"
+ },
+ "EndTrench": {
+  "SE": "Trench04",
+  "NE": "Trench05"
+ },
+ "ExclusiveResortModule2": {
+  "SW": "exclusiveresortwingsw",
+  "SE": "exclusiveresortwingse",
+  "NE": "exclusiveresortwingne",
+  "NW": "exclusiveresortwingnw"
+ },
+ "ExclusiveResortModule3": {
+  "SE": "ExclusiveResortElevatorSE",
+  "SW": "ExclusiveResortElevatorSW",
+  "NE": "ExclusiveResortElevatorNE",
+  "NW": "ExclusiveResortElevatorNW"
+ },
+ "ExclusiveResortModule5": {
+  "NE": "ExclusiveResortBalconyNE",
+  "NW": "ExclusiveResortBalconyNW",
+  "SE": "ExclusiveResortBalconySE",
+  "SW": "ExclusiveResortBalconySW"
+ },
+ "FairBooth": {
+  "SE": "FairBoothSE",
+  "SW": "FairBoothSW",
+  "NW": "FairBoothNW",
+  "NE": "FairBoothNE"
+ },
+ "FancyFence": {
+  "SE": "FancyFenceSE",
+  "SW": "FancyFenceSW",
+  "NE": "FancyFenceNE",
+  "NW": "FancyFenceNW"
+ },
+ "FancyGate": {
+  "SE": "FancyGateSE",
+  "SW": "FancyGateSW",
+  "NE": "FancyGateNE",
+  "NW": "FancyGateNW"
+ },
+ "FestivalFence": {
+  "NE": "FestivalFenceNE",
+  "NW": "FestivalFenceNW",
+  "SE": "FestivalFenceSE",
+  "SW": "FestivalFenceSW"
+ },
+ "FootballUprights": {
+  "SE": "FootballUprightsHome",
+  "NW": "FootballUprightsAway"
+ },
+ "FrontierGate": {
+  "SE": "FrontierFenceGateSE",
+  "SW": "FrontierFenceGateSW",
+  "NE": "FrontierFenceGateNE",
+  "NW": "FrontierFenceGateNW"
+ },
+ "GargoyleWall": {
+  "SE": "GargoyleWallSE",
+  "SW": "GargoyleWallSW",
+  "NW": "GargoyleWallNW",
+  "NE": "GargoyleWallNE"
+ },
+ "GeriatricParkWall": {
+  "SE": "GeriatricParkFenceSE",
+  "SW": "GeriatricParkFenceSW",
+  "NE": "GeriatricParkFenceNE",
+  "NW": "GeriatricParkFenceNW"
+ },
+ "GolfBallWasher": {
+  "SE": "GolfBallWasherSE",
+  "SW": "GolfBallWasherSW",
+  "NE": "GolfBallWasherNE",
+  "NW": "GolfBallWasherNW"
+ },
+ "HeavenlyFence": {
+  "SE": "HeavenFenceSE",
+  "SW": "HeavenFenceSW",
+  "NE": "HeavenFenceNE",
+  "NW": "HeavenFenceNW"
+ },
+ "HieroglyphWall": {
+  "SE": "HieroglyphWallSE",
+  "SW": "HieroglyphWallSW",
+  "NE": "HieroglyphWallNE",
+  "NW": "HieroglyphWallNW"
+ },
+ "Injury500CurveSide": {
+  "SE": "Injury500CurveSide",
+  "SW": "Injury500CurveBack",
+  "NW": "Injury500CurveSideFlipped",
+  "NE": "Injury500CurveFront"
+ },
+ "IronRailing": {
+  "SE": "IronBarFenceSE",
+  "SW": "IronBarFenceSW",
+  "NE": "IronBarFenceNE",
+  "NW": "IronBarFenceNW"
+ },
+ "IronWall": {
+  "SE": "IronWallSE",
+  "SW": "IronWallSW",
+  "NW": "IronWallNW",
+  "NE": "IronWallNE"
+ },
+ "JunkBarrier": {
+  "SE": "JunkFenceSE",
+  "SW": "JunkFenceSW",
+  "NW": "JunkFenceNW",
+  "NE": "JunkFenceNE"
+ },
+ "KrustyStationMod1": {
+  "SE": "KrustyStationModule1SE",
+  "SW": "KrustyStationModule1SW",
+  "NE": "KrustyStationModule1NE",
+  "NW": "KrustyStationModule1NW"
+ },
+ "KrustyStationMod2": {
+  "SE": "KrustyStationModule2SE",
+  "SW": "KrustyStationModule2SW",
+  "NE": "KrustyStationModule2NE",
+  "NW": "KrustyStationModule2NW"
+ },
+ "KrustylandFence": {
+  "SE": "KrustylandFenceSE",
+  "SW": "KrustylandFenceSW",
+  "NW": "KrustylandFenceNW",
+  "NE": "KrustylandFenceNE"
+ },
+ "KrustylandWall": {
+  "NE": "KrustylandWallNE",
+  "NW": "KrustylandWallNW",
+  "SE": "KrustylandWallSE",
+  "SW": "KrustylandWallSW"
+ },
+ "LogRideCurveSide": {
+  "SE": "LogRideCurveSide",
+  "SW": "LogRideCurveBack",
+  "NW": "LogRideCurveSideFlipped",
+  "NE": "LogRideCurveFront"
+ },
+ "LovelyFence": {
+  "SE": "LovelyFenceSE",
+  "SW": "LovelyFenceSW",
+  "NW": "LovelyFenceNW",
+  "NE": "LovelyFenceNE"
+ },
+ "MallStationMod1": {
+  "SE": "MallORailModule1SE",
+  "SW": "MallORailModule1SW",
+  "NE": "MallORailModule1NE",
+  "NW": "MallORailModule1NW"
+ },
+ "MallStationMod2": {
+  "SE": "MallORailModule2SE",
+  "SW": "MallORailModule2SW",
+  "NE": "MallORailModule2NE",
+  "NW": "MallORailModule2NW"
+ },
+ "MedievalGate": {
+  "SE": "MedievalGate01SE",
+  "SW": "MedievalGate01SW",
+  "NW": "MedievalGate01NW",
+  "NE": "MedievalGate01NE"
+ },
+ "MetalBoardwalkRailing": {
+  "SE": "MetalBoardwalkRailingSE",
+  "SW": "MetalBoardwalkRailingSW",
+  "NE": "MetalBoardwalkRailingNE",
+  "NW": "MetalBoardwalkRailingNW"
+ },
+ "MirroredStreetlight": {
+  "SE": "MirroredStreetlightSE",
+  "SW": "MirroredStreetlightSW",
+  "NE": "MirroredStreetlightNE",
+  "NW": "MirroredStreetlightNW"
+ },
+ "ModernMansionLowerBalcony": {
+  "SE": "MansionModernLowerBalconySE",
+  "SW": "MansionModernLowerBalconySW",
+  "NE": "MansionModernLowerBalconyNE",
+  "NW": "MansionModernLowerBalconyNW"
+ },
+ "ModernMansionUpperBalcony": {
+  "SE": "MansionModernUpperBalconySE",
+  "SW": "MansionModernUpperBalconySW",
+  "NE": "MansionModernUpperBalconyNE",
+  "NW": "MansionModernUpperBalconyNW"
+ },
+ "MonorailStationMod1": {
+  "SE": "StandardStationModule1SE",
+  "SW": "StandardStationModule1SW",
+  "NE": "StandardStationModule1NE",
+  "NW": "StandardStationModule1NW"
+ },
+ "MonorailStationMod2": {
+  "SE": "StandardStationModule2SE",
+  "SW": "StandardStationModule2SW",
+  "NE": "StandardStationModule2NE",
+  "NW": "StandardStationModule2NW"
+ },
+ "MovieCamera": {
+  "SE": "MovieCameraSE",
+  "SW": "MovieCameraSW",
+  "NE": "MovieCameraNE",
+  "NW": "MovieCameraNW"
+ },
+ "MovieLight": {
+  "SE": "MovieLightSE",
+  "SW": "MovieLightSW",
+  "NE": "MovieLightNE",
+  "NW": "MovieLightNW"
+ },
+ "MultiColoredSpotlight": {
+  "SE": "SpotlightMultiColoredSE",
+  "SW": "SpotlightMultiColoredSW",
+  "NE": "SpotlightMultiColoredNE",
+  "NW": "SpotlightMultiColoredNW"
+ },
+ "NerosWall": {
+  "SE": "NerosPalaceWallSE",
+  "SW": "NerosPalaceWallSW",
+  "NW": "NerosPalaceWallNW",
+  "NE": "NerosPalaceWallNE"
+ },
+ "NorthPoleMonorailExtension2": {
+  "SE": "NorthPoleStationModule1SE",
+  "SW": "NorthPoleStationModule1SW",
+  "NE": "NorthPoleStationModule1NE",
+  "NW": "NorthPoleStationModule1NW"
+ },
+ "NorthPoleMonorailExtension3": {
+  "SE": "NorthPoleStationModule2SE",
+  "SW": "NorthPoleStationModule2SW",
+  "NE": "NorthPoleStationModule2NE",
+  "NW": "NorthPoleStationModule2NW"
+ },
+ "OrnatePierRailing": {
+  "SE": "OrnatePierRailingSE",
+  "SW": "OrnatePierRailingSW",
+  "NE": "OrnatePierRailingNE",
+  "NW": "OrnatePierRailingNW"
+ },
+ "PaganFence": {
+  "SE": "PaganFenceSE",
+  "SW": "PaganFenceSW",
+  "NW": "PaganFenceNW",
+  "NE": "PaganFenceNE"
+ },
+ "PastelPicketFence": {
+  "SE": "PastelPicketFencesSE",
+  "SW": "PastelPicketFencesSW",
+  "NE": "PastelPicketFencesNE",
+  "NW": "PastelPicketFencesNW"
+ },
+ "PlayscapeBarrier": {
+  "SE": "PlayscapeWallSE",
+  "SW": "PlayscapeWallSW",
+  "NW": "PlayscapeWallNW",
+  "NE": "PlayscapeWallNE"
+ },
+ "PraiselandWall": {
+  "SE": "PraiselandWallSE",
+  "SW": "PraiselandWallSW",
+  "NW": "PraiselandWallNW",
+  "NE": "PraiselandWallNE"
+ },
+ "Rake": {
+  "SE": "RakeSE",
+  "SW": "RakeSW",
+  "NE": "RakeNE",
+  "NW": "RakeNW"
+ },
+ "RicketyFence": {
+  "SE": "RicketyFenceSE",
+  "SW": "RicketyFenceSW",
+  "NE": "RicketyFenceNE",
+  "NW": "RicketyFenceNW"
+ },
+ "RigellianChristmasWall": {
+  "NE": "RigellianXmasWallNE",
+  "NW": "RigellianXmasWallNW",
+  "SE": "RigellianXmasWallSE",
+  "SW": "RigellianXmasWallSW"
+ },
+ "RiotPolice": {
+  "SE": "RiotPoliceSE",
+  "SW": "RiotPoliceSW",
+  "NE": "RiotPoliceNE",
+  "NW": "RiotPoliceNW"
+ },
+ "RuffianBarrier": {
+  "SE": "RuffianFenceSE",
+  "SW": "RuffianFenceSW",
+  "NW": "RuffianFenceNW",
+  "NE": "RuffianFenceNE"
+ },
+ "RunwayPiece2": {
+  "SE": "RunwayPiece02",
+  "SW": "RunwayPiece02Down",
+  "NW": "RunwayPiece03",
+  "NE": "RunwayPiece02Up"
+ },
+ "SCurveTrack": {
+  "SE": "TrackSCurveSE",
+  "SW": "TrackSCurveSW",
+  "NW": "TrackSCurveNW",
+  "NE": "TrackSCurveNE"
+ },
+ "SandstoneStatue": {
+  "NE": "SandstoneStatueNE",
+  "NW": "SandstoneStatueNW",
+  "SE": "SandstoneStatueSE",
+  "SW": "SandstoneStatueSW"
+ },
+ "SmallRubblePile": {
+  "SE": "RubblePileSE",
+  "SW": "RubblePileSW",
+  "NW": "RubblePileNW",
+  "NE": "RubblePileNE"
+ },
+ "SoccerNet": {
+  "SE": "SoccerNetHome",
+  "NW": "SoccerNetAway"
+ },
+ "SoccerNetPremium": {
+  "SE": "SoccerNetHome",
+  "NW": "SoccerNetAway"
+ },
+ "SolidGoldFence": {
+  "SE": "SolidGoldFenceSE",
+  "SW": "SolidGoldFenceSW",
+  "NE": "SolidGoldFenceNE",
+  "NW": "SolidGoldFenceNW"
+ },
+ "SpecialWoodenFence": {
+  "SE": "SpecialWoodenFenceSE",
+  "SW": "SpecialWoodenFenceSW",
+  "NE": "SpecialWoodenFenceNE",
+  "NW": "SpecialWoodenFenceNW"
+ },
+ "SpringfieldPetFairFence": {
+  "SE": "SpringfieldPetFairFenceSE",
+  "SW": "SpringfieldPetFairFenceSW",
+  "NE": "SpringfieldPetFairFenceNE",
+  "NW": "SpringfieldPetFairFenceNW"
+ },
+ "StadiumBleachers01": {
+  "NW": "StadiumBleachers01Back",
+  "SE": "StadiumBleachers01Front"
+ },
+ "StadiumBleachers02": {
+  "NW": "StadiumBleachers02Back",
+  "SE": "StadiumBleachers02Front"
+ },
+ "StadiumBleachers03": {
+  "NW": "StadiumBleachers03Back",
+  "SE": "StadiumBleachers03Front"
+ },
+ "StadiumFence": {
+  "NW": "StadiumFenceNW",
+  "SE": "StadiumFenceSE",
+  "SW": "StadiumFenceSW",
+  "NE": "StadiumFenceNE"
+ },
+ "StadiumLights": {
+  "NW": "StadiumLightsBack",
+  "SE": "StadiumLightsFront",
+  "SW": "StadiumLightsSide",
+  "NE": "StadiumLightsSideFlipped"
+ },
+ "TetanusTerminalMod1": {
+  "SE": "TetanusTerminalModule1SE",
+  "SW": "TetanusTerminalModule1SW",
+  "NE": "TetanusTerminalModule1NE",
+  "NW": "TetanusTerminalModule1NW"
+ },
+ "TetanusTerminalMod2": {
+  "SE": "TetanusTerminalModule2SE",
+  "SW": "TetanusTerminalModule2SW",
+  "NE": "TetanusTerminalModule2NE",
+  "NW": "TetanusTerminalModule2NW"
+ },
+ "TireMooringPost": {
+  "SE": "BoardwalkTirePostSE",
+  "SW": "BoardwalkTirePostSW",
+  "NE": "BoardwalkTirePostNE",
+  "NW": "BoardwalkTirePostNW"
+ },
+ "VelvetRope": {
+  "SE": "VelvetRopeSE",
+  "SW": "VelvetRopeSW",
+  "NE": "VelvetRopeNE",
+  "NW": "VelvetRopeNW"
+ },
+ "VikingBoatRide": {
+  "SE": "VikingBoatSE",
+  "SW": "VikingBoatSW",
+  "NW": "VikingBoatNW",
+  "NE": "VikingBoatNE"
+ },
+ "WhiteSpotlight": {
+  "SE": "SpotlightWhiteSE",
+  "SW": "SpotlightWhiteSW",
+  "NE": "SpotlightWhiteNE",
+  "NW": "SpotlightWhiteNW"
+ },
+ "WhitewashedFence": {
+  "SE": "WhitewashFenceSE",
+  "SW": "WhitewashFenceSW",
+  "NE": "WhitewashFenceNE",
+  "NW": "WhitewashFenceNW"
+ },
+ "WoodenFence": {
+  "SE": "WoodenFenceSE",
+  "SW": "WoodenFenceSW",
+  "NE": "WoodenFenceNE",
+  "NW": "WoodenFenceNW"
+ },
+ "ZoominatorCurveSide": {
+  "SE": "ZoominatorCurveSide",
+  "SW": "ZoominatorCurveBack",
+  "NW": "ZoominatorCurveSideFlipped",
+  "NE": "ZoominatorCurveFront"
+ }
+}

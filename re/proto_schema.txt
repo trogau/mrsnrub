@@ -1,0 +1,1261 @@
+== ClientTelemetry.proto  (package com.ea.simpsons.client.telemetry)
+   deps: PurchaseData.proto
+  message ClientTelemetryMessage
+    optional message clientProvidedTelemetry = 1  // .com.ea.simpsons.client.telemetry.ClientTelemetryMessage.ClientProvidedTelemetry
+    optional message serverProvidedTelemetry = 2  // .com.ea.simpsons.client.telemetry.ClientTelemetryMessage.ServerProvidedTelemetry
+    repeated message nimbleProvidedTelemetry = 3  // .com.ea.simpsons.client.telemetry.ClientTelemetryMessage.NimbleExtractedTelemetry
+    message ClientTelemetryMessage.ClientProvidedTelemetry
+      optional int64 timeStamp = 1
+      optional string userId = 2
+      optional message clientTelemetryId = 3  // .com.ea.simpsons.client.telemetry.ClientTelemetryIdentifier
+      optional float fps_min = 4
+      optional float fps_max = 5
+      optional float fps_average = 6
+      repeated message applicationGUIDs = 7  // .com.ea.simpsons.client.telemetry.ClientApplicationGUID
+      optional int64 sessionStartTimestamp = 8
+      repeated message userAccountIds = 9  // .com.ea.simpsons.client.telemetry.ClientAccountId
+      optional message sharedSessionGUID = 10  // .com.ea.simpsons.client.telemetry.SharedSessionGUID
+      optional int64 touchesDuringSession = 11
+      optional message totalAvailableMemory = 12  // .com.ea.simpsons.client.telemetry.ClientTelemetryMessage.ClientProvidedTelemetry.MemoryStat
+      optional message freeMemory = 13  // .com.ea.simpsons.client.telemetry.ClientTelemetryMessage.ClientProvidedTelemetry.MemoryStat
+      optional message usedMemory = 14  // .com.ea.simpsons.client.telemetry.ClientTelemetryMessage.ClientProvidedTelemetry.MemoryStat
+      optional int64 physicalMemory = 15
+      optional int64 userMemory = 16
+      optional int64 sessionMismatchAskDisplayed = 17
+      optional int64 sessionMismatchConfirmDisplayed = 18
+      optional int64 sessionMismatchConfirmAccepted = 19
+      optional message dlcInfo = 20  // .com.ea.simpsons.client.telemetry.ClientTelemetryMessage.ClientProvidedTelemetry.DlcInfo
+      message ClientTelemetryMessage.ClientProvidedTelemetry.MemoryStat
+        optional int64 min = 1
+        optional int64 max = 2
+        optional float average = 3
+      message ClientTelemetryMessage.ClientProvidedTelemetry.DlcInfo
+        optional uint32 numPackageCrcChecksFailed = 1
+        optional uint32 numPackageDsaSignaturesInvalid = 2
+        optional uint32 numPackagesToDownload = 3
+        optional uint32 assetTierTargeted = 4
+        optional uint64 sizeExpectedKB = 5
+        optional uint64 sizeDownloadedKB = 6
+        optional float downloadTimeSeconds = 7
+        optional string downloadUrl = 8
+    message ClientTelemetryMessage.ServerProvidedTelemetry
+      optional int64 millisTimeStamp = 1
+      optional string authUserId = 2
+      optional string bgClientVersion = 3
+      optional string mhClientVersion = 4
+      optional string clientPlatform = 5
+      optional message serverTelemetryId = 6  // .com.ea.simpsons.client.telemetry.ServerTelemetryIdentifier
+      optional string clientRequestCountryCode = 7
+      optional string dlcHashHeader = 8
+    message ClientTelemetryMessage.NimbleExtractedTelemetry
+      optional string nimbleSessionId = 1
+  message ClientTelemetryIdentifier
+    optional string id = 1
+  message ServerTelemetryIdentifier
+    optional string id = 1
+  message ClientApplicationGUID
+    optional enum deviceIdType = 1  // .Data.DeviceId
+    optional string id = 2
+  message ClientAccountId
+    optional enum idType = 1  // .com.ea.simpsons.client.telemetry.ServiceAccountId
+    optional string idValue = 2
+  message SharedSessionGUID
+    optional enum sessionMessageType = 1  // .com.ea.simpsons.client.telemetry.SessionMessageType
+    optional message sessionIdentifier = 2  // .com.ea.simpsons.client.telemetry.ClientTelemetryIdentifier
+  enum ServiceAccountId: LAND_MAYHEM_ID=1, TNT_ID=2, SYNERGY_ID=3, NUCLEUS_ID=4, FACEBOOK_ID=5
+  enum SessionMessageType: DEFAULT_NONE=1, START=2, END=3
+
+== GameplayConfigData.proto  (package Data)
+   deps: Error.proto, Common.proto
+  message GameplayConfigResponse
+    repeated message item = 1  // .Data.NameValue
+    optional message error = 2  // .Data.ErrorMessage
+
+== GetFriendData.proto  (package Data)
+   deps: LandData.proto, Error.proto
+  message GetFriendDataRequest
+    repeated string friendId = 1
+  message GetFriendDataResponse
+    repeated message friendData = 1  // .Data.GetFriendDataResponse.FriendDataPair
+    optional message error = 2  // .Data.ErrorMessage
+    message GetFriendDataResponse.FriendDataPair
+      optional string friendId = 1
+      optional message friendData = 2  // .Data.LandMessage.FriendData
+      optional message error = 3  // .Data.GetFriendDataResponse.FriendDataPair.FriendDataError
+      optional enum authService = 4  // .Data.GetFriendDataResponse.FriendDataPair.AuthService
+      optional string externalId = 5
+      enum AuthService: NUCLEUS=0, FACEBOOK=1
+      message GetFriendDataResponse.FriendDataPair.FriendDataError
+        optional int32 code = 1
+        optional string type = 2
+
+== Common.proto  (package Data)
+  message NameValue
+    optional string name = 1
+    optional string value = 2
+  message NameValueSet
+    repeated message nameValueSet = 1  // .Data.NameValue
+
+== WholeLandTokenData.proto  (package Data)
+  message WholeLandTokenRequest
+    optional string requestId = 1
+  message WholeLandTokenResponse
+    optional string token = 1
+    optional bool conflict = 2
+  message DeleteTokenRequest
+    optional string token = 1
+  message DeleteTokenResponse
+    optional bool result = 1
+
+== PurchaseData.proto  (package Data)
+  message PurchasedItemData
+    optional string productId = 1
+    optional string purchasePrice = 2
+    optional int64 purchaseDate = 3
+  message CurrencyData
+    optional string id = 1
+    optional int32 vcTotalPurchased = 2
+    optional int32 vcTotalAwarded = 3
+    optional int32 vcBalance = 4
+    optional int64 createdAt = 5
+    optional int64 updatedAt = 6
+    optional int32 unverified = 7
+  message PurchaseErrorData
+    optional int32 code = 1
+    optional string type = 2
+  message PurchaseResponseMessage
+    optional message currency = 1  // .Data.CurrencyData
+    repeated message purchases = 2  // .Data.PurchasedItemData
+    optional message error = 3  // .Data.PurchaseErrorData
+    repeated message orderData = 4  // .Data.OrderData
+    repeated message subscriptions = 5  // .Data.SubscriptionData
+  message PurchaseRequestMessage
+    optional string receipt = 1
+    optional string signedData = 2
+    optional string signature = 3
+    optional enum platform = 4  // .Data.PurchasePlatform
+    optional string purchaseToken = 5
+    optional string amazonUserId = 6
+    repeated message paymentInfo = 7  // .Data.PurchaseRequestMessage.PaymentInfo
+    repeated message deviceIds = 8  // .Data.PurchaseRequestMessage.DeviceIds
+    optional message applicationInfo = 9  // .Data.PurchaseRequestMessage.ApplicationInfo
+    optional message deviceInfo = 10  // .Data.PurchaseRequestMessage.DeviceInfo
+    optional string synergySystemVersion = 11
+    optional bool isSubscription = 12
+    message PurchaseRequestMessage.PaymentInfo
+      optional string transactionId = 1
+      optional string purchasePrice = 2
+      optional string currencyCode = 3
+    message PurchaseRequestMessage.DeviceIds
+      optional enum type = 1  // .Data.DeviceId
+      optional string id = 2
+    message PurchaseRequestMessage.ApplicationInfo
+      optional int64 timestamp = 1
+      optional string bundleId = 2
+      optional string appName = 3
+      optional string appVersion = 4
+      optional string appLanguage = 5
+      optional string countryCode = 6
+      optional string facebookAppId = 7
+      optional string facebookAttributionId = 8
+    message PurchaseRequestMessage.DeviceInfo
+      optional string systemName = 1
+      optional bool limitAdTracking = 2
+      optional string deviceNativeId = 3
+      optional string deviceType = 4
+      optional bool iadAttribution = 5
+      optional string imei = 6
+  message OrderData
+    optional string notificationId = 1
+    optional string orderId = 2
+    optional enum state = 3  // .Data.OrderData.OrderState
+    optional enum platform = 4  // .Data.PurchasePlatform
+    optional string purchaseToken = 5
+    optional string signedData = 6
+    enum OrderState: VALID=0, IGNORED=1, FAILED=2
+  message SubscriptionData
+    optional string subscriptionId = 1
+    optional string purchaseId = 2
+    optional enum platform = 3  // .Data.PurchasePlatform
+    optional int64 purchaseDate = 4
+    optional int64 validationDate = 5
+  enum PurchasePlatform: ITUNES=0, GOOGLEPLAY_V2=1, GOOGLEPLAY_V3=2, AMAZON=3, ITUNES_GRAND_UNIFIED_RECEIPT=4, NOKIA_NORMANDY=5, AMAZON_V2=6
+  enum DeviceId: EA_DEVICE_ID=0, AUT=1, ADVERTISER_ID=2, VENDOR_ID=3, ANDROID_ID=4, MAC_HASH=5
+
+== Error.proto  (package Data)
+  message ErrorMessage
+    optional enum code = 1  // .Data.ErrorMessage.Code
+    optional enum type = 2  // .Data.ErrorMessage.Type
+    optional string field = 3
+    optional enum severity = 4  // .Data.ErrorMessage.Severity
+    optional string message = 5
+    enum Code: UNKNOWN_CODE=1, UNAUTHORIZED=401, NOT_FOUND=404, CONFLICT=409, INTERNAL_SERVER_ERROR=500, NOT_IMPLEMENTED=501, SERVICE_UNAVAILABLE=503, HTTP_VERSION_NOT_SUPPORTED=505, BAD_REQUEST=400
+    enum Type: UNKNOWN_ERROR=1, AUTHENTICATION_ERROR=2, NO_SUCH_METHOD=3, NO_SUCH_RESOURCE=4, MISSING_VALUE=5, INVALID_VALUE=6, VALUE_TOO_SMALL=7, VALUE_TOO_LARGE=8, RESOURCE_ALREADY_EXISTS=9, METHOD_CALLED_TOO_OFTEN=23, INVALID_PARAMETERS_FORMAT=24, LOCK_REQUEST_FAILED_DUE_TO_TIMEOUT=26, PROTOCOL_MISMATCH=28, DATABASE_ERROR=29, SERVICE_UNAVAILABLE_TYPE=30, NOT_IMPLEMENTED_TYPE=31, SERVER_ERROR=32, SHARD_UNDER_MAINTENANCE=34, PLUGIN_INACTIVE=35
+    enum Severity: LEVEL_DEBUG=0, LEVEL_INFO=1, LEVEL_WARN=2, LEVEL_ERROR=3, LEVEL_FATAL=4
+
+== CustomerServiceData.proto  (package Data)
+   deps: PurchaseData.proto, LandData.proto, Error.proto, WholeLandTokenData.proto
+  message PlayerSession
+    optional string ownerId = 1
+    optional string hostname = 2
+  message LandResponseMessage
+    optional message land = 1  // .Data.LandMessage
+    optional message session = 2  // .Data.PlayerSession
+    optional message error = 3  // .Data.ErrorMessage
+  message CurrencyResponseMessage
+    optional message currency = 1  // .Data.CurrencyData
+    optional message error = 2  // .Data.ErrorMessage
+  message UserResponseMessage
+    optional string gameId = 1
+    repeated message reverseMapping = 2  // .Data.UserResponseMessage.ReverseMapping
+    optional message error = 3  // .Data.ErrorMessage
+    message UserResponseMessage.ReverseMapping
+      optional string externalId = 1
+      optional string externalType = 2
+  message LandBackupResponseMessage
+    repeated message landBackup = 1  // .Data.LandBackupResponseMessage.LandBackup
+    optional message error = 2  // .Data.ErrorMessage
+    message LandBackupResponseMessage.LandBackup
+      optional uint64 date = 1
+      optional message land = 2  // .Data.LandMessage
+  message WholeLandTokenResponseMessage
+    optional message tokenResponse = 1  // .Data.WholeLandTokenResponse
+    optional message error = 2  // .Data.ErrorMessage
+
+== MatchmakingData.proto  (package Data)
+   deps: Error.proto, LandData.proto
+  message MatchmakingResponseMessage
+    optional message matchedUserLand = 1  // .Data.LandMessage
+    optional message error = 2  // .Data.ErrorMessage
+
+== ClientConfigData.proto  (package Data)
+  message ClientConfigResponse
+    repeated message items = 2  // .Data.ClientConfigResponse.ClientConfigItem
+    message ClientConfigResponse.ClientConfigItem
+      optional int32 clientConfigId = 1
+      optional string name = 2
+      optional string value = 3
+
+== ClientMetrics.proto  (package com.ea.simpsons.client.metrics)
+  message ClientMetricsMessage
+    required enum type = 1  // .com.ea.simpsons.client.metrics.ClientMetricsMessage.Type
+    required string name = 2
+    required int64 value = 3
+    enum Type: COUNTER=0, HISTOGRAM=1
+
+== OffersData.proto  (package Data)
+   deps: Error.proto
+  message OffersResponseMessage
+    repeated message offerItems = 1  // .Data.OffersResponseMessage.OfferItem
+    repeated message popularityRangeList = 2  // .Data.OffersResponseMessage.ItemPopularityList
+    optional message error = 3  // .Data.ErrorMessage
+    repeated message levelUpXpOffers = 4  // .Data.OffersResponseMessage.LevelUpXpOffer
+    repeated message priceOverrideOffer = 5  // .Data.OffersResponseMessage.PriceOverrideOffer
+    message OffersResponseMessage.OfferItem
+      optional enum offerType = 1  // .Data.OffersResponseMessage.OfferItem.OfferType
+      optional string productId = 2
+      optional enum recommendationType = 3  // .Data.OffersResponseMessage.OfferItem.RecommendationType
+      enum OfferType: MTX=1, PREMIUM=2, CHARACTER=3, BUILDING=4, CONSUMABLE=5
+      enum RecommendationType: RECOMMEND=1, WATCH=2, NOCONVERT=3
+    message OffersResponseMessage.ItemPopularityList
+      optional string displayName = 1
+      repeated message popularityItemList = 3  // .Data.OffersResponseMessage.ItemPopularityList.PopularItem
+      message OffersResponseMessage.ItemPopularityList.PopularItem
+        optional enum popularityType = 1  // .Data.OffersResponseMessage.ItemPopularityList.PopularItem.Type
+        optional int32 id = 2
+        optional int32 count = 3
+        enum Type: BUILDING=1, CHARACTER=2, CONSUMABLE=3, SKIN=4, UNKNOWN=5
+    message OffersResponseMessage.LevelUpXpOffer
+      optional int32 level = 1
+      optional int32 xpForNextLevel = 2
+      optional int32 donutAwardAmount = 3
+      optional int32 moneyAwardAmount = 4
+      optional enum levelUpRecordType = 5  // .Data.OffersResponseMessage.LevelUpXpOffer.LevelUpRecordType
+      enum LevelUpRecordType: OFFER=1, CONVERSION_EVENT=2
+    message OffersResponseMessage.PriceOverrideOffer
+      optional enum overrideItemType = 1  // .Data.OffersResponseMessage.PriceOverrideOffer.OverrideItemType
+      optional string productId = 2
+      optional enum currencyPriceType = 3  // .Data.OffersResponseMessage.PriceOverrideOffer.CurrencyPriceType
+      optional int32 currencyAmount = 4
+      enum OverrideItemType: CHARACTER=1, BUILDING=2, CONSUMABLE=3
+      enum CurrencyPriceType: GRIND=1, PREMIUM=2
+
+== ClientLog.proto  (package com.ea.simpsons.client.log)
+  message ClientLogMessage
+    required int64 time_stamp = 1
+    required enum severity = 2  // .com.ea.simpsons.client.log.ClientLogMessage.Severity
+    required string source = 3
+    required string text = 4
+    optional string userId = 5
+    optional enum connectionType = 6  // .com.ea.simpsons.client.log.ClientLogMessage.ConnectionType
+    optional message serverLogFields = 7  // .com.ea.simpsons.client.log.ClientLogMessage.ServerProvidedLogFields
+    enum Severity: WARN=0, SEVERE=1
+    enum ConnectionType: WIFI=0, MOBILE=1, UNKNOWN=2
+    message ClientLogMessage.ServerProvidedLogFields
+      optional int64 server_received_timestamp = 1
+      optional string server_received_datestamp = 2
+      optional string server_received_country_code = 3
+      optional string server_received_clientSessionGUID = 4
+
+== LandData.proto  (package Data)
+   deps: Common.proto, PurchaseData.proto
+  message VariableSet
+    repeated message variable = 1  // .Data.VariableSet.Variable
+    message VariableSet.Variable
+      optional string name = 1
+      optional int32 value = 2
+      optional double dvalue = 3
+  message SharedVariableSet
+    repeated message variable = 1  // .Data.SharedVariableSet.SharedVariable
+    message SharedVariableSet.SharedVariable
+      optional uint32 owner = 1
+      optional int32 id = 2
+      optional int32 value = 3
+  message TimeGateSet
+    repeated message timegate = 1  // .Data.TimeGateSet.TimeGate
+    message TimeGateSet.TimeGate
+      optional int32 gateId = 1
+      optional int32 usesRemaining = 2
+      optional int64 refillTime = 3
+      optional string instanceId = 4
+      optional int32 lastRefillCount = 5
+  message AdvancedVariableSet
+    repeated message variable = 1  // .Data.AdvancedVariableSet.AdvancedVariable
+    message AdvancedVariableSet.AdvancedVariable
+      optional string name = 1
+      optional string value = 2
+      optional int64 createdTime = 3
+      optional int64 ttl = 4
+      optional uint32 objectClass = 5
+      optional uint32 serverID = 6
+      optional uint32 objectTypeID = 7
+      optional bool orphaned = 8
+      optional bool canBeOrphaned = 9
+      optional int32 scope = 10
+      optional uint32 sublandID = 11
+      optional uint32 flags = 12
+      optional uint32 uuid = 13
+  message TimedAttackData
+    optional string instanceID = 1
+    optional uint32 subLandID = 2
+    optional uint32 objectServerID = 3
+    optional uint32 objectClass = 4
+    optional string objectOwner = 5
+    optional string attackOwner = 6
+    optional int64 timeCreated = 7
+    optional int64 lifeSpan = 8
+    optional uint32 flag = 9
+    optional uint32 eventID = 10
+    optional int32 numResUsed = 11
+    optional uint32 objectID = 12
+  message TimedAttackDataSet
+    repeated message timedAttackData = 1  // .Data.TimedAttackData
+  message ObjectVariables
+    optional message variables = 1  // .Data.AdvancedVariableSet
+  message SpendableElement
+    optional uint32 type = 1
+    optional uint32 amount = 2
+    optional int64 nextTime = 3
+  message OwnerList
+    optional string id = 1
+    repeated string userName = 2
+  message CurrencySaveData
+    optional uint32 money = 1
+    optional uint32 premium = 2
+    optional uint32 realMoney = 3
+    optional uint32 realPremium = 4
+    optional uint32 numSpecial = 5
+    repeated uint32 specialType = 6
+    repeated uint32 specialAmount = 7
+  message LandMessage
+    optional string id = 1
+    optional message friendData = 2  // .Data.LandMessage.FriendData
+    optional message userData = 3  // .Data.LandMessage.UserData
+    optional message innerLandData = 4  // .Data.LandMessage.InnerLandData
+    optional message roadsData = 5  // .Data.LandMessage.TerrainData
+    optional message riversData = 6  // .Data.LandMessage.TerrainData
+    repeated message buildingData = 7  // .Data.LandMessage.BuildingData
+    repeated message characterData = 8  // .Data.LandMessage.CharacterData
+    repeated message consumableData = 9  // .Data.LandMessage.ConsumableData
+    repeated message jobData = 10  // .Data.LandMessage.JobData
+    repeated message questData = 11  // .Data.LandMessage.QuestData
+    repeated message notificationData = 12  // .Data.LandMessage.NotificationData
+    repeated message inventoryItemData = 13  // .Data.LandMessage.InventoryItemData
+    repeated message memorabiliaItemData = 14  // .Data.LandMessage.MemorabiliaItemData
+    repeated message premiumUnlockItemData = 15  // .Data.LandMessage.PremiumUnlockItemData
+    repeated message eventCountListData = 16  // .Data.LandMessage.EventCountListData
+    repeated message actionLimitData = 17  // .Data.LandMessage.ActionLimitData
+    optional message sidebarData = 18  // .Data.LandMessage.SidebarData
+    optional message characterSetsData = 19  // .Data.LandMessage.CharacterSetsData
+    repeated message pushNotificationsData = 20  // .Data.LandMessage.PushNotificationsData
+    repeated message timedScriptData = 21  // .Data.LandMessage.TimedScriptData
+    optional message bonusUnlocksData = 22  // .Data.LandMessage.BonusUnlocksData
+    repeated message characterUnlocksData = 23  // .Data.LandMessage.CharacterUnlocksData
+    optional message skinUnlocksData = 24  // .Data.LandMessage.SkinUnlocksData
+    repeated message delayedActionData = 25  // .Data.LandMessage.DelayedActionData
+    optional message spendablesData = 26  // .Data.LandMessage.SpendablesData
+    optional message specialEventsData = 27  // .Data.LandMessage.SpecialEventsData
+    optional message fakeFriendData = 28  // .Data.LandMessage.FakeFriendData
+    repeated message questGroupData = 29  // .Data.LandMessage.QuestGroupData
+    repeated message purchases = 30  // .Data.PurchasedItemData
+    optional message processedPurchaseData = 31  // .Data.LandMessage.ProcessedPurchaseData
+    repeated message customFriendActionData = 32  // .Data.LandMessage.CustomFriendActionData
+    optional bool debugLand = 33
+    optional message oceanData = 34  // .Data.LandMessage.TerrainData
+    optional message gameObjectInfo = 35  // .Data.LandMessage.GameObjectInfo
+    repeated message subLandData = 36  // .Data.LandMessage.SubLandData
+    repeated message minigameData = 37  // .Data.LandMessage.MinigameData
+    repeated message stealableBuildingData = 38  // .Data.LandMessage.BuildingData
+    repeated message collectionItemsData = 39  // .Data.LandMessage.CollectionItemsData
+    repeated message friendListData = 40  // .Data.LandMessage.FriendListData
+    optional message allFriendActionsCount = 41  // .Data.LandMessage.FriendActionCount
+    optional bool friendListDataIsCreatedAndSaved = 42
+    optional message objectVariables = 43  // .Data.ObjectVariables
+    repeated message recommendations = 44  // .Data.LandMessage.SavedRecommendations
+    repeated message amazonDimensionSet = 45  // .Data.LandMessage.AmazonDimension
+    optional message dailyTaskDataList = 46  // .Data.LandMessage.DailyTaskMessage
+    optional message roadMapDataMessage = 47  // .Data.LandMessage.RoadMapDataMessage
+    repeated message adHocObjectData = 48  // .Data.LandMessage.AdHocObjectData
+    optional string countryCode = 49
+    repeated message timerData = 50  // .Data.LandMessage.TimerData
+    optional message jobCensusDataMessage = 51  // .Data.LandMessage.JobCensusDataMessage
+    optional message dnaMessage = 52  // .Data.LandMessage.DNAMessage
+    optional message groupStorageBundleMessage = 53  // .Data.LandMessage.GroupStorageBundleMessage
+    message LandMessage.FriendData
+      optional int32 dataVersion = 1
+      optional bool hasLemonTree = 2
+      optional int32 language = 3
+      optional int32 level = 4
+      optional string name = 5
+      optional int32 rating = 6
+      repeated message spendable = 7  // .Data.SpendableElement
+      optional int32 landVersion = 8
+      repeated message sublandInfos = 9  // .Data.LandMessage.FriendData.SublandInfo
+      optional int32 boardwalkTileCount = 10
+      optional int64 lastPlayedTime = 11
+      optional message sharedVariableSet = 12  // .Data.SharedVariableSet
+      message LandMessage.FriendData.SublandInfo
+        optional int32 sublandId = 1
+        optional int32 rating = 2
+        optional bool created = 3
+    message LandMessage.EntityHeader
+      optional uint32 id = 1
+    message LandMessage.UserData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint64 lastBonusCollection = 2
+      optional uint32 level = 3
+      optional uint32 experience = 4
+      optional uint32 money = 5
+      repeated message savedRating = 6  // .Data.LandMessage.UserData.SavedRating
+      optional uint32 lastBonus = 7
+      optional bool friendsUnlocked = 8
+      optional bool memorabiliaUnlocked = 9
+      optional bool reorganizeUnlocked = 10
+      optional bool firstPurchase = 11
+      optional bool sidebarDefaultOpen = 12
+      optional bool showLevelUp = 13
+      optional uint32 bonusExperience = 14
+      optional uint32 bonusLevel = 15
+      optional bool hasPrestigeData = 16
+      optional uint32 prestigeID = 17
+      optional bool prestigeShownFirst = 18
+      optional bool prestigeShownSecond = 19
+      optional bool prestigeShownThird = 20
+      optional uint32 prestigeSelected = 21
+      optional uint32 prestigeConsumbableID = 22
+      optional bool tutorialComplete = 23
+      optional uint32 pendingConsumable = 24
+      optional uint32 visualLevel = 25
+      optional int32 timezoneOffset = 26
+      optional uint32 userPreferences = 27
+      optional bool shouldAnalyze = 28
+      optional int32 gambleOutcomeID = 29
+      optional string gambleItemType = 30
+      optional bool fullDLCCompleted = 31
+      optional message powerupDataList = 32  // .Data.PowerupMessage
+      repeated message subscriptions = 33  // .Data.SubscriptionData
+      repeated message stickerUnlockData = 34  // .Data.LandMessage.UserData.StickerUnlockData
+      optional bool resetAge = 35
+      message LandMessage.UserData.SavedRating
+        optional uint32 savedRatingElemID = 1
+        optional int32 savedRatingElem = 2
+      message LandMessage.UserData.StickerUnlockData
+        optional uint32 stickerID = 1
+    message LandMessage.InnerLandData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional string landBlocks = 2
+      optional uint32 nextInstanceID = 3
+      optional uint32 numChars = 4
+      optional uint32 numBuildings = 5
+      optional uint32 numConsumables = 6
+      optional uint32 numJobs = 7
+      optional uint32 numQuests = 8
+      optional uint32 numNotices = 9
+      optional uint32 numInventoryItems = 10
+      optional uint32 numMemorabiliaItems = 11
+      optional uint32 numEventCountLists = 12
+      optional uint32 numPremiumUnlocks = 13
+      optional uint32 numActionLimits = 14
+      optional uint32 numRunsSincePromotion = 15
+      optional uint32 levelOfRateAsk = 16
+      optional int64 updateTime = 17
+      optional int64 timeSpentPlaying = 18
+      optional int64 lastLevelUpSpentTime = 19
+      optional int64 lastLevelUpTimeStamp = 20
+      optional bool initialSaveDone = 21
+      optional int64 lastVandalismFeedPosted = 22
+      optional int64 lastStealBuildingFeedPosted = 23
+      optional int64 lastSideshowBobSpawned = 24
+      optional uint32 nextCurrencyID = 25
+      optional uint32 numQuestGroups = 26
+      optional int32 scratcherRewardIndex = 27
+      optional uint32 scratcherRewardConsumableID = 28
+      optional uint64 creationTime = 29
+      repeated string versions = 30
+      optional bool buildingsSorted = 31
+      optional uint32 numSavedFriends = 32
+      optional uint32 landBlockWidth = 33
+      optional uint32 landBlockHeight = 34
+      optional int32 landBlockPositionX = 35
+      optional int32 landBlockPositionY = 36
+    message LandMessage.TerrainData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 mapDataSize = 2
+      optional string mapData = 3
+      optional enum terrainType = 4  // .Data.LandMessage.TerrainData.TerrainType
+      enum TerrainType: PAVEMENT=1, ROADS=2, RIVERS=3, KRUSTYLAND_ROADS=4, OCEAN=5, DIRT=6, DIRT_ROADS=7, COBBLESTONE=8, ICERIVER=9, KLSROAD=10, GOLDROAD=11, SAND=12
+    message LandMessage.BuildingData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 building = 2
+      optional int64 creationTime = 3
+      optional int64 updateTime = 4
+      optional float positionX = 5
+      optional float positionY = 6
+      optional bool flipped = 7
+      optional int32 buildState = 8
+      optional bool hurry = 9
+      optional uint32 cropState = 10
+      optional bool betActive = 11
+      optional int64 betStartTime = 12
+      optional uint32 betChoice = 13
+      optional bool winningBet = 14
+      optional bool vandalized = 15
+      optional int32 namelen = 16
+      optional string vandalName = 17
+      optional bool isOwnerList = 18
+      optional message ownerList = 19  // .Data.OwnerList
+      optional int32 skin = 20
+      optional bool grantRewards = 21
+      optional uint32 flipState = 22
+      optional uint32 subLandID = 23
+      optional int64 timeOfVandalism = 24
+      optional uint32 flags = 25
+    message LandMessage.VectorFloat
+      optional float x = 1
+      optional float y = 2
+    message LandMessage.VectorFloatArray
+      repeated message vector = 1  // .Data.LandMessage.VectorFloat
+    message LandMessage.CharacterData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 character = 2
+      optional int64 updateTime = 3
+      optional float positionX = 4
+      optional float positionY = 5
+      optional int32 skin = 6
+      optional int32 skinBackup = 7
+      optional uint32 subLandID = 8
+      optional uint32 flags = 9
+      optional message pathCache = 10  // .Data.LandMessage.VectorFloatArray
+    message LandMessage.ConsumableData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 consumable = 2
+      optional int64 consumedTime = 3
+    message LandMessage.JobData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 job = 2
+      optional uint32 charRef = 3
+      optional uint32 buildingRef = 4
+      optional int64 updateTime = 5
+      optional int32 state = 6
+      optional bool hurry = 7
+      optional bool hasBuilding = 8
+      optional bool hasChar = 9
+      optional uint32 moveToCharRef = 10
+      optional bool proxyCheckFired = 11
+      optional int32 gridPositionX = 12
+      optional int32 gridPositionY = 13
+      optional bool hasGrid = 14
+      optional uint32 subLandID = 15
+      optional uint32 subBuildingRef = 16
+    message LandMessage.QuestData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 questID = 2
+      optional int32 questState = 3
+      optional int32 questScriptState = 4
+      optional int32 numObjectives = 5
+      repeated message objectiveData = 6  // .Data.LandMessage.QuestData.ObjectiveData
+      optional int32 timesCompleted = 7
+      message LandMessage.QuestData.ObjectiveData
+        optional int32 objectiveID = 1
+        optional int32 objectiveState = 2
+        optional int32 objectiveType = 3
+        optional int32 version = 4
+        optional bool questLastRetVal = 5
+        optional bool questLocal = 6
+        optional bool rushed = 7
+        optional bool keepDone = 8
+        optional bool blockDoneScript = 9
+        optional message buildingCustomData = 10  // .Data.LandMessage.QuestData.ObjectiveData.BuildingCustomData
+        optional message resourcesCustomData = 11  // .Data.LandMessage.QuestData.ObjectiveData.ResourcesCustomData
+        optional message itemCountCustomData = 12  // .Data.LandMessage.QuestData.ObjectiveData.ItemCountCustomData
+        optional message visitFriendCustomData = 13  // .Data.LandMessage.QuestData.ObjectiveData.VisitFriendCustomData
+        optional message dynamicData = 14  // .Data.LandMessage.QuestData.ObjectiveData.DynamicData
+        message LandMessage.QuestData.ObjectiveData.BuildingCustomData
+          optional int32 qty = 1
+        message LandMessage.QuestData.ObjectiveData.ResourcesCustomData
+          optional uint32 money = 1
+          optional uint32 premium = 2
+        message LandMessage.QuestData.ObjectiveData.ItemCountCustomData
+          optional int32 count = 1
+        message LandMessage.QuestData.ObjectiveData.VisitFriendCustomData
+          optional int32 num = 1
+          optional bool fakeIncluded = 2
+          repeated string friend = 3
+        message LandMessage.QuestData.ObjectiveData.DynamicData
+          optional int32 value = 1
+    message LandMessage.NotificationData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 buildingID = 2
+      optional uint32 characterID = 3
+      optional uint32 type = 4
+      optional uint32 callbackID = 5
+      optional float startX = 6
+      optional float startY = 7
+      optional float startZ = 8
+      optional float endX = 9
+      optional float endY = 10
+      optional float endZ = 11
+      optional int64 moveTime = 12
+      optional bool isStatic = 13
+      optional bool isSetup = 14
+      optional bool hasBuilding = 15
+      optional bool hasChar = 16
+      optional uint32 historyType = 17
+      optional uint32 historyJobID = 18
+      optional uint32 historyBuildingID = 19
+      optional uint32 historyCharacterID = 20
+      optional uint32 historyQuestID = 21
+      optional uint32 historyBuildingInstanceID = 22
+      optional message consumableCallback = 23  // .Data.LandMessage.NotificationData.ConsumableCallback
+      optional message memorabiliaRewardCallback = 24  // .Data.LandMessage.NotificationData.MemorabiliaRewardCallback
+      optional message notificationCallback = 25  // .Data.LandMessage.NotificationData.NotificationCallback
+      optional message gainCharacterRewardCallback = 26  // .Data.LandMessage.NotificationData.GainCharacterRewardCallback
+      optional message gainPrizeRewardCallback = 27  // .Data.LandMessage.NotificationData.GainPrizeRewardCallback
+      optional message multiRewardCallback = 28  // .Data.LandMessage.NotificationData.MultiRewardCallback
+      optional message resourceAndItemRewardCallback = 29  // .Data.LandMessage.NotificationData.ResourceAndItemRewardCallback
+      optional uint32 subLandID = 30
+      optional uint32 historyCharacterInstanceID = 31
+      message LandMessage.NotificationData.ConsumableCallback
+        optional uint32 consumableID = 1
+        optional int32 sourceLength = 2
+        optional string source = 3
+        optional uint32 consumableCount = 4
+      message LandMessage.NotificationData.MemorabiliaRewardCallback
+        optional uint32 memorabiliaID = 1
+      message LandMessage.NotificationData.NotificationCallback
+        optional uint32 money = 1
+        optional uint32 premiumCurrency = 2
+        optional uint32 exp = 3
+        optional int32 sourceLength = 4
+        optional string source = 5
+        optional int32 reasonLength = 6
+        optional string reason = 7
+        optional int32 spendablesLen = 8
+        optional string spendables = 9
+      message LandMessage.NotificationData.GainCharacterRewardCallback
+        optional uint32 buildingID = 1
+        optional uint32 characterID = 2
+        optional uint32 characterCount = 3
+        optional int32 sourceLength = 4
+        optional string source = 5
+      message LandMessage.NotificationData.GainPrizeRewardCallback
+        optional uint32 specialEventID = 1
+        optional uint32 prizeListIndex = 2
+      message LandMessage.NotificationData.MultiRewardCallback
+        optional uint32 money = 1
+        optional uint32 premiumCurrency = 2
+        optional uint32 exp = 3
+        optional int32 sourceLength = 4
+        optional string source = 5
+        optional int32 reasonLength = 6
+        optional string reason = 7
+        optional uint32 buildingID = 8
+        optional uint32 characterID = 9
+        optional float positionX = 10
+        optional float positionY = 11
+        optional float positionZ = 12
+        optional int32 spendablesLen = 13
+        optional string spendables = 14
+        optional uint32 consumableID = 15
+        optional uint32 consumableCount = 16
+        optional int32 floatTextLength = 17
+        optional string floatText = 18
+      message LandMessage.NotificationData.ResourceAndItemRewardCallback
+        optional uint32 money = 1
+        optional uint32 premiumCurrency = 2
+        optional uint32 exp = 3
+        optional int32 sourceLength = 4
+        optional string source = 5
+        optional int32 reasonLength = 6
+        optional string reason = 7
+        optional uint32 buildingID = 8
+        optional uint32 characterID = 9
+        optional int32 spendablesLen = 10
+        optional string spendables = 11
+        optional uint32 rewardBuildingID = 12
+        optional uint32 rewardConsumableID = 13
+        optional int32 floatTextLength = 14
+        optional string floatText = 15
+        optional int32 flags = 16
+    message LandMessage.InventoryItemData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional int32 itemType = 2
+      optional int32 itemID = 3
+      optional int32 count = 4
+      optional bool isOwnerList = 5
+      optional message ownerList = 6  // .Data.OwnerList
+      optional int32 fromLand = 7
+      optional int32 sourceLen = 8
+      optional string source = 9
+    message LandMessage.MemorabiliaItemData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 itemID = 2
+      optional uint32 count = 3
+    message LandMessage.PremiumUnlockItemData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 itemID = 2
+      optional int32 itemType = 3
+    message LandMessage.EventCountListData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional int32 numElements = 2
+      repeated message event = 3  // .Data.LandMessage.EventCountListData.Event
+      message LandMessage.EventCountListData.Event
+        optional int32 count = 1
+        optional int32 type = 2
+        optional int32 jobID = 3
+        optional int32 charID = 4
+        optional int32 buildID = 5
+        optional int32 consumeID = 6
+        optional int32 buildingID = 7
+        optional int32 friendLand = 8
+        optional int32 characterID = 9
+        optional int32 arg1 = 10
+        optional int64 updatedAt = 11
+    message LandMessage.ActionLimitData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional string name = 2
+      optional int64 time = 3
+      optional int32 count = 4
+      optional int32 special = 5
+      optional bool fakeFriend = 6
+    message LandMessage.SidebarData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional int32 numSidebarElements = 2
+      repeated message sidebarElement = 3  // .Data.LandMessage.SidebarData.SidebarElement
+      message LandMessage.SidebarData.SidebarElement
+        optional int32 type = 1
+        optional int32 identifier = 2
+        optional int32 state = 3
+        optional int64 updateTime = 4
+    message LandMessage.CharacterSetsData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional int32 numCompleteSets = 2
+      repeated message characterSet = 3  // .Data.LandMessage.CharacterSetsData.CharacterSet
+      message LandMessage.CharacterSetsData.CharacterSet
+        optional int32 length = 1
+        optional string name = 2
+    message LandMessage.PushNotificationsData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional int32 type = 2
+      optional int32 pushIDLength = 3
+      optional string pushID = 4
+      optional bool hasSource = 5
+      optional uint32 source = 6
+    message LandMessage.TimedScriptData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional int64 creationTime = 2
+      optional int32 waitTime = 3
+      optional int32 scriptnamelen = 4
+      optional int32 scriptpackagelen = 5
+      optional string scriptname = 6
+      optional string scriptpackage = 7
+      optional int32 scriptobjnamelen = 8
+      optional string scriptobjname = 9
+      optional int32 entityID = 10
+      optional uint32 flags = 11
+    message LandMessage.BonusUnlocksData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional int32 numEntries = 2
+      repeated message bonusEntry = 3  // .Data.LandMessage.BonusUnlocksData.BonusEntry
+      message LandMessage.BonusUnlocksData.BonusEntry
+        optional int32 id = 1
+        optional bool value = 2
+    message LandMessage.CharacterUnlocksData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 characterID = 2
+    message LandMessage.SkinUnlocksData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional int32 skinUnlockLen = 2
+      optional string skinUnlock = 3
+      optional int32 skinReceivedLen = 4
+      optional string skinReceived = 5
+    message LandMessage.DelayedActionData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional int32 type = 2
+      optional int32 sourceLen = 3
+      optional string source = 4
+      optional int32 reasonLen = 5
+      optional string reason = 6
+      optional message rewardData = 7  // .Data.LandMessage.DelayedActionData.RewardData
+      message LandMessage.DelayedActionData.RewardData
+        optional uint32 money = 1
+        optional uint32 exp = 2
+        optional uint32 premium = 3
+    message LandMessage.SpendablesData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      repeated message spendable = 2  // .Data.SpendableElement
+    message LandMessage.TimedCharacterDataSet
+      repeated message timedCharacterData = 1  // .Data.LandMessage.TimedCharacterDataSet.TimedCharacterData
+      message LandMessage.TimedCharacterDataSet.TimedCharacterData
+        optional message header = 1  // .Data.LandMessage.EntityHeader
+        optional uint32 timedCharacterInstanceIDLen = 2
+        optional string timedCharacterInstanceID = 3
+        optional uint32 characterID = 4
+        optional uint32 subLandID = 5
+        optional uint32 characterOwnerLen = 6
+        optional string characterOwner = 7
+        optional uint32 landOwnerLen = 8
+        optional string landOwner = 9
+        optional int64 timeCreated = 10
+        optional int64 lifeSpan = 11
+        optional uint32 flag = 12
+    message LandMessage.BankDataSet
+      repeated message bankData = 1  // .Data.LandMessage.BankDataSet.BankData
+      message LandMessage.BankDataSet.Deposit
+        optional message cost = 1  // .Data.CurrencySaveData
+        optional uint32 depositedByIDLen = 2
+        optional string depositedByID = 3
+        optional int64 depositedAt = 4
+        optional uint32 buildingRef = 5
+      message LandMessage.BankDataSet.DepositData
+        repeated message depositData = 1  // .Data.LandMessage.BankDataSet.Deposit
+      message LandMessage.BankDataSet.BankData
+        optional message header = 1  // .Data.LandMessage.EntityHeader
+        optional uint32 buildingRef = 2
+        optional uint32 subLandID = 3
+        optional uint32 bankID = 4
+        optional message deposits = 6  // .Data.LandMessage.BankDataSet.DepositData
+    message LandMessage.SpecialEventsData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      repeated message specialEvent = 2  // .Data.LandMessage.SpecialEventsData.SpecialEvent
+      message LandMessage.SpecialEventsData.SpecialEvent
+        optional uint32 id = 1
+        optional int64 updateTime = 4
+        optional message variables = 5  // .Data.VariableSet
+        optional message prizeDataSet = 6  // .Data.LandMessage.SpecialEventsData.SpecialEvent.SpecialEventPrizeDataSet
+        optional message timedCharacterDataSet = 7  // .Data.LandMessage.TimedCharacterDataSet
+        optional message bankDataSet = 8  // .Data.LandMessage.BankDataSet
+        optional message timedAttackDataSet = 9  // .Data.TimedAttackDataSet
+        optional message timeGateSet = 10  // .Data.TimeGateSet
+        optional message generalBuffers = 11  // .Data.LandMessage.SpecialEventsData.SpecialEvent.GeneralBufferSets
+        message LandMessage.SpecialEventsData.SpecialEvent.SpecialEventPrizeDataSet
+          repeated message prizeData = 1  // .Data.LandMessage.SpecialEventsData.SpecialEvent.SpecialEventPrizeDataSet.SpecialEventPrizeData
+          message LandMessage.SpecialEventsData.SpecialEvent.SpecialEventPrizeDataSet.SpecialEventPrizeData
+            optional message header = 1  // .Data.LandMessage.EntityHeader
+            optional uint32 prizeListID = 2
+            optional uint32 nextPrize = 3
+            optional float prizeChance = 4
+            optional bool nextPrizeRushed = 5
+            optional int64 nextResetTime = 6
+        message LandMessage.SpecialEventsData.SpecialEvent.GeneralBufferSets
+          repeated message bufferSet = 1  // .Data.LandMessage.SpecialEventsData.SpecialEvent.GeneralBufferSets.BufferSet
+          message LandMessage.SpecialEventsData.SpecialEvent.GeneralBufferSets.BufferSet
+            optional int32 id = 1
+            repeated bytes buffers = 2
+    message LandMessage.FakeFriendData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional int32 townLevel = 2
+      optional int32 buildingLen = 3
+      optional string building = 4
+      optional int32 actionTypeLen = 5
+      optional string actionType = 6
+      optional int64 actionTimeLen = 7
+      optional string actionTime = 8
+    message LandMessage.QuestGroupData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 questGroupID = 2
+      optional int32 questGroupState = 3
+      optional int32 currentChild = 4
+      optional int32 lastChild = 5
+      optional int32 numChildren = 6
+      optional int32 childIDListLen = 7
+      optional int32 weightListLen = 8
+      optional string childIDList = 9
+      optional string weightList = 10
+      optional uint32 numCompleteDaily = 11
+      optional int64 dailyCompletionTime = 12
+    message LandMessage.ProcessedPurchaseData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional string idAndCountList = 2
+      optional int32 idAndCountListLen = 3
+    message LandMessage.CustomFriendActionData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 buildingInstance = 2
+      optional string friendName = 3
+      optional int32 friendNameLen = 4
+      optional string actionType = 5
+      optional int32 actionTypeLen = 6
+      optional bool isBuilding = 7
+    message LandMessage.GameObjectInfo
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      repeated message gameObject = 2  // .Data.LandMessage.GameObjectInfo.GameObject
+      message LandMessage.GameObjectInfo.GameObject
+        optional uint32 dataId = 1
+        optional uint32 gameObjectType = 2
+        optional int64 unlockTime = 3
+        optional bool locked = 4
+        optional bool viewed = 5
+    message LandMessage.SubLandData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 subLandID = 2
+      optional string landBlocks = 3
+      repeated message terrainData = 4  // .Data.LandMessage.TerrainData
+      optional bool buildingsSorted = 5
+      optional uint32 landBlockWidth = 6
+      optional uint32 landBlockHeight = 7
+      optional int32 landBlockPositionX = 8
+      optional int32 landBlockPositionY = 9
+    message LandMessage.MinigameData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 minigameID = 2
+      optional uint32 buildingRefID = 3
+      optional uint32 state = 4
+      optional int64 updateTime = 5
+      optional string prizeList = 6
+      optional int32 prizeListLen = 7
+      optional string tappedIndecies = 8
+      optional int32 tappedIndeciesLen = 9
+    message LandMessage.CollectionItemsData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 itemID = 2
+      optional uint32 count = 3
+      optional uint32 visualCount = 4
+    message LandMessage.FriendListData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional string friendID = 2
+      optional bool hideInMap = 3
+      optional bool hasBeenVisited = 4
+      optional bool isOrigin = 5
+    message LandMessage.FriendActionCount
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional int64 time = 2
+      optional int32 count = 3
+      optional int32 special = 4
+    message LandMessage.SavedRecommendations
+      optional int32 reccomendationType = 1
+      optional string entryName = 2
+      optional int32 sublandID = 3
+      optional int64 time = 4
+      optional string characterName = 5
+      optional int32 number = 6
+      optional string extraName = 7
+      optional float popularityTime = 8
+    message LandMessage.AmazonDimension
+      optional enum amazonDimensionType = 1  // .Data.LandMessage.AmazonDimension.AmazonDimensionType
+      optional string amazonDimensionName = 2
+      optional string amazonDimensionValue = 3
+      enum AmazonDimensionType: AMAZON_DIMENSION_TYPE_STRING=1, AMAZON_DIMENSION_TYPE_NUMBER=2
+    message LandMessage.DailyTaskMessage
+      optional int32 numTasksCompleted = 1
+      optional int64 lastCancel = 2
+      optional int32 numTasksQueued = 3
+      optional string taskSetName = 4
+      repeated message taskDataList = 5  // .Data.LandMessage.DailyTaskMessage.DailyTaskData
+      optional int64 lastViewed = 6
+      repeated message TaskCoolDownList = 7  // .Data.LandMessage.DailyTaskMessage.DailyTaskCoolDownData
+      optional int64 lastTimeTaskAdded = 8
+      repeated message rewardCooldownList = 9  // .Data.LandMessage.DailyTaskMessage.DailyTaskRewardCoolDownData
+      optional uint32 activeMetaRewardID = 10
+      optional uint32 queuedTask = 11
+      optional int64 lastTimeTaskCompleted = 12
+      optional int64 totalChallengesCompleted = 13
+      optional int64 totalTasksCompleted = 14
+      message LandMessage.DailyTaskMessage.DailyTaskData
+        optional uint32 questID = 1
+        optional int64 timeStarted = 2
+        optional int64 timeFinished = 3
+        optional uint32 rewardID = 4
+        optional uint32 menuSlot = 5
+      message LandMessage.DailyTaskMessage.DailyTaskCoolDownData
+        optional uint32 questID = 1
+        optional int64 cooldownExpireTime = 2
+      message LandMessage.DailyTaskMessage.DailyTaskRewardCoolDownData
+        optional uint32 rewardID = 1
+        optional int64 cooldownExpireTime = 2
+    message LandMessage.RoadMapDataMessage
+      repeated message roadMapList = 1  // .Data.LandMessage.TerrainData
+    message LandMessage.AdHocObjectData
+      optional message header = 1  // .Data.LandMessage.EntityHeader
+      optional uint32 identifier = 2
+    message LandMessage.TimerData
+      optional string name = 1
+      optional double deltaTime = 2
+      optional int64 startTime = 3
+      optional int64 endTime = 4
+      optional int64 expiryTime = 5
+      optional bool paused = 6
+    message LandMessage.JobCensusDataMessage
+      repeated message jobCensusData = 1  // .Data.LandMessage.JobCensusDataMessage.JobCensusData
+      message LandMessage.JobCensusDataMessage.JobCensusData
+        repeated message jobData = 1  // .Data.LandMessage.JobCensusDataMessage.JobCensusData.JobCensusDataEntry
+        repeated message jobPremiumData = 2  // .Data.LandMessage.JobCensusDataMessage.JobCensusData.JobCensusDataEntry
+        optional uint32 jobDataRandSeed = 3
+        optional uint32 buildingID = 4
+        message LandMessage.JobCensusDataMessage.JobCensusData.JobCensusDataEntry
+          optional uint32 jobID = 1
+          optional uint32 characterID = 2
+          optional uint32 characterInstanceID = 3
+    message LandMessage.DNAMessage
+      repeated message dnaSessionEvents = 1  // .Data.LandMessage.DNAMessage.DNATelemetryEvent
+      repeated message dnaEventsEvents = 2  // .Data.LandMessage.DNAMessage.DNAEventsEvent
+      repeated message dnaLifeTimeEvents = 3  // .Data.LandMessage.DNAMessage.DNATelemetryEvent
+      optional int32 sessionCount = 4
+      message LandMessage.DNAMessage.DNATelemetryEvent
+        optional uint32 id = 1
+        optional int64 timestamp = 2
+        repeated message dnaParams = 3  // .Data.LandMessage.DNAMessage.DNATelemetryEvent.DNATelemetryParam
+        optional uint32 sessioncount = 4
+        message LandMessage.DNAMessage.DNATelemetryEvent.DNATelemetryParam
+          optional int32 type = 1
+          optional int32 source = 2
+          optional int32 extra = 3
+      message LandMessage.DNAMessage.DNAEventsEvent
+        repeated message telemetryEvent = 1  // .Data.LandMessage.DNAMessage.DNATelemetryEvent
+        optional int32 specialEventID = 2
+    message LandMessage.GroupStorageBundleMessage
+      repeated message groupStorageBundle = 1  // .Data.LandMessage.GroupStorageBundleMessage.GroupStorageBundle
+      message LandMessage.GroupStorageBundleMessage.GroupStorageBundle
+        repeated message groupStorageBundleEntryData = 1  // .Data.LandMessage.GroupStorageBundleMessage.GroupStorageBundle.GroupStorageBundleEntryData
+        repeated message groupStorageBundleRoadMap = 2  // .Data.LandMessage.GroupStorageBundleMessage.GroupStorageBundle.GroupStorageBundleRoadMap
+        optional int32 originPosX = 3
+        optional int32 originPosY = 4
+        optional uint64 timestampId = 5
+        message LandMessage.GroupStorageBundleMessage.GroupStorageBundle.GroupStorageBundleEntryData
+          optional uint32 objectID = 1
+          optional uint32 serverID = 2
+          optional int32 positionX = 3
+          optional int32 positionY = 4
+          optional uint32 flipped = 5
+        message LandMessage.GroupStorageBundleMessage.GroupStorageBundle.GroupStorageBundleRoadMap
+          optional uint32 subLandID = 1
+          optional uint32 mapDataSizeX = 2
+          optional uint32 mapDataSizeY = 3
+          optional message terrainData = 4  // .Data.LandMessage.TerrainData
+  message EventMessage
+    optional string id = 1
+    optional string toPlayerId = 2
+    optional string fromPlayerId = 3
+    optional string eventType = 4
+    optional int64 createdAt = 5
+    optional int64 updatedAt = 10
+    optional int64 inc = 6
+    optional message eventData = 7  // .Data.EventMessage.EventData
+    optional string targetEntityId = 8
+    optional bool uniqueEvent = 9
+    message EventMessage.EventData
+      optional int32 buildingInstanceID = 1
+      optional int64 requestTime = 2
+      optional int32 requestType = 3
+      optional message characterGainedData = 4  // .Data.EventMessage.EventData.CharacterGainedData
+      optional message characterLostData = 5  // .Data.EventMessage.EventData.CharacterLostData
+      optional message stealBuildingEventData = 6  // .Data.EventMessage.EventData.StealBuildingEventData
+      optional message giftMemorabiliaData = 7  // .Data.EventMessage.EventData.GiftMemorabiliaData
+      optional message shopCollectedData = 8  // .Data.EventMessage.EventData.ShopCollectedData
+      optional message vandalismEventData = 9  // .Data.EventMessage.EventData.VandalismEventData
+      optional message sidebarUpdateData = 10  // .Data.EventMessage.EventData.SidebarUpdateData
+      optional message returnBuildingData = 11  // .Data.EventMessage.EventData.ReturnBuildingData
+      optional message playScriptData = 12  // .Data.EventMessage.EventData.PlayScriptData
+      optional message customFriendRequestData = 13  // .Data.EventMessage.EventData.CustomFriendRequestData
+      optional message playScriptAtPositionData = 14  // .Data.EventMessage.EventData.PlayScriptAtPositionData
+      optional int32 displayNameLen = 15
+      optional string displayName = 16
+      optional int64 updatedAt = 17
+      optional message loseResourcesRequestData = 18  // .Data.EventMessage.EventData.LoseResourcesRequestData
+      message EventMessage.EventData.CharacterGainedData
+        optional uint32 characterID = 1
+      message EventMessage.EventData.CharacterLostData
+        optional uint32 characterID = 1
+      message EventMessage.EventData.StealBuildingEventData
+        optional uint32 buildingInstanceID = 1
+        optional uint32 buildingID = 2
+        optional message ownerList = 3  // .Data.OwnerList
+      message EventMessage.EventData.GiftMemorabiliaData
+        optional int32 setID = 1
+        optional int32 itemID = 2
+      message EventMessage.EventData.ShopCollectedData
+        optional uint32 buildingInstanceID = 1
+      message EventMessage.EventData.VandalismEventData
+        optional uint32 buildingInstanceID = 1
+        optional bool vandalized = 2
+        optional int32 namelen = 3
+        optional string vandalName = 4
+        optional int64 timeOfVandalism = 5
+      message EventMessage.EventData.SidebarUpdateData
+        optional int32 type = 1
+        optional int32 state = 2
+        optional int32 identifier = 3
+        optional int64 updateTime = 4
+      message EventMessage.EventData.ReturnBuildingData
+        optional uint32 buildingID = 1
+        optional bool isOwnerList = 2
+        optional message ownerList = 3  // .Data.OwnerList
+      message EventMessage.EventData.PlayScriptData
+        optional bool playForFriend = 1
+        optional int32 nameLen = 2
+        optional string name = 3
+        optional int32 packageLen = 4
+        optional string package = 5
+      message EventMessage.EventData.CustomFriendRequestData
+        optional uint32 buildingID = 1
+        optional int32 friendNameLen = 2
+        optional string friendName = 3
+        optional int32 actionTypeLen = 4
+        optional string actionType = 5
+        optional bool isBuilding = 6
+      message EventMessage.EventData.PlayScriptAtPositionData
+        optional bool playForFriend = 1
+        optional int32 nameLen = 2
+        optional string name = 3
+        optional int32 packageLen = 4
+        optional string package = 5
+        optional int32 xPos = 6
+        optional int32 yPos = 7
+        optional int32 sublandId = 8
+        optional int32 variablesLen = 9
+        optional bytes variables = 10
+      message EventMessage.EventData.LoseResourcesRequestData
+        optional message resources = 1  // .Data.CurrencySaveData
+        optional string source = 2
+        optional string friendName = 3
+  message EventsMessage
+    repeated message event = 1  // .Data.EventMessage
+  message ExtraLandMessage
+    repeated message currencyDelta = 1  // .Data.ExtraLandMessage.CurrencyDelta
+    repeated message event = 2  // .Data.EventMessage
+    repeated message pushNotification = 3  // .Data.ExtraLandMessage.PushNotification
+    repeated message communityGoalDelta = 4  // .Data.ExtraLandMessage.CommunityGoalDelta
+    repeated message matchmakingRegistration = 5  // .Data.ExtraLandMessage.MatchmakingRegistration
+    repeated message deviceIds = 6  // .Data.PurchaseRequestMessage.DeviceIds
+    optional message applicationInfo = 7  // .Data.PurchaseRequestMessage.ApplicationInfo
+    optional message deviceInfo = 8  // .Data.PurchaseRequestMessage.DeviceInfo
+    message ExtraLandMessage.CurrencyDelta
+      optional int32 id = 1
+      optional string reason = 2
+      optional int32 amount = 3
+      optional int64 updatedAt = 4
+      optional string productId = 5
+    message ExtraLandMessage.PushNotification
+      optional string id = 1
+      optional string toPlayerId = 2
+      optional int32 scheduledIn = 3
+      optional string templateName = 4
+      optional string message = 5
+    message ExtraLandMessage.CommunityGoalDelta
+      optional string category = 1
+      optional int64 amount = 2
+    message ExtraLandMessage.MatchmakingRegistration
+      optional string category = 1
+      repeated message params = 2  // .Data.NameValue
+  message ExtraLandResponse
+    repeated message processedCurrencyDelta = 1  // .Data.ExtraLandMessage.CurrencyDelta
+    repeated message processedEvent = 2  // .Data.EventMessage
+    repeated message receivedEvent = 3  // .Data.EventMessage
+    repeated message communityGoal = 4  // .Data.ExtraLandResponse.CommunityGoal
+    message ExtraLandResponse.CommunityGoal
+      optional string category = 1
+      optional int64 progressTotal = 2
+      optional double progressRate = 3
+      repeated int64 awardThresholds = 4
+  message FriendInteractionParamSet
+    repeated message params = 1  // .Data.FriendInteractionParamSet.FriendInteractionParam
+    message FriendInteractionParamSet.FriendInteractionParam
+      optional string stringKey = 1
+      optional string stringValue = 2
+      optional int32 intKey = 3
+      optional int32 intValue = 4
+  message KinesisCurrencyDelta
+    repeated message currencyDelta = 1  // .Data.ExtraLandMessage.CurrencyDelta
+    optional string userId = 2
+    optional int64 time = 3
+    optional message oldUserCurrency = 4  // .Data.CurrencyData
+    optional string clientSessionGUID = 5
+  message ProjectBoardParamSet
+    optional int32 numCompleted = 1
+    optional int64 startedTime = 2
+    repeated message params = 3  // .Data.ProjectBoardParamSet.ProjectParam
+    optional int64 dismissedTime = 4
+    message ProjectBoardParamSet.ProjectParam
+      optional string name = 1
+      optional int32 setID = 2
+      optional message cost = 3  // .Data.CurrencySaveData
+      optional message reward = 4  // .Data.CurrencySaveData
+  message KinesisLandUpdateMessage
+    optional message newLand = 1  // .Data.LandMessage
+    optional message oldLand = 2  // .Data.LandMessage
+    optional int64 updateTime = 3
+    optional string clientVersion = 4
+    optional string platform = 5
+    optional string endOfSessionGUID = 6
+  message PowerupMessage
+    repeated message powerupData = 1  // .Data.PowerupMessage.PowerupData
+    message PowerupMessage.PowerupData
+      optional uint32 entityID = 1
+      optional uint32 powerupTypeID = 2
+      optional int64 timeBeganMS = 3
+      optional int32 stateEnum = 4
+      optional int64 timePausedMS = 5
+
+== AuthData.proto  (package Data)
+   deps: Error.proto
+  message UserIndirectData
+    optional string userId = 1
+    optional string telemetryId = 2
+  message AnonymousUserData
+    optional bool isAnonymous = 1
+  message TokenData
+    optional string sessionKey = 1
+    optional int64 expirationDate = 2
+  message UsersResponseMessage
+    optional message user = 1  // .Data.UserIndirectData
+    optional message token = 2  // .Data.TokenData
+  message LinkData
+    optional enum sourceType = 1  // .Data.LinkData.identityType
+    optional string sourceId = 2
+    optional enum destinationType = 3  // .Data.LinkData.identityType
+    optional string destinationId = 4
+    enum identityType: TNT_ID=0, NUCLEUS_TOKEN=1
+  message LinkUserResponseMessage
+    optional string userId = 1
+    optional string externalId = 2
+    optional string externalType = 3
+    optional message error = 4  // .Data.ErrorMessage
+  message DeleteUserResponseMessage
+    optional string userId = 1
+    optional message error = 2  // .Data.ErrorMessage
+
+== GambleData.proto  (package Data)
+   deps: Error.proto, PurchaseData.proto
+  message GambleResponse
+    optional message updatedCurrency = 1  // .Data.CurrencyData
+    optional int32 currencyAwarded = 2
+    optional message error = 3  // .Data.ErrorMessage
