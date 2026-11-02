@@ -93,6 +93,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -680,6 +681,178 @@ def _v3_frame0(data, start, end, nbt):
     return idxs
 
 
+def _v3_frames(data, sec_start, sec_end, name, nf, nb, pool, cells):
+    """Fully decode a 0x0303 frame section into per-frame block lists.
+
+    Format (cracked 2026-10-31 against playdoughfactory, arcdetriomphe
+    and boulangeriepatisserie, corpus-validated on 114/142 pool files):
+    the section is `u16 nb0, u16 pad(0)` followed by ceil(nf/2) records
+    of THREE zero-terminated u16 runs (A, B, C). frame(2k) draws run A,
+    frame(2k+1) draws run C (B carries the delta/add list and is not
+    drawn). A u16 with v % 256 == 0 is a 1-based pool reference
+    (pool[(v >> 8) - 1]); a plain v is a pool reference whose base
+    (0 or 1) is an authoring-time choice that varies per file AND per
+    run, so for each record the (baseA, baseC) combination is chosen
+    that maximises positional agreement between the pair — the same
+    slot tends to reference the same pool entry in both frames — and
+    the crop area of the cells each interpretation draws (repeated
+    cells within one frame count negative: a frame never legitimately
+    draws the same cell twice, which is what separates the arch's
+    0-based pair {Crop0, Crop1} from the mis-shifted {Light_Crop1,
+    Crop0}). Returns [(ci, x, y, a, b, c, d), ...] per frame, or None
+    when the section does not validate (the caller keeps the legacy
+    _v3_frame0 run + cluster/body fallback)."""
+    nb0, pad = struct.unpack_from('<HH', data, sec_start)
+    if pad != 0:
+        return None
+    if nf == 1:
+        # single-frame files (footballfield, hangar, japanesecherrytree):
+        # the section is just nb0/pad plus an optional terminator byte, and
+        # the lone frame is the whole pool (matches the legacy run path's
+        # full-pool picture; nb0 == nb on every such pool file).
+        return [[pool[i] for i in range(nb0)]] if nb0 <= nb else None
+    st = sec_start + 4
+    parity = (sec_end - st) % 2
+    n16 = (sec_end - st) // 2
+    if n16 < 0:
+        return None
+    u = list(struct.unpack_from('<%dH' % n16, data, st))
+    if parity and u and u[-1] == 0:
+        u.pop()  # the final 0x00 terminator shared with the anim count's hi byte
+    areas = [w * h for _n, _x, _y, w, h in cells]
+
+    def readseg(i):
+        seg = []
+        while i < len(u) and u[i] != 0:
+            seg.append(u[i])
+            i += 1
+        return seg, i + 1
+
+    records = []
+    want = (nf + 1) // 2
+    i = 0
+    while i < len(u) and len(records) < want:
+        a, i = readseg(i)
+        b, i = readseg(i)
+        c, i = readseg(i)
+        records.append((a, b, c))
+    if not records:
+        return None
+
+    def dec(run, base, lenient=False):
+        out = []
+        for v in run:
+            ix = (v >> 8) - 1 if v % 256 == 0 else v - base
+            if not (0 <= ix < nb):
+                return out if lenient else None
+            out.append(ix)
+        return out
+
+    def score(A, C):
+        n = min(len(A), len(C))
+        ag = sum(1 for j in range(n) if A[j] == C[j])
+
+        def val(F):
+            seen = set()
+            s = 0
+            for ix in F:
+                ci = pool[ix][0]
+                s += areas[ci] if ci not in seen else -areas[ci]
+                seen.add(ci)
+            return s
+        return (ag, val(A) + val(C))
+
+    frames = []
+    lenient_used = False
+    for a, _b, c in records:
+        best = None
+        for lenient in (False, True):
+            for ba in (1, 0):
+                A = dec(a, ba, lenient)
+                if not A:
+                    continue
+                for bc in (1, 0):
+                    C = dec(c, bc, lenient) if c else None
+                    cand = (score(A, C) if C is not None else score(A, A),
+                            A, C)
+                    if best is None or cand[0] > best[0]:
+                        best = cand
+            if best is not None:
+                if lenient:
+                    lenient_used = True
+                break
+        if best is None:
+            return None
+        _sc, A, C = best
+        frames.append([pool[ix] for ix in A])
+        if 2 * len(frames) - 1 < nf:
+            frames.append([pool[ix] for ix in (C if C is not None else A)])
+    if lenient_used:
+        # A truncated (prefix-accepted) run means this file delta-encodes
+        # its frames (terminal family) — silently drawing partial frames
+        # is worse than the legacy fallback.
+        return None
+    while len(frames) < nf and frames:
+        frames.append(list(frames[-1]))
+    if len(frames) != nf or any(not fr for fr in frames):
+        return None
+    return frames
+
+
+def _v3_runmax(data, sec_start, sec_end, pool, cells):
+    """Best single frame recovered from a 0x0303 frame section whose A/B/C
+    record parse failed (the delta-style files: kinghomersskyscraper,
+    runwaypiece02up …). Whatever the record framing, the section is still a
+    stream of zero-separated u16 runs of pool references, so split on the
+    zeros and take the run that draws the most sheet art — counting each
+    (cell, position) slot ONCE, so the same window crop legitimately drawn
+    on three floors scores three times but a run that just repeats one
+    block cannot win. Runs whose references leave the pool under both
+    bases are encoding noise (the handle-table preamble) and are skipped.
+    Verified on kinghomersskyscraper: the winning run is the complete
+    tower with King Homer clinging to it, where the cluster fallback drew
+    every climb/fly variant at once
+    (mapdump/registration/m4-khs-*)."""
+    n16 = (sec_end - sec_start) // 2
+    if n16 <= 0:
+        return None
+    u = struct.unpack_from('<%dH' % n16, data, sec_start)
+    areas = [w * h for _n, _x, _y, w, h in cells]
+    best = None                     # (score, kept blocks)
+
+    def consider(run):
+        nonlocal best
+        if len(run) < 3:
+            return
+        for base in (1, 0):
+            seen = set()
+            score = 0
+            kept = []
+            for v in run:
+                ix = (v >> 8) - 1 if v % 256 == 0 else v - base
+                if not (0 <= ix < len(pool)) or pool[ix][0] >= len(cells):
+                    return                  # not a reference run at all
+                key = (pool[ix][0], round(pool[ix][1]), round(pool[ix][2]))
+                if key not in seen:
+                    seen.add(key)
+                    score += areas[pool[ix][0]]
+                    kept.append(pool[ix])
+            if len(seen) < 3:
+                return
+            if best is None or score > best[0]:
+                best = (score, kept)
+
+    run = []
+    for v in u:
+        if v == 0:
+            consider(run)
+            run = []
+        else:
+            run.append(v)
+    consider(run)
+    return best[1] if best else None
+
+
 def _v3_clusters(pool, cells, thr=64.0):
     """Position clusters over the LOCAL pool blocks (ci < n_cells), keyed
     per cell index: blocks of the same cell within thr px of each other
@@ -751,9 +924,11 @@ def parse_bsv3(data, name):
       anims    [(name, first, last)] — named state ranges
       v1: frames  [ [(ci, x, y, a, b, c, d), ...], ... ]
       v3: pool    [ (ci, x, y, a, b, c, d), ... ]  (shared block pool)
-           frame0  [int, ...]  pool indices of frame 0, decoded from the
-                     leading (idx<<8) run of the frame section,
-                     de-duplicated, draw order preserved
+          frames  [ [(ci, x, y, a, b, c, d), ...], ... ] when the frame
+                    section decoded fully (see _v3_frames); else None, and
+          frame0  [int, ...]  pool indices of frame 0, decoded from the
+                    leading (idx<<8) run of the frame section,
+                    de-duplicated, draw order preserved
       warnings [str]
 
     Variant notes (empirically pinned on the 3.0.30 pool, 2026-10-16):
@@ -771,29 +946,25 @@ def parse_bsv3(data, name):
     0x0303 (142 pool files — landmarks with moving parts, e.g. satellite
         dish buildings): 4 extra header bytes (f32 1.0) after the magic,
         then the same cells, then
-        u16 n_frames, u16 n_blocks, u16 reserved (varies per file:
-        0, 1, 3, 4, 12, 13, 22, 30, 32 — semantics unknown, ignored),
-        then the POOL:
-        n_blocks x (f32 x, f32 y, f32 a, f32 b, f32 c, f32 d, u16 ci,
+        u16 n_frames, u16 n_blocks, then the POOL:
+        n_blocks x (u16 ci, f32 x, f32 y, f32 a, f32 b, f32 c, f32 d,
                     + u8 alpha when the alpha flag is set)
+        — ci LEADING, stride 26/27 (2026-10-31: the old read put the
+        u16 ci after the six floats and called the pool's first u16 a
+        "reserved" field; that pairing spread every block across the
+        wrong cell — playdoughfactory shipped shattered). ci is always
+        a LOCAL cell index < n_cells on this corpus (alpha=1 included).
         x,y are float PIXEL offsets of the cell crop from the building
-        anchor. ci resolution depends on the header alpha flag:
-          alpha=0: ci is a LOCAL cell index; rare entries >= n_cells
-                   are global sprite references (renderer skips them).
-          alpha=1: ci is a GLOBAL sprite handle (ci>>8 = sprite,
-                   ci&255 = pose/frame); there is no in-file mapping to
-                   local cells, so these files fall back to body-only
-                   rendering (see static_blocks).
-        The pool is followed by the FRAME section: n_frames variable-
-        length records of pool indices — NOT fully decoded. Pinned: the
-        section opens with frame 0 as a run of u16 (idx << 8) values,
-        ending at the first u16 that is not a valid (idx<<8); verified
-        against exact tilings on agencyheadquarters, arcdetriomphe and
-        globe (other record strides seen: 13B, 15B = u16(6)+u24(0)+
-        5xu16, 16B; alpha=1 files differ). The frame section is skipped
-        whole: its end = the start of the anim section, located by
-        walking backward from EOF; the anim list is then forward-parsed
-        to exact EOF.
+        anchor. The pool is followed by the FRAME section:
+        u16 nb0 (frame-0 block count), u16 pad(0), then ceil(nf/2)
+        records of three zero-terminated u16 runs (A, B, C);
+        frame(2k) draws A, frame(2k+1) draws C — see _v3_frames for the
+        reference/base-0-or-1 decoding and the per-record vote. 114 of
+        the 142 pool files decode fully; the 28 that don't (delta-style
+        encodings: terminal, bastille, planebot …) keep the legacy
+        leading-(idx<<8) run + cluster/body fallback. The section's end
+        = the start of the anim section, located by walking backward
+        from EOF; the anim list is then forward-parsed to exact EOF.
     """
     if len(data) < 8:
         raise Bsv3Error(f'{name}: too small ({len(data)} bytes)')
@@ -827,7 +998,7 @@ def parse_bsv3(data, name):
     nf = struct.unpack_from('<H', data, p)[0]
     p += 2
 
-    frames = pool = frame0 = None
+    frames = pool = frame0 = runmax = sec = None
     if v == 1:
         bs = 26 + alpha
         fmt = '<HffffffB' if alpha else '<Hffffff'
@@ -849,20 +1020,25 @@ def parse_bsv3(data, name):
                 p += bs
             frames.append(blocks)
     else:
-        nb_total, _resv = struct.unpack_from('<HH', data, p)
-        p += 4
+        nb_total = struct.unpack_from('<H', data, p)[0]
+        p += 2
         bs = 26 + alpha
-        fmt = '<6fHB' if alpha else '<6fH'
         pool = []
         for _k in range(nb_total):
             if p + bs > len(data):
                 raise Bsv3Error(f'{name}: truncated in pool block {_k}')
-            t = struct.unpack_from(fmt, data, p)
+            ci = struct.unpack_from('<H', data, p)[0]
+            x, y, a, b, c, dd = struct.unpack_from('<6f', data, p + 2)
             p += bs
-            ci, x, y, a, b, c, dd = t[6], t[0], t[1], t[2], t[3], t[4], t[5]
             if not all(math.isfinite(f) for f in (x, y, a, b, c, dd)):
                 raise Bsv3Error(f'{name}: non-finite float in pool block {_k}')
             pool.append((ci, x, y, a, b, c, dd))
+        if pool and max(e[0] for e in pool) >= len(cells):
+            warnings.append(f'{name}: pool ci >= n_cells; frame decode '
+                            f'disabled, legacy fallback')
+            pool_ok = False
+        else:
+            pool_ok = True
         pool_end = p
         found = _find_anim_section(data, name)
         if found is None:
@@ -870,8 +1046,18 @@ def parse_bsv3(data, name):
         _anims, anim_start = found
         if anim_start < pool_end:
             raise Bsv3Error(f'{name}: anim section overlaps block pool')
-        frame0 = _v3_frame0(data, pool_end, anim_start, nb_total)
-        p = anim_start  # frame section skipped; anims parsed below
+        if pool_ok:
+            frames = _v3_frames(data, pool_end, anim_start, name, nf,
+                                nb_total, pool, cells)
+        if frames is None:
+            frame0 = _v3_frame0(data, pool_end + 4, anim_start, nb_total)
+            if pool_ok:
+                # best fallback picture for the undecoded section (used by
+                # static_blocks when the leading run is too thin)
+                runmax = _v3_runmax(data, pool_end + 4, anim_start,
+                                    pool, cells)
+        sec = (pool_end, anim_start)
+        p = anim_start  # frame section consumed (or legacy run taken); anims below
 
     if p + 2 > len(data):
         raise Bsv3Error(f'{name}: truncated before anim list')
@@ -891,7 +1077,8 @@ def parse_bsv3(data, name):
     if p != len(data):
         raise Bsv3Error(f'{name}: {len(data) - p} trailing bytes after anims')
     return dict(v=v, alpha=alpha, cells=cells, nf=nf, frames=frames,
-                pool=pool, frame0=frame0, anims=anims, warnings=warnings)
+                pool=pool, frame0=frame0, runmax=runmax, anims=anims,
+                warnings=warnings, sec=sec)
 
 
 def _frame_local_area(frame, cells):
@@ -942,10 +1129,17 @@ def static_blocks(parsed, name):
               'best'    — otherwise the fullest frame (max total
                       local-cell area; frame 0 is often an
                       effect/partial pose/empty).
-      0x0303  'run'    — frame 0 (the section's leading (idx<<8) run),
-                         filtered to local cells;
+      0x0303  'neutral'— the Neutral anim's first frame, when the frame
+                      section decoded and that frame carries the building
+                      (>= 40% of the fullest frame's local-cell area);
+              'best'   — otherwise the fullest decoded frame;
+              'run'    — no decoded frames: frame 0 as the leading
+                      (idx<<8) run, filtered to local cells;
+              'runmax' — leading run too thin and the section undecoded:
+                      the fullest zero-separated reference run of the
+                      frame section (see _v3_runmax);
               'cluster'— one pool block per (cell, position) cluster,
-                         when the run resolved to nothing;
+                      when the run resolved to nothing;
       both    'body'   — the largest sheet cell alone, bottom-centre on
                          the anchor, when nothing resolves to local
                          blocks (alpha=1 global-handle pools, or frames
@@ -975,6 +1169,25 @@ def static_blocks(parsed, name):
     parsed['v3_fallback'] = False
     pool = parsed['pool']
     nc = len(parsed['cells'])
+    if parsed.get('frames'):
+        # Fully decoded (see _v3_frames): use the same engine-default-pose
+        # rule as 0x0103 — the Neutral anim's first frame is what the game
+        # shows untoggled (playdoughfactory's frame 0 is the Active_Out
+        # pose with the lever/mask rig mid-cycle; its Neutral frame 132 is
+        # the complete parked factory). Unlike 0x0103, a v3 'Neutral' can
+        # also be a piece-frame (ktvbuilding's holds only the glass
+        # facade, filthyangelsorphanage's two wall shards), so the pick
+        # must still carry the building: require the neutral frame to have
+        # >= 40% of the fullest frame's local-cell area.
+        fi, area = _best_frame_index(parsed)
+        ni = _neutral_frame_index(parsed)
+        if ni is not None and (area == 0 or _frame_local_area(
+                parsed['frames'][ni], parsed['cells']) >= 0.4 * area):
+            parsed['static_src'] = 'neutral'
+            return list(parsed['frames'][ni])
+        if fi >= 0 and area > 0:
+            parsed['static_src'] = 'best'
+            return list(parsed['frames'][fi])
     idxs = [i for i in (parsed.get('frame0') or [])
             if i < len(pool) and pool[i][0] < nc]
     if idxs:
@@ -997,6 +1210,20 @@ def static_blocks(parsed, name):
             parsed['static_src'] = 'run'
             return [pool[i] for i in kept]
     if any(b[0] < nc for b in pool):
+        # No usable leading run: the section is one of the undecoded
+        # delta-style encodings. Recover the fullest zero-separated
+        # reference run FIRST — it is a real engine frame (one block per
+        # cell), while the cluster picture below draws every animation
+        # variant of the pool at once (kinghomersskyscraper shipped as a
+        # pile of duplicated floors, a dozen biplanes and three King
+        # Homers before this existed).
+        if parsed.get('runmax'):
+            kept = parsed['runmax']
+            parsed['warnings'].append(
+                f'{name}: frame section undecoded; using the fullest '
+                f'reference run ({len(kept)} blocks)')
+            parsed['static_src'] = 'runmax'
+            return kept
         parsed['warnings'].append(
             f'{name}: frame-0 run too thin ({len(idxs)} local blocks); '
             f'using one block per position cluster')
@@ -2434,6 +2661,20 @@ def _behavior_map(by_name, orders, controllers, ameta, name_idx):
     out = {}
     for s, rows in ameta.items():
         have = [e['anim'] for e in rows]
+        if s in OVERLAY_SLUGS:
+            continue        # companion strips ride their base slug's gate
+        gate = OVERLAY_GATE.get(s)
+        if gate:
+            # the machine has no engine-animatable range of its own; play
+            # the merged overlay strips under the synthesized gate, and
+            # never let the generic verbs claim an Overlay* strip as an
+            # idle (a lone strip REPLACES the body, blanking the tower)
+            need = ([gate.get('tap')] if gate.get('tap') else []) + \
+                   list(gate.get('layers') or [])
+            if all(w in have for w in need):
+                out[s] = {'idle': gate.get('idle'), 'tap': gate.get('tap'),
+                          'layers': list(gate.get('layers') or [])}
+            continue
         bv = _behavior_rec(by_name, s, name_idx) or {}
         tap_verb = bv.get('tapVerb')
         tap = (_match_anim_verb(tap_verb, have) if tap_verb
@@ -2447,6 +2688,22 @@ def _behavior_map(by_name, orders, controllers, ameta, name_idx):
             # carry it keep an idle loop even while generic-controlled —
             # even when the click cycle itself was rejected (a pose has no
             # strip; ChokeCam's Toggle02)
+            idle = _match_anim_verb('Neutral', have, allow_base=True)
+        if idle and _part_last_word(idle) in _PART_ORIENT_WORDS:
+            # the resolved idle is a DIRECTIONAL SIBLING's face loop: the
+            # base building carries no idle of its own, so _behavior_rec
+            # fell through to the …South record, and its face loop then
+            # resolved as a real idle. A face animates the OTHER instance
+            # of the asset and draws only its own slice — as a
+            # body-REPLACING idle it erased the rest of the scene
+            # (FlandersPersonalHell lost the arch's right gate,
+            # HellGraduationBanner its right panel, GeriatricParkFrontGate
+            # its east tower, SpellementaryCorridors an arcade bay). The
+            # asset's whole-body loop is the base instance's idle whenever
+            # one ships (the engine default; heavengate, whose building
+            # carries no record at all, already plays it); when none does,
+            # drop it and let the composite path below layer the face OVER
+            # the body, which holds the whole static scene.
             idle = _match_anim_verb('Neutral', have, allow_base=True)
         part_lay = _part_layers(by_name, orders, s, name_idx, have, idle) \
             if idle else None
@@ -2472,13 +2729,36 @@ def _behavior_map(by_name, orders, controllers, ameta, name_idx):
         elif idle is None:
             lay, seen = [], set()
             tap_low = (tap or '').lower()
+            # The asset's whole-body loop: its presence settles the
+            # directional question — South/East sibling loops are then
+            # ALTERNATIVE faces played by separately-placed sibling
+            # instances (a second gate at another park entrance), not
+            # parts to stack on this one (see _part_layers' face rule).
+            full = _match_anim_verb('Neutral', have, allow_base=True)
+            faces = 0
             for w in _layer_wants(by_name, orders, s, name_idx, have):
                 m = _match_anim_verb(w, have, allow_base=True)
                 if m and m.lower() not in seen and m.lower() != tap_low:
+                    if full and _part_last_word(m) in _PART_ORIENT_WORDS:
+                        faces += 1        # an alternative face, not a part
+                        continue
                     seen.add(m.lower())
                     lay.append(m)
             if lay:
                 rec['layers'] = lay       # composites own the no-idle slot
+            elif faces and full:
+                # every sibling wanted a face and the bsv3 ships the whole
+                # gate as its own loop: that loop IS the base instance's
+                # idle (heavengate, whose building carries no behavior verb
+                # at all, already plays it this way). Stacking the faces
+                # instead drew each sibling's tower art at the offset it
+                # was authored for and left the placed base instance a
+                # torn, half-covered gate (ItchyScratchyLandGate, where
+                # the body bakes no right tower at all and the mis-placed
+                # Neutral_East strip floated a second one over the banner).
+                rec['idle'] = full
+                if tog:
+                    rec['toggle'] = tog   # whole-loop idle + clickable states
             elif tog:
                 rec['toggle'] = tog
         elif tog:
@@ -2491,6 +2771,16 @@ def _behavior_map(by_name, orders, controllers, ameta, name_idx):
                                rec['layers'])
             if tl:
                 rec['tapLayers'] = tl
+        if not any((rec.get('idle'), rec.get('tap'), rec.get('layers'),
+                    rec.get('toggle'))):
+            gate = V3_CLICK_GATES.get(s)
+            if gate:
+                # nothing generic resolved; play the synthesized inout
+                # machine if every strip it names really ships as a loop
+                fr = {e['anim']: e['frames'] for e in rows}
+                need = [gate['in'], gate['loop'], gate['out']]
+                if all(fr.get(n, 0) > 1 for n in need if n):
+                    rec['toggle'] = dict(gate)
         out[s] = rec
     return out
 
@@ -2509,7 +2799,9 @@ def _anim_note(cap):
             'click state machine from buildingcontrollers.xml — inout '
             '{in,loop,out} plays in then loops loop, click again plays out; '
             'active {loop} toggles the loop on/off; cycle {poses} walks '
-            'pose loops on each click (state 0 is the idle/static look)')
+            'pose loops on each click (state 0 is the idle/static look); '
+            'Overlay* strips were baked from an un-placed overlay companion '
+            'asset and merged onto the base slug (see OVERLAY_COMPANIONS)')
 
 
 # The map player refuses to decode a filmstrip over this many pixels
@@ -2872,6 +3164,56 @@ def _anim_clock(ent, keep, a, b):
         ent['lt'] = lt
 
 
+# Assets whose motion lives in un-placed overlay companions (2026-10-31,
+# lavamachine): the base bsv3's frame section is ONE repeated record (every
+# frame identical, no motion to bake), while the real loops live in
+# <slug>…overlay… bsv3s the same DLC pack ships WITHOUT xml — no building
+# places them and no gamescript names them, the engine composites them from
+# code no data file exposes. The naming carries the intent
+# (<slug>neutraloverlay01 idles, <slug>activeoverlay02 is the click
+# eruption). do_anims bakes each companion's named range as a plain strip
+# (its origin IS the building's ground pin — verified: the plume erupts
+# from the tower top when origin-aligned) and merges it into the BASE slug
+# under a unique alias, so the existing layers/tap gate draws
+# body + idle overlay + tap one-shot with no viewer change. The pool gained
+# the companion files from the cdn 7z's nested pack zip; the XMAS2017
+# duplicates are byte-identical, so there is no winter variant.
+OVERLAY_COMPANIONS = {
+    'lavamachine': (
+        ('lavamachineneutraloverlay01', 'Neutral', 'OverlayNeutral'),
+        ('lavamachineactiveoverlay02', 'Active', 'OverlayActive'),
+    ),
+}
+# The gate the merged strips play under — synthesized from the naming, as
+# no gamescript names the machine. _behavior_map applies it only while the
+# strips exist, and never lets the generic verbs claim the Overlay* strips
+# (an idle strip would REPLACE the body, blanking the tower).
+OVERLAY_GATE = {
+    'lavamachine': {'idle': None, 'tap': 'OverlayActive',
+                    'layers': ['OverlayNeutral']},
+}
+OVERLAY_SLUGS = {c for comps in OVERLAY_COMPANIONS.values()
+                 for c, _a, _n in comps}
+
+# Synthesized click gate for the fully-decoded 0x0303 assets the gamescript
+# data never names (no behavior record, no controller: _behavior_rec finds
+# nothing, so the generic verbs resolve no idle/tap) whose bsv3 ranges are
+# themselves the engine's click-machine vocabulary — Active / Active_In /
+# Active_Out is the inout family (notes/01). playdoughfactory ships exactly
+# that trio plus a 1-frame 'Neutral' hold (its static art; a hold never
+# bakes an atlas), and Active_In is itself one repeated pose, so the real
+# inout record — which requires BOTH transition strips to ship — cannot
+# form. 'in' re-uses the Active loop instead: the first click starts the
+# machine running seamlessly (loop pick-up is invisible), the second plays
+# the genuine shutdown transition (Active_Out) back to the static body.
+# _behavior_map applies a gate only when every strip it names ships as a
+# multi-frame loop and nothing generic resolved.
+V3_CLICK_GATES = {
+    'playdoughfactory': {'kind': 'inout', 'in': 'Active',
+                         'loop': 'Active', 'out': 'Active_Out'},
+}
+
+
 def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
     """Filmstrip atlases for the animated bsv3 assets (0x0103 only: the
     0x0303 frame section is not decoded, notes/01). For every named anim
@@ -2921,10 +3263,21 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
                                       ameta, name_idx)},
             indent=1))
 
-    slugs = [slug] if isinstance(slug, str) else (list(slug) if slug else sorted(sprites))
+    if isinstance(slug, str):
+        slug = [s for s in slug.split(',') if s]      # --slug a,b,c
+    slugs = list(slug) if slug else sorted(sprites)
     if placed:
         keep = _placed_slugs()
         slugs = [s for s in slugs if s in keep]
+    # overlay companions bake as themselves (plain v1 assets) and the merge
+    # pass below moves their strips onto the base slug
+    comp_jobs = {}
+    for base, comps in OVERLAY_COMPANIONS.items():
+        if base in slugs:
+            for c, an, al in comps:
+                comp_jobs[c] = (base, an, al)
+                if c not in slugs:
+                    slugs.append(c)
     n_assets = n_anims = 0
     fails = []
     since_ckpt = 0
@@ -2934,8 +3287,18 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
             continue
         try:
             parsed = parse_bsv3(bsv3f.read_bytes(), s)
-            if parsed['v'] != 1 or not parsed['frames'] or parsed['nf'] < 2:
+            if parsed['v'] not in (1, 3) or not parsed['frames'] \
+                    or parsed['nf'] < 2:
+                # 0x0303 joins 0x0103 when the frame section decoded (see
+                # _v3_frames); files whose section did not keep frames=None
+                # and stay static-only.
                 continue
+            if s in comp_jobs:
+                # a companion ships more ranges than the gate uses (the
+                # eruption file also replays the idle pose); baking only
+                # the aliased range keeps the batch and the atlas dir lean
+                parsed['anims'] = [r for r in (parsed['anims'] or [])
+                                   if r[0] == comp_jobs[s][1]]
             rngs = [(nm, a, b) for nm, a, b in (parsed['anims'] or [])
                     if b > a and b < len(parsed['frames'])]
             all_ranges = [(nm, a, b) for nm, a, b in (parsed['anims'] or [])
@@ -3303,6 +3666,24 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
             since_ckpt = 0
             write_meta()
 
+    # merge the overlay companions into their base slug (see
+    # OVERLAY_COMPANIONS): the strips keep their own anchor-centred cells,
+    # only the manifest key and anim name change; the comp keys stay so a
+    # resumed batch does not re-render them (they are never placed, and
+    # _behavior_map skips them, so they draw nothing on their own).
+    for base, comps in OVERLAY_COMPANIONS.items():
+        if slug is not None and base not in slugs:
+            continue
+        for comp, an, al in comps:
+            src = next((e for e in ameta.get(comp, []) if e['anim'] == an),
+                       None)
+            if src:
+                e2 = dict(src)
+                e2['anim'] = al
+                if not any(e['anim'] == al for e in ameta.get(base, [])):
+                    n_anims += 1
+                ameta[base] = [e for e in ameta.get(base, [])
+                               if e['anim'] != al] + [e2]
     write_meta()
     print(f'anims: {n_assets} assets, {n_anims} new atlases '
           f'(manifest {len(ameta)} assets in {ameta_path})')
@@ -3358,6 +3739,114 @@ def xml_anchor(slug, canvas_h, pool_dir=None):
     return (-tx, canvas_h + ty)
 
 
+def _sheet_marker(path):
+    """Flatness signature of a sheet as a PLACEHOLDER marker quad:
+    (w, h, opaque-ratio, quantised-colour-count) when the sheet is a
+    small (<=96x96) solid-ish slab in <=8 bucket colours (colours
+    quantised to 32-unit buckets so one marker colour's AA/premultiply
+    levels collapse), else None. Real single-cell art — trashcan's grey
+    can, pylon's orange cone — buckets past 8 and is not a marker."""
+    try:
+        _w, _h, _bpp, rgba, _pm = rgb_to_rgba(path.read_bytes(), path.name)
+    except Exception:
+        return None
+    n = _w * _h
+    if not n or _w > 96 or _h > 96:
+        return None
+    opaque = 0
+    cols = set()
+    for i in range(3, len(rgba), 4):
+        if rgba[i] > 8:
+            opaque += 1
+            cols.add((rgba[i - 3] // 32, rgba[i - 2] // 32, rgba[i - 1] // 32))
+    ratio = opaque / n
+    if ratio < 0.25 or len(cols) > 8:
+        return None
+    return _w, _h, ratio, len(cols)
+
+
+def _transimage_only(s, parsed, rgbf):
+    """The companion path for a transimage-only asset, else None.
+
+    The crowd-of-* props (crowdofmovementarians, crowdofseasonalworkers,
+    crowdofbullies, crowdofcosplayers, gnomeautomatoncrowd,
+    dancingchildren, unrulycrowd, hellkidscrowd, …) ship a degenerate
+    bsv3: ONE cell over a tiny solid-colour placeholder .rgb — a white
+    'C_Square' (48x48) or a blue 'C_CrowdofPres' sliver (12x24). The
+    body fallback draws that quad and the sprite reads as a flat box/
+    sliver on the map; the art the game actually shows is the coloured
+    '<slug>_transimage.rgb' companion, which the engine draws at the
+    Building xml's (transImageX, transImageY) offset from the block
+    origin (same pinning as xml_anchor: ax = -tx, ay = H + ty, verified
+    on the ~347 healthy assets whose bsv3 anchor matches that pair to
+    <1.5 px).
+
+    Fires only on the full signature — single cell, marker-quad sheet,
+    companion on disk that carries real content (>1% opaque and more
+    colours than the marker), and a non-zero xml offset pair — so
+    healthy single-cell assets keep the bsv3 path (trashcan/pylon ship
+    real art in their own 12-bucket sheets and are not markers; the
+    spotlightwhite* slugs have no companion at all).
+    """
+    if len(parsed['cells']) != 1:
+        return None
+    tif = POOL / (s + '_transimage.rgb')
+    if not tif.exists():
+        return None
+    m = _sheet_marker(rgbf)
+    if m is None:
+        return None
+    try:
+        _w, _h, _bpp, rgba, _pm = rgb_to_rgba(tif.read_bytes(), tif.name)
+    except Exception:
+        return None
+    n = _w * _h
+    if not n:
+        return None
+    opaque = 0
+    cols = set()
+    for i in range(3, len(rgba), 4):
+        if rgba[i] > 8:
+            opaque += 1
+            cols.add((rgba[i - 3] // 32, rgba[i - 2] // 32, rgba[i - 1] // 32))
+    if opaque / n < 0.01 or len(cols) <= m[3]:
+        return None
+    return tif
+
+
+def _render_transimage(s, tif, xml_dir, out_png, png_field, parsed):
+    """Static frame for a transimage-only asset: the full companion
+    sheet as-is (its transparent margins carry the authoring offset, so
+    no trim) with the origin-derived anchor from the xml pair."""
+    p = (xml_dir or POOL) / (s + '.xml')
+    try:
+        r = ET.fromstring(p.read_text(errors='replace'))
+        tx = float(r.get('transImageX') or 0)
+        ty = float(r.get('transImageY') or 0)
+    except Exception:
+        return None
+    if tx == 0.0 and ty == 0.0:
+        return None
+    img = load_sheet(tif, s + '_transimage')
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out_png)
+    parsed['warnings'].append(
+        f'{s}: transimage-only asset (placeholder-quad sheet); drew '
+        f'{tif.name} at ({tx}, {ty}) instead')
+    return {
+        'png': png_field,
+        'w': img.width,
+        'h': img.height,
+        'anchor': [round(-tx, 2), round(img.height + ty, 2)],
+        'pivot': 'transimage',
+        'variant': f'0{parsed["v"]}03',
+        'static': 'transimage',
+        'blocks': 1,
+        'skipped': 0,
+        'rotmax': 0.0,
+    }, img
+
+
 def do_reanchor():
     """Apply the xml-anchor rule to an existing manifest without re-rendering
     any PNGs (anchors are manifest-only metadata)."""
@@ -3392,8 +3881,20 @@ def _render_sprite(s, bsv3f, rgbf, xml_dir, out_png, png_field):
     img = load_sheet(rgbf, s)
     r = render_static(parsed, img, s)
     if r is None:
+        ti = _transimage_only(s, parsed, rgbf)
+        if ti:
+            et = _render_transimage(s, ti, xml_dir, out_png, png_field,
+                                    parsed)
+            if et:
+                return et[0], parsed['warnings'], et[1]
         return None, parsed['warnings'], None
     canvas, ax, ay, drawn, skipped, rotmax = r
+    ti = _transimage_only(s, parsed, rgbf)
+    if ti:
+        et = _render_transimage(s, ti, xml_dir, out_png, png_field,
+                                parsed)
+        if et:
+            return et[0], parsed['warnings'], et[1]
     pivot = 'bsv3'
     if ay < 4.0:
         # Degenerate authoring pivot: some single-block 'C_Building'
@@ -3492,7 +3993,9 @@ def do_sprites(slug=None, parse_only=False, shard=None, shards=1):
             manifest = {}
     man = manifest.setdefault('sprites', {})
 
-    slugs = [slug] if slug else sorted(required)
+    if isinstance(slug, str):
+        slug = [s for s in slug.split(',') if s]      # --slug a,b,c
+    slugs = list(slug) if slug else sorted(required)
     if shard is not None:
         slugs = [s for i, s in enumerate(slugs) if i % shards == shard]
     rendered = v1 = v3 = nosrc = rgbonly = failed = 0
@@ -4547,6 +5050,89 @@ def do_chars():
     print(f'  manifest: {manifest_path}')
 
 
+# ---------------------------------------------------------------- flags
+# The SoccerCup2015 DLC ships one waving-cloth bsv3 per nation
+# (flag_sweden, flag_cameroon, …): the engine composites flag_<country>
+# on top of the shared Flag_Pole asset, so bids like SwedenFlag draw a
+# bare pole until the cloth joins the pool. The main extract pass only
+# walks *Game-100* families, so these never landed. `flags` pulls them
+# from the local cdn/ bundle and bakes web/assets/city/flags/<stem>.png
+# + city-flags.json (the manifest the viewer overlay and
+# web/api/bsprite.php kind=flag read; it is deliberately separate from
+# city-sprites.json — the cloths are not standalone buildings).
+
+def do_flags():
+    POOL.mkdir(parents=True, exist_ok=True)
+    CITY = ROOT / 'web/assets/city'
+    packs = sorted(CDN.glob('4_15_SoccerCup2015*.7z'))
+    if not packs:
+        print('no 4_15_SoccerCup2015 bundle under', CDN, flush=True)
+        return
+    stats = {'seen': 0, 'kept': 0}
+    log = open(POOL / 'index_flags.tsv', 'a')
+    work = WORK_BASE / 'flags'
+    import zipfile
+    for pack in packs:
+        shutil.rmtree(work, ignore_errors=True)
+        work.mkdir(parents=True, exist_ok=True)
+        # inner pack zips carrying the flag art (Menu packs have none);
+        # open_inner_zip's 7z filter matches the STORED path, so keep the
+        # top-level folder prefix the listing shows
+        listing = subprocess.run(['7z', 'l', str(pack)], capture_output=True,
+                                 text=True).stdout
+        inners = sorted({ln.split()[-1]
+                         for ln in listing.splitlines()
+                         if 'SoccerCup2015Game-100-' in ln
+                         and ln.strip().endswith('.zip')})
+        for inner in inners:
+            zpath = open_inner_zip(work, pack.name, inner)
+            if zpath is None:
+                print(f'  FAIL {pack.name}:{inner}', flush=True)
+                continue
+            try:
+                with zipfile.ZipFile(zpath) as z:
+                    for info in z.infolist():
+                        base = os.path.basename(info.filename)
+                        if (not base.startswith('flag_')
+                                or os.path.splitext(base)[1] not in KINDS):
+                            continue
+                        stats['seen'] += 1
+                        dest = POOL / base
+                        if dest.exists():
+                            continue          # never overwrite (backfill rule)
+                        tmp = dest.with_suffix(dest.suffix + '.part')
+                        tmp.write_bytes(z.read(info))
+                        tmp.rename(dest)
+                        log.write(f'{KINDS[os.path.splitext(base)[1]]}\t'
+                                  f'{base}\tsoccercup\t{inner}\n')
+                        stats['kept'] += 1
+            except (OSError, zipfile.BadZipFile):
+                print(f'  BADZIP {pack.name}:{inner}', flush=True)
+        shutil.rmtree(work, ignore_errors=True)
+    log.close()
+    stems = sorted(p.stem for p in POOL.glob('flag_*.bsv3'))
+    out = {}
+    for stem in stems:
+        bsv3f, rgbf = POOL / (stem + '.bsv3'), POOL / (stem + '.rgb')
+        if not rgbf.exists() or not (POOL / (stem + '.xml')).exists():
+            print(f'  {stem}: incomplete triple, skipped', flush=True)
+            continue
+        e, warns, canvas = _render_sprite(stem, bsv3f, rgbf, POOL,
+                                          CITY / 'flags' / f'{stem}.png',
+                                          f'flags/{stem}.png')
+        if e is None:
+            print(f'  {stem}: nothing drawable', flush=True)
+            continue
+        for w in warns:
+            print(f'  warn {w}', flush=True)
+        out[stem] = e
+    (CITY / 'city-flags.json').write_text(
+        json.dumps({'gen': int(time.time()), 'flags': out},
+                   separators=(',', ':')))
+    print(f'flags: pool files seen={stats["seen"]} new={stats["kept"]} '
+          f'baked={len(out)} -> {CITY / "city-flags.json"}', flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest='cmd', required=True)
@@ -4587,6 +5173,8 @@ def main():
     bh.add_argument('--write-map', action='store_true',
                     help="rewrite city-anims.json's behavior gate from the "
                          'current manifest (no atlas work)')
+    sub.add_parser('flags', help='extract + bake the SoccerCup2015 nation '
+                                 'flag cloths (flag_* -> city-flags.json)')
     a = ap.parse_args()
     if a.cmd == 'extract':
         if a.core:
@@ -4621,6 +5209,8 @@ def main():
         do_chars()
     elif a.cmd == 'reanchor':
         do_reanchor()
+    elif a.cmd == 'flags':
+        do_flags()
 
 
 if __name__ == '__main__':

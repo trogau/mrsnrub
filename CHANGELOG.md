@@ -1,5 +1,50 @@
 # Changelog
 
+## 2026-11-02.13
+
+- **Directional face loops can no longer replace a building's whole
+  body.** Sweeping up the gate bug's siblings: nine more slugs idled on
+  a directional sibling's face loop (`…South`) because their BASE
+  building carries no idle of its own and `_behavior_rec` fell through
+  to the sibling record — and a plain idle strip REPLACES the body, so
+  the animation redrew only the sibling's slice: FlandersPersonalHell
+  lost the arch's right gate, HellGraduationBanner its right panel,
+  GeriatricParkFrontGate its east tower, SpellementaryCorridors an
+  arcade bay, and TheActualNorthPole its whole street scene.
+  `_behavior_map` (`tools/gen_city_sprites.py`) now checks the resolved
+  idle's last word against the directional-face table: when the asset
+  ships its own whole-body `Neutral` loop that becomes the idle
+  (FlandersPersonalHell, HellGraduationBanner, TheActualNorthPole +
+  flipped — all verified pixel-covering the body); when none ships
+  (GeriatricParkFrontGate, SpellementaryCorridors) the face is dropped
+  and the existing composite path layers it OVER the body, which holds
+  the whole static scene. Regenerated with `behavior --write-map`:
+  exactly those 9 slugs changed. Bumps `MANIFEST_V` to `20261102.3`,
+  the viewer cache buster to `city-view-pixi.js?v=99`, and `DIAG.ver`
+  to `2026-11-02.13`.
+
+## 2026-11-02.12
+
+- **ItchyAndScratchyLandGate draws whole again.** The gate's behavior
+  record had no resolvable idle (the engine calls it `Base`, the bsv3
+  ships no such loop), so the behavior gate fell into the part-stack
+  composite path and layered the two *directional* loops
+  (`Neutral_South` + `Neutral_East`) over the body — but those loops are
+  alternative faces authored for the separately-placed GateSouth/GateEast
+  sibling instances: the East strip's tower art carries a −335 px anchor
+  and drew a second right tower floating over the entrance banner, while
+  the body PNG (baked from the static frame) has no right tower at all.
+  The asset ships the whole gate as its own `Neutral` loop (what the
+  identically-shaped HeavenGate already plays), so the no-idle composite
+  branch in `_behavior_map` (`tools/gen_city_sprites.py`) now skips
+  directional-face wants whenever that whole-body loop exists and uses
+  it as the idle instead; true part stacks without a `Neutral` loop
+  (e.g. CountyFairSign's South/East boards) are untouched. Regenerated
+  with `behavior --write-map`: exactly `itchyscratchygate` (+flipped)
+  changed, `layers` → `idle: Neutral`. Bumps `MANIFEST_V` to
+  `20261102.2`, the viewer cache buster to `city-view-pixi.js?v=98`,
+  and `DIAG.ver` to `2026-11-02.12`.
+
 ## 2026-11-02.11
 
 - **Flag cloths now hang from the pole top, not the base.** The first

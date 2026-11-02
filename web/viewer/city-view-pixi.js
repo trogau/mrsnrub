@@ -39,13 +39,13 @@
        ?v= of this script in index.html) whenever the pipeline regenerates
        them — otherwise the browser keeps the previous render (e.g. a
        building's old snowy art) whatever the pool says */
-    var ASSET_V = '?v=20261031.4';
+    var ASSET_V = '?v=20261102.1';
     // Bump whenever city/*.png art changes — the sprites, filmstrip atlases
     // and stack sheets all load through cityUrl(), and a stale cached PNG
     // against fresh city-anims.json sub-rects draws sparse water from wrong
     // shelf spots (the "water attached incorrectly" report, round 6).
-    var MANIFEST_V = '?v=20261101.1';           // city-sprites/-anims.json
-    function cityUrl(p) { return B + 'assets/city/' + p + ASSET_V; }
+    var MANIFEST_V = '?v=20261102.3';           // city-sprites/-anims.json
+    function cityUrl(p) { return dynCityUrl(p) || preUrl(p); }
 
     var stage = $('stage');
     var cv = $('cv');
@@ -85,8 +85,8 @@
        outrunning "known". The known total is every file the viewer can ask
        for: body PNGs, season variants, character sheets, pier sheets and the
        filmstrips it registered from city-anims.json. */
-    var ALOAD = { boot: 4, bootDone: 0, pend: 0, artGot: 0, artKnown: 0,
-                  artDead: 0, strips: 0, req: 0, seen: {}, hist: [],
+    var ALOAD = { boot: 5, bootDone: 0, pend: 0, artGot: 0, artKnown: 0,
+                  artDead: 0, dynErr: 0, strips: 0, req: 0, seen: {}, hist: [],
                   trace: 0, tr: [] };
     window.__ASSETS = ALOAD;
     function artCounted(url) {              // true once per art file
@@ -109,7 +109,9 @@
             html = '<i style="width:' + Math.max(3, q) + '%"></i>art ' +
                 ALOAD.artGot.toLocaleString() + '/' + ALOAD.artKnown.toLocaleString() +
                 (ALOAD.pend ? ' \u00b7 ' + ALOAD.pend + ' loading' : '') +
-                (ALOAD.artDead ? ' \u00b7 ' + ALOAD.artDead + ' dead' : '');
+                (ALOAD.artDead ? ' \u00b7 ' + ALOAD.artDead + ' dead' : '') +
+                (ALOAD.dynErr ? ' \u00b7 ' + ALOAD.dynErr +
+                                 ' dyn err' : '');
         }
         if (html === null) { el.classList.add('off'); return; }
         el.classList.remove('off');
@@ -122,7 +124,7 @@
         else setTimeout(aPaint, 125);       // trailing paint so the bar settles
     }
     function aBootSettled() { ALOAD.bootDone++; aPaintSoon(); }
-    aPaint();                               // "assets 0/4" before anything lands
+    aPaint();                               // "assets 0/5" before anything lands
 
     /* ---- texture cache ---------------------------------------------------------
        Every sprite texture comes from a plain Image element (file:// safe —
@@ -1550,6 +1552,7 @@
         markDirty();
     };
     var citySprites = null;                 // city-sprites.json sprites map
+    var cityFlags = null;                   // city-flags.json flags map (cloths)
     var charMan = null;                     // characters.json {assets, characters}
     (function loadManifests() {
         fetch(B + 'assets/city/city-sprites.json' + MANIFEST_V).then(function (r) {
@@ -1572,6 +1575,15 @@
             }
             aBootSettled();
         }).catch(function () { aBootSettled(); /* blocks only */ });
+        fetch(B + 'assets/city/city-flags.json' + MANIFEST_V).then(function (r) {
+            return r.ok ? r.json() : null;
+        }).then(function (j) {
+            if (j && j.flags) {
+                cityFlags = j.flags;
+                ALOAD.artKnown += Object.keys(j.flags).length;
+                markDirty();
+            }
+        }).catch(function () { /* no cloth overlay, poles only */ });
         fetch(B + 'assets/characters/characters.json').then(function (r) {
             return r.ok ? r.json() : null;
         }).then(function (j) {
@@ -1980,7 +1992,7 @@
        need the whole page repainting forever */
     function animDecoding(an) {
         for (var i = 0; i < an.cells.length; i++) {
-            var r = texs[cityUrl(an.cells[i].a.png)];
+            var r = texs[animUrlFor(an.cells[i].a)];
             if (r && r.st === 0) return 1;
         }
         return 0;
@@ -2250,7 +2262,7 @@
        LRU bound. Returns the decoded texture, null = draw the static PNG
        instead (still decoding / no slot free yet). */
     function animAtlasFor(a, click) {
-        var url = cityUrl(a.png);
+        var url = animUrlFor(a);
         animUse[url] = animFrameId;         // the renderer wants it THIS frame
         if (url in texs) {                  // touch -> most-recently-used
             var i = animLru.indexOf(url);
@@ -2375,8 +2387,12 @@
             var cx = A.a * c[1] + A.b * c[2] + A.c, cy = A.d * c[1] + A.e * c[2] + A.f;
             var as2 = (charMan && charMan.characters && charMan.characters[c[0]] &&
                        charMan.assets[charMan.characters[c[0]].slug]) || null;
-            var mx = mgn + (as2 ? Math.max(as2.anchor[0], as2.w - as2.anchor[0]) * kc : 0);
-            var my = mgn + (as2 ? Math.max(as2.anchor[1], as2.h - as2.anchor[1]) * kc : 0);
+            var mx = mgn + (as2 ? (dynReady(as2)
+                                   ? as2._dyn.ex
+                                   : Math.max(as2.anchor[0], as2.w - as2.anchor[0])) * kc : 0);
+            var my = mgn + (as2 ? (dynReady(as2)
+                                   ? as2._dyn.ey
+                                   : Math.max(as2.anchor[1], as2.h - as2.anchor[1])) * kc : 0);
             if (cx + mx < -mx || cx - mx > VW + mx ||   // its sheet can paint in
                 cy + my < -my || cy - my > VH + my) continue;
             var rec = charMan && charMan.characters[c[0]];
@@ -2395,6 +2411,19 @@
             if (u.indexOf('/dlc/') > -1 || f.indexOf('__') === 0) {
                 hit = 1;                      // ground sheets / atlas keys:
                 kind = 'other';               // not per-object art
+            } else if (u.indexOf('api/bcell.php') > -1) {
+                kind = 'char';                // dynamic .bcell sheet fetch
+                var mq = /[?&]name=([^&]+)/.exec(u);
+                base = mq ? decodeURIComponent(mq[1]).toLowerCase() : '';
+                hit = visChar[base] === 1;
+            } else if (u.indexOf('api/bsprite.php') > -1) {
+                kind = 'other';               // dynamic bsv3 bake fetch
+                var mk = /[?&]kind=([a-z]+)/.exec(u);
+                var mn = /[?&]name=([^&]+)/.exec(u);
+                base = mn ? decodeURIComponent(mn[1]).toLowerCase() : '';
+                if (mk) kind = mk[1] === 'season' ? 'season'
+                       : (mk[1] === 'anim' ? 'film' : 'body');
+                hit = visSlug[base] === 1;
             } else if (/(^|\/)characters\//.test(u)) {
                 kind = 'char';
                 base = base.replace(/_\d+$/, '');
@@ -2824,15 +2853,23 @@
        hold fr[0] (standby) through a randomised per-character gap; the
        per-character hash of the save id offsets both phase and gap so the
        crowd does not blink in lockstep. */
-    function charFrameFile(as, id, k) {
-        var fr = as.frames;
-        if (!fr || !fr.length) return as.png;
+    function frameDelay(f) {
+        var d = f.delay_ms !== undefined ? f.delay_ms : f.delay;
+        return d > 0 ? d : 100;
+    }
+    /* fr is optional: pass the dynamic manifest's frames[] to time/place
+       off the endpoint's frame list (count and delays can differ from the
+       pre-baked frames[] — the pipeline drops empty frames); defaults to
+       the asset's own frames. Totals cache per frame-array identity. */
+    function charFrameIdx(as, id, k, fr) {
+        fr = (fr && fr.length) ? fr : as.frames;
+        if (!fr || !fr.length) return 0;
         if (fr.length < 2 || !animOn || !artMode ||
-            Math.max(as.w, as.h) * k < CHAR_ANIM_MIN_PX) return fr[0].file;
-        if (as._tot === undefined) {
+            Math.max(as.w, as.h) * k < CHAR_ANIM_MIN_PX) return 0;
+        if (as._tot === undefined || as._totfr !== fr) {
             var tot = 0, i;
-            for (i = 0; i < fr.length; i++) tot += fr[i].delay || 100;
-            as._tot = tot || 1;
+            for (i = 0; i < fr.length; i++) tot += frameDelay(fr[i]);
+            as._tot = tot || 1; as._totfr = fr;
         }
         var h = 0, s = String(id), j;
         for (j = 0; j < s.length; j++) h = (h * 31 + s.charCodeAt(j)) | 0;
@@ -2843,15 +2880,21 @@
         // replaying, so long gags don't run back-to-back
         var gap = 2000 + (h >>> 4) % 5000 + (as._tot > 1200 ? as._tot : 0);
         var t = ((animNow || performance.now()) + h) % (as._tot + gap);
-        if (t >= as._tot) return fr[0].file;    // standby between plays
+        if (t >= as._tot) return 0;                 // standby between plays
         for (j = 0; j < fr.length; j++) {
-            t -= (fr[j].delay || 100);
-            if (t < 0) return fr[j].file;
+            t -= frameDelay(fr[j]);
+            if (t < 0) return j;
         }
-        return fr[fr.length - 1].file;
+        return fr.length - 1;
     }
-    function charAnimating(as, k) {
-        return !!(as.frames && as.frames.length > 1 && animOn && artMode &&
+    function charFrameFile(as, id, k) {
+        var fr = as.frames;
+        if (!fr || !fr.length) return as.png;
+        return fr[charFrameIdx(as, id, k)].file;
+    }
+    function charAnimating(as, k, fr) {
+        var n = (fr && fr.length) || (as.frames && as.frames.length) || 0;
+        return !!(n > 1 && animOn && artMode &&
                   Math.max(as.w, as.h) * k >= CHAR_ANIM_MIN_PX);
     }
     /* the art asset to draw for a character: the card's preview cell wins
@@ -2867,21 +2910,306 @@
     /* preview playback: replay the chosen cell continuously (one pass on
        its own delays, 1.2 s hold on the standby frame) — steadier than
        the crowd's 2-7 s randomised blink gaps, this is an inspection loop */
+    function charPreviewIdx(as, fr) {
+        fr = (fr && fr.length) ? fr : as.frames;
+        if (!fr || !fr.length || !animOn) return 0;
+        if (as._ptot === undefined || as._ptotfr !== fr) {
+            var tot = 0, i;
+            for (i = 0; i < fr.length; i++) tot += frameDelay(fr[i]);
+            as._ptot = tot || 1; as._ptotfr = fr;
+        }
+        var t = (animNow || performance.now()) % (as._ptot + 1200);
+        for (i = 0; i < fr.length; i++) {
+            t -= frameDelay(fr[i]);
+            if (t < 0) return i;
+        }
+        return 0;
+    }
     function charPreviewFrame(as) {
         var fr = as.frames;
         if (!fr || !fr.length || !animOn)
             return (fr && fr[0] || { file: as.png }).file;
-        if (as._ptot === undefined) {
-            var tot = 0, i;
-            for (i = 0; i < fr.length; i++) tot += fr[i].delay || 100;
-            as._ptot = tot || 1;
+        return fr[charPreviewIdx(as)].file;
+    }
+
+    /* ---- dynamic .bcell endpoint (selective rollout) ---------------------
+       window.VIEWER_DYNAMIC_BCELL = { characters: true, src: 'pool' } turns
+       character sprites over to web/api/bcell.php: one sprite-sheet PNG +
+       JSON manifest per cell (sliced with subTex, timed off the cell's own
+       delay_ms, placed per-frame at x_off/y_off from the character origin —
+       the engine's own rule) instead of the pre-baked per-frame PNGs under
+       assets/characters. While a cell is loading or switched off, the
+       pre-baked path draws; when the endpoint REJECTS a cell (404/422 or a
+       dead sheet), the character instead gets a red wireframe box (errors
+       stay visible for triage — console names each cell). src: 'pool'
+       (citypool) | 'pack'. Serves both the map sprites and the family-strip
+       panel tiles (opts.dynFor, which outlines dead tiles in red). */
+    var DYNB = window.VIEWER_DYNAMIC_BCELL || {};
+    var dynSrc = DYNB.src || 'pool';
+    var dynCells = {};                    // slug -> {st: 0 loading|1 ok|-1 dead, man, url, err}
+    var dynErrLive = 0;                   // wireframe boxes this frame
+    window.__CV_DYNB = { cfg: DYNB, cells: dynCells };    // harness/debug hook
+    function dynDead(d, slug, msg) {
+        d.st = -1;
+        if (d.err === undefined) {        // once per cell: name it for later
+            d.err = msg || 'load failed';
+            ALOAD.dynErr++;
+            console.warn('[dynbcell] ' + slug + ': ' + d.err);
+            aPaintSoon();
         }
-        var t = (animNow || performance.now()) % (as._ptot + 1200);
-        for (i = 0; i < fr.length; i++) {
-            t -= (fr[i].delay || 100);
-            if (t < 0) return fr[i].file;
+        markDirty();
+    }
+    function texDead(url) {
+        var r = texs[url];
+        return !!(r && r.st === -1);
+    }
+    function dynErrBox(x, y, as, k) {
+        if (!dynErrG) return;
+        var w = Math.max(10, (as.w || 24) * k), h = Math.max(14, (as.h || 32) * k);
+        var ax = as.anchor ? as.anchor[0] * k : w / 2,
+            ay = as.anchor ? as.anchor[1] * k : h;
+        dynErrG.rect(x - ax, y - ay, w, h)
+              .stroke({ width: 1.5, color: 0xff5040, alpha: 0.95 });
+        dynErrG.moveTo(x - ax, y - ay).lineTo(x - ax + w, y - ay + h)
+              .moveTo(x - ax + w, y - ay).lineTo(x - ax, y - ay + h)
+              .stroke({ width: 1, color: 0xff5040, alpha: 0.45 });
+    }
+
+    /* ---- dynamic city endpoint (bsprite.php, selective rollout) ---------
+       window.VIEWER_DYNAMIC_CITY = { sprites: true, seasons: true,
+       anims: true, stacks: true } hands the four bakeable city families to
+       web/api/bsprite.php, which bakes bsv3+rgb through the pipeline's OWN
+       bake helpers (tools/city_render.py imports gen_city_sprites), so the
+       served PNG matches the pre-baked file it replaces. Per-category
+       flags; pre-baked art under assets/city keeps drawing whenever a
+       category is off, before the boot preflight (assets/city/
+       city-source.json) lands, or after 25 failures in one category trip
+       the circuit breaker (endpoint/python down -> whole city stays
+       pre-baked). The SoccerCup2015 nation flag cloths (kind=flag,
+       city-flags.json) ride the sprites switch. Body sprites the pool
+       cannot render get a red wireframe (preflight miss or dead endpoint
+       response) + one console line, like dead character cells;
+       season/filmstrip/stack/flag failures degrade to the pre-baked file
+       silently-but-named — the building stays on screen.
+       The working pipeline may sit a pixel ahead of the shipped manifests
+       (uncommitted bake-rule edits), so every dynamic filmstrip also
+       pulls its own mode=meta once and overwrites the entry's slicing
+       fields (cols/cellw/cellh/ax/ay/sub/…) before the next draw. */
+    var DCITY = window.VIEWER_DYNAMIC_CITY || {};
+    var dynC = { sprites: !!DCITY.sprites, seasons: !!DCITY.seasons,
+                 anims: !!DCITY.anims, stacks: !!DCITY.stacks };
+    (function () {              // ?dyn=0 / ?dyn=1 / ?dyn=sprites,anims A/B
+        var dv = QP.get('dyn');
+        if (dv === null || dv === undefined) return;
+        if (dv === '0') { dynC.sprites = dynC.seasons = dynC.anims = dynC.stacks = false; return; }
+        if (dv === '1') { dynC.sprites = dynC.seasons = dynC.anims = dynC.stacks = true; return; }
+        var w = dv.split(',');
+        dynC.sprites = w.indexOf('sprites') > -1;
+        dynC.seasons = w.indexOf('seasons') > -1;
+        dynC.anims = w.indexOf('anims') > -1;
+        dynC.stacks = w.indexOf('stacks') > -1;
+    })();
+    var BSU = B + 'api/bsprite.php';
+    var AMP_V = ASSET_V.replace(/^\?/, '&');    // bsprite URLs already carry a ?
+    var DINV = null;                        // preflight {inv:{stem:bits}} | null
+    var DINV_WAIT = true;                   // hold city art until it settles
+    var dynCFail = { sprite: 0, season: 0, anim: 0, stack: 0, flag: 0 };
+    var dynCWarn = {};
+    var dynCBox = {};                       // stem -> err (red-boxed bodies)
+    window.__CV_DYNC = { cfg: dynC, box: dynCBox, fails: dynCFail,
+                         urlv: AMP_V,
+                         inv: function () { return DINV; } };
+    (function () {                          // boot: preflight inventory
+        fetch(B + 'assets/city/city-source.json' + MANIFEST_V)
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (j) {
+                DINV = (j && j.inv) ? j : null;
+                DINV_WAIT = false;
+                aBootSettled(); markDirty();
+            }).catch(function () { DINV_WAIT = false; aBootSettled(); /* all pre-baked */ });
+    })();
+    function dynCon(kind) {         // dynC keys are plural, dynCFail singular
+        return dynC[kind] && dynCFail[kind.replace(/s$/, '')] < 25;
+    }
+    function preUrl(p) { return B + 'assets/city/' + p + ASSET_V; }
+    function stemOfCity(p) {
+        return p.slice(p.lastIndexOf('/') + 1).replace(/\.png$/i, '');
+    }
+    function dynCityUrl(p) {                // endpoint URL or null = pre-baked
+        if (!DINV) return null;
+        var m;
+        if ((m = /^seasons\/([a-z]+)\/([^/]+)\.png$/.exec(p))) {
+            return dynCon('seasons') ? BSU + '?kind=season&name=' + m[2] +
+                   '&cls=' + m[1] + AMP_V : null;
         }
-        return fr[0].file;
+        if ((m = /^anims\/([^/]+)__[^/]+\.png$/.exec(p))) {
+            return dynCon('anims') ? BSU + '?kind=anim&name=' + m[1] +
+                   '&png=' + p + AMP_V : null;
+        }
+        if ((m = /^stacks\/([^/]+)\.png$/.exec(p))) {
+            return dynCon('stacks') ? BSU + '?kind=stack&name=' + m[1] +
+                   AMP_V : null;
+        }
+        if ((m = /^flags\/([^/]+)\.png$/.exec(p))) {
+            /* nation flag cloth: same sprites switch + the preflight's
+               flags list (city-flags.json ∩ pool) is the request gate */
+            if (!dynCon('sprites') || !DINV.flags ||
+                    DINV.flags.indexOf(m[1]) < 0) return null;
+            return BSU + '?kind=flag&name=' + m[1] + AMP_V;
+        }
+        if ((m = /^([^/]+)\.png$/.exec(p))) {
+            if (!dynCon('sprites') || m[1] === 'grasstile') return null;
+            /* preflight bit 1 = bsv3+rgb+xml all present; misses draw the
+               pre-baked file while emitBuilding flags them */
+            if (!(DINV.inv[m[1]] & 1)) return null;
+            return BSU + '?kind=sprite&name=' + m[1] + AMP_V;
+        }
+        return null;
+    }
+    function cityWarn1(msg) {
+        if (dynCWarn[msg]) return;
+        dynCWarn[msg] = 1;
+        console.warn('[dyn-city] ' + msg);
+    }
+    function cityBox(stem, sp, px, py, k, msg) {
+        dynErrBox(px, py, sp, k);           // red wireframe over the lot
+        if (dynCBox[stem]) return;
+        dynCBox[stem] = msg || 'not renderable';
+        ALOAD.dynErr++;
+        console.warn('[dyn-city] ' + stem + ': ' + dynCBox[stem]);
+        aPaintSoon();
+    }
+    function cityFail(kind, p, msg) {       // dead-end art that has a fallback
+        dynCFail[kind]++;
+        cityWarn1(p + ': ' + (msg || 'endpoint failed'));
+        if (dynCFail[kind] === 25)
+            console.warn('[dyn-city] dynamic ' + kind +
+                         's switched off after 25 failures (endpoint down?)');
+        markDirty();
+    }
+    function cityTex(p, kind) {             // season/stack: endpoint, pre-baked on death
+        var u = dynCityUrl(p), pre = preUrl(p);
+        if (u === null) return texFor(pre);
+        var t = texFor(u);
+        if (t || !texDead(u)) return t;
+        cityFail(kind, p);
+        return texFor(pre);
+    }
+    var POLE_SLUG = 'flag_pole';            // Flag_Pole asset: bids like
+    function flagClothFor(b) {              // SwedenFlag add flag_<country>
+        if (!cityFlags) return null;
+        var info = M.binfo && b.id !== undefined ? M.binfo[b.id] : null;
+        var nm = info && info[0];
+        if (!nm || !/Flag$/.test(nm)) return null;
+        return cityFlags['flag_' + nm.replace(/Flag$/, '').toLowerCase()] || null;
+    }
+    function emitFlagCloth(b, px, py, k, ax, ay) { // the engine composites
+        if (!cityFlags) return;             // the nation cloth onto the pole
+        var cf = flagClothFor(b);
+        if (!cf || cf.w * k < 4 || cf.h * k < 4) return;
+        var u = dynCityUrl(cf.png), pre = preUrl(cf.png), t;
+        if (u === null) t = texFor(pre);
+        else {
+            t = texFor(u);
+            if (!t && texDead(u)) {         // endpoint dead: the pole stands
+                cityFail('flag', cf.png);   // on its shipped file
+                t = texFor(pre);
+            }
+        }
+        if (!t) return;                     // loading: retries next tick
+        var fx = px - cf.anchor[0] * k, fy = py - cf.anchor[1] * k;
+        emitSpr(t, fx, fy, cf.w * k, cf.h * k);
+        if (flagDbg)                        // console forensics: __CV_FLAG(1)
+            flagLog.push({ stem: cf.png, x: Math.round(fx * 10) / 10,
+                           y: Math.round(fy * 10) / 10,
+                           w: Math.round(cf.w * k), h: Math.round(cf.h * k),
+                           a: cf.anchor, pole: [ax, ay], k: Math.round(k * 1000) / 1000,
+                           url: (u === null ? pre : u) });
+    }
+    var flagDbg = 0, flagLog = [];          // __CV_FLAG forensics (off by default)
+    window.__CV_FLAG = function (on) {      // console: __CV_FLAG(1) then pan
+        if (on !== undefined) { flagDbg = on ? 1 : 0; flagLog = []; }
+        return { on: flagDbg, n: flagLog.length, drawn: flagLog.slice(0, 40),
+                 man: cityFlags ? cityFlags.flag_sweden : null };
+    };
+    function animUrlFor(a) {                // strip source: endpoint until dead
+        var u = dynCityUrl(a.png);
+        if (u === null) return preUrl(a.png);
+        if (texDead(u)) {
+            cityFail('anim', a.png);
+            return preUrl(a.png);
+        }
+        animMeta(a);                        // one-shot geometry reconcile
+        return u;
+    }
+    function animMeta(a) {
+        if (a._dmq || a._dm) return;
+        a._dmq = 1;
+        var m = /^anims\/([^/]+)__/.exec(a.png);
+        fetch(BSU + '?kind=anim&name=' + m[1] + '&png=' + a.png +
+              '&mode=meta' + AMP_V)
+            .then(function (r) {
+                return r.json().catch(function () { return null; });
+            }).then(function (j) {
+                a._dmq = 0;
+                if (!j || j.error) {
+                    cityWarn1(a.png + ': ' +
+                              ((j && j.error) || 'meta fetch failed'));
+                    return;
+                }
+                a._dm = j;
+                var F = ['frames', 'cols', 'cellw', 'cellh', 'ax', 'ay',
+                         'fps', 'rp', 'lt', 'lf', 'sub', 'sparse', 'nc',
+                         'w', 'h'];
+                var ch = 0, kk, i;
+                for (i = 0; i < F.length; i++) {
+                    kk = F[i];
+                    if (j[kk] !== undefined && j[kk] !== a[kk]) {
+                        a[kk] = j[kk];
+                        ch = 1;
+                    }
+                }
+                if (ch) { delete a.ub; markDirty(); }   // re-slice next frame
+            }).catch(function () { a._dmq = 0; });
+    }
+    function dynCell(as) {
+        if (!DYNB.characters || !as || !as.png) return null;
+        if (as._dyn !== undefined) return as._dyn;
+        var slug = String(as.png).replace(/\.png$/i, '');
+        var d = dynCells[slug];
+        if (d === undefined) {
+            d = dynCells[slug] = { st: 0, man: null, url: null, ex: 0, ey: 0 };
+            var q = 'api/bcell.php?src=' + encodeURIComponent(dynSrc) +
+                    '&name=' + encodeURIComponent(slug);
+            fetch(B + q + '&mode=manifest').then(function (r) {
+                /* parse even on 404/422: the endpoint's {"error":…} body is
+                   exactly what we want on the console for later triage */
+                return r.json().catch(function () { return null; });
+            }).then(function (j) {
+                if (!j || j.error || !j.frames || !j.frames.length || !j.images) {
+                    dynDead(d, slug, (j && j.error) || 'manifest error'); return;
+                }
+                d.man = j;
+                d.url = B + q + '&mode=sheet';
+                texFor(d.url);                       // kick the sheet decode
+                var i, f, im;
+                for (i = 0; i < j.frames.length; i++) {   // max extent from origin
+                    f = j.frames[i]; im = j.images[f.image];
+                    if (!im) continue;
+                    d.ex = Math.max(d.ex, Math.abs(f.x_off),
+                                    Math.abs(f.x_off + im.w));
+                    d.ey = Math.max(d.ey, Math.abs(f.y_off),
+                                    Math.abs(f.y_off + im.h));
+                }
+                d.st = 1;
+                markDirty();
+            }).catch(function () { dynDead(d, slug, 'fetch failed'); });
+        }
+        as._dyn = d;
+        return d;
+    }
+    function dynReady(as) {
+        return !!(as._dyn && as._dyn.st === 1 && texFor(as._dyn.url));
     }
 
     /* ---- tile grid overlay (debug) + wireframe toggles ---------------------- */
@@ -3020,7 +3348,7 @@
     var app = new PIXI.Application();
     var started = false;
     var UNIT, DISC, groundC, fillC, featC, avenC, terrFlatS, buildFlatS, grassTil,
-        grassFillS, seaFillS, sceneG, fragG, propG, walkG, gridG, markG, outG,
+        grassFillS, seaFillS, sceneG, fragG, propG, dynErrG, walkG, gridG, markG, outG,
         txtGrid, txtMark, bridgeG, raisedG, bridgeNearG,
         beachG, beachArtC, beachBgG, beachCloudG, beachTxtC, beachLab;
     var pool = [], pn = 0;
@@ -3115,6 +3443,8 @@
         beachTxtC = new PIXI.Container();
 
         walkG = new PIXI.Graphics();
+        dynErrG = new PIXI.Graphics();    // red wireframes over chars whose
+                                          // dynamic .bcell cell failed
         gridG = new PIXI.Graphics();
         markG = new PIXI.Graphics();
         outG = new PIXI.Graphics();
@@ -3136,6 +3466,7 @@
         app.stage.addChild(raisedG);
         app.stage.addChild(bridgeNearG);
         app.stage.addChild(sceneG);
+        app.stage.addChild(dynErrG);      // error wireframes over the char art
         app.stage.addChild(walkG);
         app.stage.addChild(gridG);
         app.stage.addChild(markG);
@@ -3761,7 +4092,7 @@
     /* ============================ render ===================================== */
     var DIAG = {
         mode: 'Pixi', ms: 0, fps: 0, maxMs: 0, anims: 0, charAnims: 0,
-        pool: 0, ver: '2026-11-01'
+        pool: 0, ver: '2026-11-02.13'
     };
     window.__CV_DIAG = DIAG;
     window.__CV_VER = DIAG.ver;                    // console sanity check
@@ -4040,6 +4371,8 @@
         var k = s / ART.S;
         var nq = 0, chq = null, buck = null;
         peopleDots = 0;
+        dynErrLive = 0;
+        if (dynErrG) dynErrG.clear();
         if (!objHidden.people) {
             var ch = M.chars;
             for (i = 0; i < ch.length; i++) {
@@ -4105,6 +4438,32 @@
             if (artC && !lod) {
                 var as2 = charArtOf(e.c);
                 if (as2 && !(as2.w * kc < 12 && as2.h * kc < 12)) {
+                    var dv = dynCell(as2);
+                    if (dv && (dv.st === -1 || (dv.st === 1 && texDead(dv.url)))) {
+                        // endpoint said no (or the sheet died): flag the spot
+                        // with a red wireframe instead of hiding it behind
+                        // pre-baked art — see console for the cell's error
+                        dynErrLive++;
+                        dynErrBox(e.x, e.y, as2, kc);
+                        return;
+                    }
+                    if (dv && dynReady(as2)) {
+                        var mfr = dv.man.frames;
+                        var di = (charPreview && charPreview.cell === as2)
+                                 ? charPreviewIdx(as2, mfr)
+                                 : charFrameIdx(as2, e.c[0], kc, mfr);
+                        var df = mfr[di];
+                        var dim2 = df && dv.man.images[df.image];
+                        var dt = dim2 && subTex(dv.url, dim2.x, dim2.y,
+                                                dim2.w, dim2.h);
+                        if (dt) {
+                            if (charAnimating(as2, kc, mfr)) charAnimLive++;
+                            emitSpr(dt, e.x + df.x_off * kc,
+                                    e.y + df.y_off * kc,
+                                    dim2.w * kc, dim2.h * kc);
+                            return;
+                        }
+                    }
                     var url = B + 'assets/characters/' +
                         (charPreview && charPreview.cell === as2
                             ? charPreviewFrame(as2)
@@ -4476,9 +4835,16 @@
            that twin-equivalent rect: bl below uses the mirrored anchor,
            emitSpr's negative scale mirrors within [bl, bl+w]. */
         var mir = !!(b.flip === 1 && !twin);
+        var pole = key === POLE_SLUG;       // gets the nation cloth on top
         var sp = spriteEntry(key);
         if (!sp) return false;
         if (sp.w * k < 12 && sp.h * k < 12) return false;   // readability gate
+        if (DINV_WAIT && (dynC.sprites || dynC.seasons || dynC.anims || dynC.stacks))
+            return false;    /* preflight unsettled: draw blocks this tick
+                                rather than fire pre-baked requests that the
+                                inventory would flip to endpoint URLs a
+                                moment later (the double-fetch the network
+                                panel read as "exoticpond still loading .png") */
         var gx = ART.ref === 'origin' ? b.x0 : b.px;
         var gy = ART.ref === 'origin' ? b.y0 : b.py;
         var wx = gx + ART.ax, wy = gy + ART.ay;
@@ -4490,7 +4856,24 @@
         if (!artReachable(sp, px, py, bl, k, key)) return true;
         var url = cityUrl(sp.png);
         var baseTex = texFor(url);
-        if (!baseTex) return false;
+        if (!baseTex && url !== preUrl(sp.png) && texDead(url)) {
+            /* the endpoint refused this body: seasons quietly keep their
+               shipped file (the building still draws), plain bodies get
+               the red wireframe like dead character cells */
+            if (sp.png.indexOf('seasons/') === 0) {
+                cityFail('season', sp.png);
+                baseTex = texFor(preUrl(sp.png));
+            } else {
+                cityBox(stemOfCity(sp.png), sp, px, py, k, 'endpoint failed');
+                return false;
+            }
+        }
+        if (!baseTex) {
+            if (DINV && dynCon('sprites') && sp.png.indexOf('seasons/') !== 0 &&
+                    sp.png.indexOf('/') < 0 && !(DINV.inv[stemOfCity(sp.png)] & 1))
+                cityBox(stemOfCity(sp.png), sp, px, py, k, 'not in source pool');
+            return false;
+        }
         var an = animOf(b, k);            // filmstrip cells instead of the PNG?
         if (an) {
             var drew = 0, i, j, ok = 1, vis = 0, cov = 0;
@@ -4535,7 +4918,7 @@
                             var rx = px + r.ox * k, ry = py + r.oy * k;
                             if (rx + rw < -4 || rx > VW + 4 ||
                                 ry + rh < -4 || ry > VH + 4) continue;
-                            var rt = subTex(cityUrl(a.png),
+                            var rt = subTex(animUrlFor(a),
                                             r.sx, r.sy, r.w, r.h);
                             if (!rt) continue;
                             emitSpr(rt, rx, ry, rw, rh);
@@ -4547,7 +4930,7 @@
                     var ax0 = px - a.ax * k, ay0 = py - a.ay * k;
                     if (ax0 + aw < -4 || ax0 > VW + 4 || ay0 + ah < -4 || ay0 > VH + 4)
                         continue;         // truly off-screen: skip
-                    var ct = subTex(cityUrl(a.png),
+                    var ct = subTex(animUrlFor(a),
                                     (fi % a.cols) * a.cellw,
                                     Math.floor(fi / a.cols) * a.cellh,
                                     a.cellw, a.cellh);
@@ -4556,7 +4939,9 @@
                     drew++;
                 }
             }
-            if (drew) { animLive++; if (!an.tap) animBudget--; return true; }
+            if (drew) { animLive++; if (!an.tap) animBudget--;
+                    if (pole) emitFlagCloth(b, px, py, k, sp.anchor[0], sp.anchor[1]);
+                    return true; }
             // nothing blitted (decoding / off-screen / stack rejected): keep the
             // anim tick alive while the atlas is still in flight so this retries
             // the moment it lands (the clock-driven tap expires on its own
@@ -4574,11 +4959,15 @@
            normal body until then). Never touches the animating path. */
         var st = sp, stex = baseTex;
         if (sp.stack) {
-            var st2 = texFor(cityUrl(sp.stack.png));
+            var st2 = cityTex(sp.stack.png, 'stack');
             if (st2) { st = sp.stack; stex = st2; }
         }
         emitSpr(stex, px - (mir ? st.w - st.anchor[0] : st.anchor[0]) * k,
                 py - st.anchor[1] * k, st.w * k, st.h * k, mir);
+        /* Flag_Pole ships the pole only: composite this bid's nation cloth
+           (city-flags.json) at the same ground pin — proven against the
+           shipped pole anchor in mapdump/registration/m4-flag-overlay-* */
+        if (pole && !mir) emitFlagCloth(b, px, py, k, st.anchor[0], st.anchor[1]);
         return true;
     }
 
@@ -5071,7 +5460,7 @@
         // sprite-variant strip under the building card
         if (sel && sel.kind === 'b' && window.AssetVariants) {
             var e = M.binfo[M.buildings[sel.i][0]];
-            var v = AssetVariants.render(e && e[2]);
+            var v = AssetVariants.render(e && e[2], e && e[0]);
             if (v) details.appendChild(v);
         }
         // family strip under the character card (families/<cid>.json sidecar)
@@ -5081,7 +5470,8 @@
                 onPreview: function (cell) {
                     charPreview = cell ? { cid: ch[0], cell: cell } : null;
                     markDirty();
-                }
+                },
+                dynFor: DYNB.characters ? dynCell : null
             });
             if (fv) details.appendChild(fv);
         }
