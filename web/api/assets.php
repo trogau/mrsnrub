@@ -17,6 +17,10 @@
      op=variants family type path [base] [res] switcher entries
      op=strings  lang q                       one .btp string table (DB-backed)
      op=data     path                         raw text of an embedded data file
+     op=original path                         stream the pre-conversion IMA
+                                              ADPCM WAV (attachment download;
+                                              op=asset reports it as
+                                              entry.original when present)
      op=languages                             the 16 decoded languages
      op=meta                                  manifest meta + totals
 
@@ -27,11 +31,30 @@ declare(strict_types=1);
 
 require __DIR__ . '/assets-db.php';
 
+/* Nothing but the JSON body (or the WAV bytes) may reach the client. The
+   backup-audio probe below stats a tree outside the document root, and a pool
+   with open_basedir and display_errors on turns each of those stats into an
+   E_WARNING printed ahead of the JSON: the page's response.then(r => r.json())
+   then dies and only the audio detail pane — the one caller that touches that
+   tree — loses its player. Buffer from the first line, drop whatever escapes,
+   keep it in the server log where it belongs. Buffering is on under CLI too so
+   the smoke harness can prove the API stays pure JSON with display_errors on;
+   the WAV streaming paths turn it off before they print bytes. */
+ob_start();
+
+function clean_stray_output(): void {
+    while (ob_get_level() > 0) {
+        $stray = (string) ob_get_clean();
+        if (trim($stray) !== '') { error_log('assets.php stray output: ' . $stray); }
+    }
+}
+
 const MAX_LIMIT = 1000;
 const TAB_CATS  = ['all', 'image', 'audio', 'video', 'anim', 'font',
                    'i18n', 'data', 'dlc', 'android'];
 
 function out(array $a, int $code = 200): void {
+    clean_stray_output();
     if (php_sapi_name() !== 'cli') {
         http_response_code($code);
         header('Content-Type: application/json; charset=utf-8');
@@ -50,6 +73,46 @@ function qi(array $g, string $k, int $d): int {
 }
 function like(string $s): string {
     return '%' . str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $s) . '%';
+}
+
+/* The pre-conversion IMA ADPCM WAVs tools/convert_audio_pcm.py replaced
+   (gitignored, outside the document root). Browsers cannot decode these, so
+   they are offered as downloads only — see notes/01-binary-formats.md.
+   The playable file next door may be a .wav (PCM mode) or the .m4a an AAC run
+   renamed it to; the backup tree always keeps the original .wav name. */
+/* dirname() rather than '../..' in the middle: the containment check below
+   compares a realpath against this prefix, and a path with hops in it never
+   matches one without. */
+define('ORIGINALS_DIR', dirname(__DIR__, 2) . '/var/audio-adpcm');
+
+/* Every probe here is @-suppressed and any failure means "no original", never
+   "no pane": realpath()/filesize()/filemtime() raise E_WARNING when an
+   open_basedir-restricted pool cannot see outside the document root, and that
+   text used to land in the middle of op=asset's JSON. The path is already
+   restricted to a relative [A-Za-z0-9._/-] .wav/.m4a with no '..', so the
+   concatenation below stays inside the backup tree; realpath is kept as a
+   bonus check for when the pool does allow it. */
+function original_wav(string $path): ?array {
+    if ($path === '' || !preg_match('#^[A-Za-z0-9._/-]+\.(wav|m4a)$#', $path)
+        || str_contains($path, '..') || $path[0] === '/') {
+        return null;
+    }
+    try {
+        $orig = preg_replace('/\.(wav|m4a)$/i', '', $path) . '.wav';
+        $file = ORIGINALS_DIR . '/' . $orig;
+        if (!@is_file($file)) { return null; }         // corpus never converted
+        $bytes = @filesize($file);
+        if ($bytes === false) { return null; }         // barred or vanished
+        $root = @realpath(ORIGINALS_DIR);
+        $real = @realpath($file);
+        if ($real !== false && $root !== false && !str_starts_with($real, $root . '/')) {
+            return null;                               // symlink out of the tree
+        }
+        $mtime = @filemtime($file);
+        return ['file' => $file, 'bytes' => (int) $bytes, 'mtime' => (int) $mtime];
+    } catch (Throwable $e) {
+        return null;
+    }
 }
 
 try {
@@ -92,7 +155,12 @@ try {
         $total = 0;
         $catCounts = [];
         foreach ($cats as $c) { $catCounts[$c['cat']] = (int)$c['n']; $total += (int)$c['n']; }
-        out(['meta' => $meta, 'total' => $total, 'cats' => $catCounts]);
+        // A missing "original IMA ADPCM" download is a disk or pool-permission
+        // question, not a data question (var/ sits outside the document root),
+        // so say which it is instead of going quiet.
+        $odir = ORIGINALS_DIR;
+        out(['meta' => $meta, 'total' => $total, 'cats' => $catCounts,
+             'originals' => ['dir' => $odir, 'readable' => (bool) @is_dir($odir)]]);
     }
 
     if ($op === 'languages') {
@@ -255,6 +323,13 @@ try {
         $row = $st->fetch();
         $e = $entry($row === false ? null : $row);
         if (!$e) { out(['error' => 'no such asset path'], 404); }
+        // tell the detail pane whether the pre-conversion original is on disk
+        if (($e['type'] ?? '') === 'audio') {
+            $o = original_wav($path);
+            if ($o !== null) {
+                $e['original'] = ['bytes' => $o['bytes'], 'codec' => 'ima-adpcm'];
+            }
+        }
         out(['entry' => $e]);
     }
 
@@ -314,6 +389,43 @@ try {
         $st->execute([$path]);
         $t = $st->fetchColumn();
         out(['path' => $path, 'text' => $t === false ? null : (string)$t]);
+    }
+
+    // --------------------------------------------------------- original audio
+    if ($op === 'original') {
+        $path = q($get, 'path');
+        $o = original_wav($path);
+        if ($o === null) { out(['error' => 'no original WAV for that path'], 404); }
+        // only files the board knows about, and only audio: the backup tree
+        // mirrors web/assets, so the DB is the allow-list
+        $st = $pdo->prepare('SELECT type FROM assets WHERE path = ?');
+        $st->execute([$path]);
+        if ($st->fetchColumn() !== 'audio') { out(['error' => 'no such audio asset'], 404); }
+        $name = preg_replace('/\.(wav|m4a)$/i', '', basename($path)) . '-original.wav';
+        if (php_sapi_name() === 'cli') {
+            clean_stray_output();                 // do not buffer a WAV in RAM
+            $to = q($get, 'out', '');
+            if ($to !== '') { copy($o['file'], $to); fwrite(STDERR, "wrote $to\n"); }
+            else { readfile($o['file']); }
+            exit;
+        }
+        $etag = '"' . sha1($o['file'] . '|' . $o['bytes'] . '|' . $o['mtime']) . '"';
+        if (($_SERVER['HTTP_IF_NONE_MATCH'] ?? '') === $etag) {
+            clean_stray_output();
+            http_response_code(304);
+            exit;
+        }
+        if (!@is_readable($o['file'])) {
+            out(['error' => 'original not readable'], 404);
+        }
+        clean_stray_output();
+        header('Content-Type: audio/x-wav');
+        header('Content-Length: ' . $o['bytes']);
+        header('Content-Disposition: attachment; filename="' . $name . '"');
+        header('ETag: ' . $etag);
+        header('Cache-Control: public, max-age=31536000, immutable');
+        if (@readfile($o['file']) === false) { exit(1); }   // log has the reason
+        exit;
     }
 
     out(['error' => 'unknown op'], 400);

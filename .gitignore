@@ -13,6 +13,7 @@ web/assets/
 web/api/*.sqlite*
 web/api/bcell-cache/
 web/api/bsprite-cache/
+var/
 server/
 server-python/
 tasks/

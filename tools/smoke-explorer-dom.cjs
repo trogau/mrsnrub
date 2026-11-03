@@ -11,17 +11,44 @@
 // tools/smoke-explorer.cjs's job.
 //
 //   node tools/smoke-explorer-dom.cjs [web-dir] [assets.sqlite]
+//
+// js/audio.js plays short clips from pre-decoded Web Audio buffers and only
+// falls back to HTMLAudioElement when AudioContext is missing, so each engine
+// is a different code path — and the page in a real browser uses the buffer
+// one. With no AudioContext the harness could only ever see the fallback, which
+// is how a buffer-engine throw blanked the audio pane unnoticed. So this file
+// runs itself twice, once per engine (AUDIO_ENGINE=element|buffer); run it
+// directly with that variable set to debug a single engine.
 'use strict';
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const { DatabaseSync } = require('node:sqlite');
+const fs = require('fs');
 
 const ROOT = process.argv[2] || path.join(__dirname, '..', 'web');
 const DB = process.argv[3] || path.join(ROOT, 'api', 'assets.sqlite');
 const API_PHP = path.join(ROOT, 'api', 'assets.php');
 const PAGE = 240;                         // must match explorer.js
+const ENGINE = process.env.AUDIO_ENGINE || '';
 
-if (!require('fs').existsSync(DB)) {
+if (!ENGINE) {
+    let bad = 0;
+    for (const eng of ['element', 'buffer']) {
+        console.log('\n=== audio engine: ' + eng + ' ===');
+        const r = spawnSync(process.execPath, [__filename, ROOT, DB], {
+            stdio: 'inherit',
+            env: Object.assign({}, process.env, { AUDIO_ENGINE: eng }),
+        });
+        if (r.status !== 0) { bad++; }
+    }
+    if (bad) {
+        console.error('\n' + bad + ' audio engine(s) failed');
+        process.exit(1);
+    }
+    process.exit(0);
+}
+
+if (!fs.existsSync(DB)) {
     console.error('no assets database at ' + DB +
                   ' — run: php tools/build_assets_db.php');
     process.exit(2);
@@ -33,8 +60,26 @@ const dbAll = (sql, ...a) => db.prepare(sql).all(...a);
 // ---- fetch stub: run the real PHP API, cache responses (read-only) ------
 const fetchLog = [];
 const cache = new Map();
-global.fetch = (url) => {
-    const qs = String(url).split('?')[1] || '';
+const AUDIO_DIR = path.join(ROOT, 'assets', 'audio');
+globalThis.fetch = (url) => {
+    url = String(url);
+    // The buffer engine fetches the .m4a itself (fetchArrayBuffer in audio.js);
+    // everything else is an API query.
+    if (url.indexOf('assets/') === 0) {
+        const rel = decodeURIComponent(url.split('?')[0]).replace(/^assets\//, '');
+        const file = path.join(ROOT, 'assets', rel);
+        if (!fs.existsSync(file)) {
+            return Promise.resolve({ ok: false, status: 404 });
+        }
+        const buf = fs.readFileSync(file);
+        return Promise.resolve({
+            ok: true, status: 200,
+            arrayBuffer: () => Promise.resolve(
+                buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)),
+            json: () => Promise.reject(new Error('not json')),
+        });
+    }
+    const qs = url.split('?')[1] || '';
     fetchLog.push(qs);
     let json = cache.get(qs);
     if (!json) {
@@ -48,6 +93,94 @@ global.fetch = (url) => {
     return Promise.resolve({ ok: true, status: 200,
                              json: () => Promise.resolve(json) });
 };
+
+// ---- Web Audio stub (buffer engine only) ------------------------------------
+// The buffer engine is what a real browser uses; the element engine is the
+// fallback. Stubbing AudioContext makes the harness drive the same path Chrome
+// does, and decodeAudioData probes the genuine .m4a with ffprobe, so the
+// duration/channel values the engine reasons about are the real ones.
+const TMP = fs.mkdtempSync('/tmp/opencode/explorer-dom-');
+process.on('exit', () => { try { fs.rmdirSync(TMP); } catch (e) { /* best effort */ } });
+let stubDecodeSeq = 0;
+let stubDecodeFailures = 0;
+const stubSrcs = [];
+
+class StubAudioBuffer {
+    constructor(ch, len, rate) {
+        this.numberOfChannels = ch;
+        this.length = len;
+        this.sampleRate = rate;
+        this.duration = len / rate;
+        this._data = [];
+        for (let i = 0; i < ch; i++) { this._data.push(new Float32Array(len)); }
+    }
+    getChannelData(i) { return this._data[i]; }
+}
+
+class StubAudioContext {
+    constructor() {
+        this.state = 'running';
+        this.sampleRate = 48000;
+        this.destination = {};
+        this._t0 = process.hrtime.bigint();
+    }
+    get currentTime() { return Number(process.hrtime.bigint() - this._t0) / 1e9; }
+    createBuffer(ch, len, rate) { return new StubAudioBuffer(ch, len, rate); }
+    createGain() {
+        return { gain: { value: 1, setValueAtTime() { } }, connect() { } };
+    }
+    createBufferSource() {
+        const ctx = this;
+        const src = {
+            buffer: null, loop: false, playbackRate: { value: 1 }, onended: null,
+            _start: 0, _offset: 0, _started: false,
+            connect() { }, disconnect() { },
+            start(when, offset) { this._started = true; this._start = when; this._offset = offset || 0; },
+            stop() {
+                if (!this._started) { return; }
+                const cb = this.onended;
+                if (cb) { setTimeout(cb, 0); }
+            },
+        };
+        Object.defineProperty(src, 'position', {
+            get() {
+                if (!this._started || !this.buffer) { return 0; }
+                const p = ctx.currentTime - this._start + this._offset;
+                return Math.max(0, Math.min(this.buffer.duration, p));
+            },
+        });
+        stubSrcs.push(src);
+        return src;
+    }
+    resume() { return Promise.resolve(); }
+    decodeAudioData(buf, ok, err) {
+        const file = path.join(TMP, `decode-${stubDecodeSeq++}.m4a`);
+        fs.writeFileSync(file, Buffer.from(buf));
+        let info = null;
+        try {
+            info = JSON.parse(execFileSync('ffprobe', [
+                '-v', 'error', '-select_streams', 'a:0', '-show_entries',
+                'stream=channels,sample_rate:format=duration', '-of', 'json', file,
+            ], { encoding: 'utf8' }));
+        } catch (e) { info = null; }
+        fs.unlinkSync(file);
+        const st = info && info.streams && info.streams[0];
+        const fmt = info && info.format;
+        if (!st || !st.sample_rate) {
+            stubDecodeFailures++;
+            if (err) { err(new Error('stub decode failed')); }
+            return;
+        }
+        const dur = Number((fmt && fmt.duration) || st.duration || 0);
+        // a real decodeAudioData resamples to the context rate, so the buffer
+        // is dur seconds *of the context rate*; matching that keeps pos()/dur()
+        // honest for the checks below.
+        const len = Math.max(1, Math.round(dur * this.sampleRate));
+        const out = this.createBuffer(Number(st.channels || 1), len, this.sampleRate);
+        if (ok) { ok(out); }
+    }
+}
+if (ENGINE === 'buffer') { globalThis.AudioContext = StubAudioContext; }
 
 // ---- minimal XML parser (splashscreen.xml subset) --------------------------
 function parseXml(text) {
@@ -179,7 +312,11 @@ class FakeEl {
         (this.listeners[ev] || []).slice().forEach((fn) => fn(arg || {}));
     }
     // media-ish element methods (video/audio) the detail panes rely on
-    removeAttribute(n) { delete this[n]; }
+    removeAttribute(n) { delete this[n]; if (this._attrs) { delete this._attrs[n]; } }
+    setAttribute(n, v) { (this._attrs = this._attrs || {})[n] = String(v); }
+    getAttribute(n) {
+        return this._attrs && this._attrs[n] !== undefined ? this._attrs[n] : null;
+    }
     load() {}
     pause() { this.paused = true; }
     getContext() { return makeCtx(); }
@@ -207,13 +344,13 @@ class FakeEl {
 }
 
 // ---- globals --------------------------------------------------------------------
-global.window = global;
+globalThis.window = globalThis;
 let rafQueue = [];
-global.requestAnimationFrame = (cb) => { rafQueue.push(cb); return rafQueue.length; };
-global.cancelAnimationFrame = () => {};
+globalThis.requestAnimationFrame = (cb) => { rafQueue.push(cb); return rafQueue.length; };
+globalThis.cancelAnimationFrame = () => {};
 let clockNow = 0;
-global.performance = { now: () => clockNow };
-global.DOMParser = function () { this.parseFromString = (t) => parseXml(t); };
+globalThis.performance = { now: () => clockNow };
+globalThis.DOMParser = function () { this.parseFromString = (t) => parseXml(t); };
 
 const named = {};
 function mkNamed(tag) {
@@ -222,7 +359,7 @@ function mkNamed(tag) {
     return e;
 }
 ['grid', 'detail', 'tabs', 'search', 'counts', 'main', 'crumb'].forEach(mkNamed);
-global.document = {
+globalThis.document = {
     readyState: 'complete',
     getElementById: (id) => named[id] || null,
     querySelector: (sel) => named[sel] || named[sel.slice(1)] || null,
@@ -233,17 +370,24 @@ global.document = {
     addEventListener: () => {}
 };
 
-global.AUDIO_LOG = [];
-global.Audio = class {
+globalThis.AUDIO_LOG = [];
+globalThis.AUDIO_ELS = [];
+globalThis.AUDIO_COLD = false;         // harness: pretend the file is not buffered
+globalThis.Audio = class {
     constructor(src) {
         this.src = src;
-        global.AUDIO_LOG.push(src);
+        globalThis.AUDIO_LOG.push(src);
+        globalThis.AUDIO_ELS.push(this);
         this.volume = 0.8; this.loop = false; this.paused = true;
         this.duration = 1; this.currentTime = 0;
+        this.readyState = globalThis.AUDIO_COLD ? 0 : 4;    // buffered?
+        this._ls = {}; this.plays = 0; this.playedAt = null;
     }
-    play() { this.paused = false; return Promise.resolve(); }
+    addEventListener(ev, fn) { (this._ls[ev] = this._ls[ev] || []).push(fn); }
+    dispatch(ev) { (this._ls[ev] || []).slice().forEach((fn) => fn({})); }
+    play() { this.paused = false; this.plays++; this.playedAt = this.currentTime;
+             return Promise.resolve(); }
     pause() { this.paused = true; }
-    addEventListener() {}
 };
 
 // manifest dims for the Image stub (lazy per-path lookups against the DB)
@@ -255,7 +399,7 @@ const dimsOf = (p) => {
     }
     return DIMS[p];
 };
-global.Image = class {
+globalThis.Image = class {
     constructor() { this.naturalWidth = 0; this.naturalHeight = 0; this._src = ''; }
     get src() { return this._src; }
     set src(v) {
@@ -272,21 +416,24 @@ global.Image = class {
 // the page inlines the core (non-DLC) manifest entries via PHP; the harness
 // pulls the same set from the API (op=core) before loading the modules
 const core = fetchStubJson('op=core');
-global.window.MANIFEST = { files: core.files };
-global.window.EXPLORER_API = 'api/assets.php';
+globalThis.window.MANIFEST = { files: core.files };
+globalThis.window.EXPLORER_API = 'api/assets.php';
 
 function fetchStubJson(qs) {
-    if (!cache.has(qs)) { global.fetch('api/assets.php?' + qs); }
+    if (!cache.has(qs)) { globalThis.fetch('api/assets.php?' + qs); }
     return cache.get(qs);
 }
 
 require(path.join(ROOT, 'assets/data/webdata.js'));
+delete globalThis.global;             // browser-faithful: see the note above
 require(path.join(ROOT, 'js/i18n.js'));
 require(path.join(ROOT, 'js/assets.js'));
+require(path.join(ROOT, 'js/audio.js'));
 require(path.join(ROOT, 'js/splashlayout.js'));
 require(path.join(ROOT, 'js/ui.js'));
 require(path.join(ROOT, 'js/scenes.js'));
 require(path.join(ROOT, 'js/explorer.js'));
+
 
 // ---- drive -------------------------------------------------------------------------
 const tick = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -395,20 +542,150 @@ const metaText = () => named.detail.descend(named.detail)
               keyCells === nEn, keyCells);
     }
 
-    console.log('audio detail:');
+    console.log('audio detail (' + ENGINE + ' engine):');
+    if (ENGINE === 'element') {
+        // The web server runs this API under a pool whose open_basedir stops at
+        // web/, so the pre-conversion backup tree (var/audio-adpcm) is barred:
+        // the stat calls used to print "open_basedir restriction in effect"
+        // warnings into the JSON body and only op=asset for audio ever touched
+        // that tree — the browser's r.json() then threw and the audio detail
+        // pane went blank. Prove the API stays pure JSON with display_errors on.
+        const restricted = execFileSync('php', [
+            '-d', 'open_basedir=' + ROOT, '-d', 'display_errors=1',
+            '-d', 'error_reporting=32767', API_PHP,
+            'op=asset&path=audio/01_general_button.m4a',
+        ], {
+            maxBuffer: 16 << 20,
+            env: Object.assign({}, process.env, { ASSETS_DB: DB }),
+        }).toString();
+        let parsed = null;
+        try { parsed = JSON.parse(restricted); } catch (e) { /* reported below */ }
+        check('op=asset stays pure JSON under a restricted (open_basedir) pool',
+              !!parsed && parsed.entry && parsed.entry.codec === 'aac',
+              restricted.slice(0, 160).replace(/\n/g, ' '));
+        check('the restricted response carries no warning text',
+              restricted.indexOf('Warning') < 0 &&
+              restricted.indexOf('open_basedir') < 0,
+              restricted.slice(0, 160));
+    }
+    const diagTxt = () => {
+        const d = named.detail.querySelector('.diag');
+        return d ? d.textContent : '';
+    };
     await openTab('Audio');
     const audBefore = AUDIO_LOG.length;
     const someAudio = tiles().slice(0, 5);
-    for (const t of someAudio) {          // settle between clicks: explorer
-        t.dispatch('click');              // drops superseded detail fetches
+    const engines = [];
+    for (const t of someAudio) {           // settle between clicks: explorer
+        t.dispatch('click');               // drops superseded detail fetches
         await settle(150);
+        engines.push(diagTxt());
     }
     await settle(150);
-    check('5 audio tiles create 5 players',
-          AUDIO_LOG.length === audBefore + 5, AUDIO_LOG.length - audBefore);
+    if (ENGINE === 'element') {
+        check('5 audio tiles create 5 players',
+              AUDIO_LOG.length === audBefore + 5, AUDIO_LOG.length - audBefore);
+    } else {
+        // The browser path: every click must decode a Web Audio buffer and say
+        // so. A fallback to 'element' here means the buffer engine threw, and a
+        // blank diag means detailAudio() never built the pane at all.
+        check('5 audio tiles decode 5 buffers, none fall back',
+              stubDecodeFailures === 0 && engines.length === 5 &&
+              engines.every((t) => /buffer$/.test(t)),
+              'decode failures=' + stubDecodeFailures + ' | ' + engines.join(' | '));
+    }
     const nInputs = named.detail.descend(named.detail)
         .filter((n) => n.tagName === 'INPUT').length;
     check('player has seek + volume + loop inputs', nInputs >= 3, nInputs);
+
+    // download links in the side panel: the AAC file the page plays, and the
+    // game's own IMA ADPCM file kept by tools/convert_audio_pcm.py
+    const audPath = 'audio/01_general_button.m4a';
+    const audTile = findTile(audPath);
+    if (audTile) {
+        audTile.dispatch('click');
+        await settle(150);
+        const row = named.detail.querySelector('.dl-row');
+        const dls = row ? row.children.filter((n) => n.tagName === 'A') : [];
+        check('audio detail offers 2 download links', dls.length === 2, dls.length);
+        check('playable link serves the asset file with a download name',
+              dls[0] && dls[0].href === 'assets/' + audPath &&
+              dls[0].download === '01_general_button.m4a',
+              dls[0] && dls[0].href + ' / ' + dls[0].download);
+        check('original link uses op=original, names itself, and tips',
+              dls[1] && dls[1].href.indexOf('op=original&path=' +
+                                             encodeURIComponent(audPath)) > 0 &&
+              dls[1].download === '01_general_button-original.wav' &&
+              !!dls[1].getAttribute('data-tip'),
+              dls[1] && dls[1].href + ' / ' + dls[1].download);
+        check('detail lists the pre-conversion file',
+              metaText().indexOf('Pre-conversion file') >= 0);
+        check('player reports where it starts and which engine it uses',
+              diagTxt().indexOf('start') === 0 &&
+              new RegExp('\\b' + ENGINE + '\\b').test(diagTxt()),
+              diagTxt());
+    } else {
+        console.log('  (' + audPath + ' not on the first audio page — skipped)');
+    }
+
+    if (ENGINE === 'element') {
+        // cold start: play() must wait for data and rewind, not start mid-file
+        // (the reported bug: with loop ticked the file is buffered and the head
+        // plays; a cold play lost its attack).
+        globalThis.AUDIO_COLD = true;
+        const coldTile = findTile('audio/02_close_or_back.m4a') || audTile;
+        coldTile.dispatch('click');
+        await settle(150);
+        const cold = globalThis.AUDIO_ELS[globalThis.AUDIO_ELS.length - 1];
+        const playBtn = named.detail.querySelector('.big');
+        check('cold audio element exists to test', !!cold && !!playBtn);
+        cold.currentTime = 1.2;                // a playhead that wandered
+        playBtn.dispatch('click');
+        await settle(30);
+        check('cold play waits for data instead of starting mid-file',
+              cold.plays === 0 && cold.paused === true,
+              'plays=' + cold.plays + ' paused=' + cold.paused);
+        cold.readyState = 4;
+        cold.dispatch('canplay');
+        await settle(30);
+        check('canplay starts it from the top',
+              cold.plays === 1 && cold.playedAt === 0,
+              'plays=' + cold.plays + ' at ' + cold.playedAt);
+        globalThis.AUDIO_COLD = false;
+    } else {
+        // Buffer engine cold start: the clip is fetched and decoded on demand,
+        // so a click has to end up playing from sample 0 quickly and to the
+        // very end — the exact complaint the AAC move was meant to settle.
+        const srcBefore = stubSrcs.length;
+        const playBtn = named.detail.querySelector('.big');
+        check('play button present', !!playBtn);
+        if (playBtn) {
+            playBtn.dispatch('click');         // first play of this clip
+            await settle(1200);                // a real ffprobe decode runs here
+            const diag = diagTxt();
+            const m = diag.match(/start ([\d.]+) s · wait (\d+) ms · buf ([\d.]+) s/);
+            check('cold play reports start/wait/buf: ' + diag, !!m);
+            if (m) {
+                check('buffer engine starts within 0.3 s of the click',
+                      Number(m[1]) < 0.3, m[1] + 's');
+                const dur = dbGet('SELECT duration_s d FROM assets WHERE path = ?',
+                                  audPath);
+                if (dur && dur.d) {
+                    // the board rounds duration_s to 0.1 s and AAC carries priming
+                    // padding, so a tenth or so apart is the two agreeing
+                    check('buffer engine covers the whole clip',
+                          Math.abs(Number(m[3]) - dur.d) < 0.15,
+                          'buf ' + m[3] + 's vs board ' + dur.d + 's');
+                }
+            }
+            check('play started a buffer source from 0',
+                  stubSrcs.length === srcBefore + 1 &&
+                  stubSrcs[stubSrcs.length - 1]._offset === 0,
+                  stubSrcs.length - srcBefore);
+            playBtn.dispatch('click');         // pause again
+            await settle(60);
+        }
+    }
 
     console.log('dlc tab:');
     await openTab('DLC');

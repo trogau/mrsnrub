@@ -438,7 +438,10 @@
     var currentAudio = null;
     function stopAudio() {
         if (currentAudio) {
-            try { currentAudio.pause(); } catch (e2) { /* ignore */ }
+            try {
+                if (currentAudio.dispose) { currentAudio.dispose(); }
+                else { currentAudio.pause(); }
+            } catch (e2) { /* ignore */ }
             currentAudio = null;
         }
     }
@@ -547,9 +550,12 @@
         var kindBadge = el('span', 'badge', e.kind || 'audio');
         box.appendChild(detailHeader(e, kindBadge));
 
-        var a = new Audio('assets/' + e.path);
-        a.preload = 'auto';
-        currentAudio = a;
+        /* The mixer owns playback: a pre-decoded Web Audio buffer where the
+           browser allows it — which starts on sample 0, the point of this
+           whole exercise — and an HTMLAudioElement when it does not. */
+        var url = 'assets/' + e.path;
+        var player = (window.AudioMixer && window.AudioMixer.makePlayer)
+            ? window.AudioMixer.makePlayer(url) : null;
 
         var p = el('div', 'player');
         var row = el('div', 'row');
@@ -572,7 +578,54 @@
         vol.max = 1;
         vol.step = 0.01;
         vol.value = 0.8;
-        a.volume = 0.8;
+        if (player) { player.setVolume(0.8); }
+        /* Diagnostic for the "the first bit is missing / silence then sound"
+           report: ears cannot tell a file that starts late from a file whose
+           head was skipped, so measure it. 'start' is the position playback
+           actually began at and 'wait' how long the click waited for the first
+           'playing' event — start > 0 means samples were really jumped over,
+           a long wait with start 0.000 means the head is only delayed by the
+           fetch/decode. 'got' is what the network delivered for this file. */
+        var diag = el('span', 'diag', 'buf —');
+        var waitMs = null, startAt = null;
+        function stamp() {
+            var buf = player ? player.bufferedEnd() : 0;
+            var txt = 'start ' + (startAt == null ? '—' : startAt.toFixed(3) + ' s') +
+                ' · wait ' + (waitMs == null ? '—' : waitMs + ' ms') +
+                ' · buf ' + buf.toFixed(2) + ' s · ' +
+                (player ? player.kind : 'no player');
+            try {
+                var en = (window.performance || {}).getEntriesByName;
+                var abs = url;
+                if (en && window.location) {
+                    abs = new URL(url, window.location.href).href;
+                    var l = (window.performance.getEntriesByName(abs) || [])[0];
+                    if (l && l.duration) {
+                        txt += ' · got ' + humanBytes(l.transferSize || l.encodedBodySize || 0) +
+                            ' in ' + Math.round(l.duration) + ' ms';
+                    }
+                }
+            } catch (err) { /* Resource Timing or URL unavailable: fine */ }
+            diag.textContent = txt;
+            diag.setAttribute('data-tip',
+                'where playback actually started, how long the click waited for '
+                + 'it, how much is available, and what the network delivered; '
+                + '"buffer" means the sound was decoded before it was played, '
+                + 'so it cannot lose its head');
+        }
+        function onPlaying() {
+            if (!player) { return; }
+            waitMs = Math.round(performance.now() - playAt);
+            startAt = player.pos() || 0;
+            stamp();
+            if (window.console && window.console.info &&
+                    (waitMs > 60 || startAt > 0.02)) {
+                window.console.info('explorer audio: ' + e.path + ' started at ' +
+                    startAt.toFixed(3) + ' s after ' + waitMs + ' ms via ' +
+                    player.kind);
+            }
+        }
+
         var chk = document.createElement('label');
         chk.className = 'chk';
         var loop = document.createElement('input');
@@ -581,47 +634,125 @@
         chk.appendChild(document.createTextNode(' loop'));
         row2.appendChild(vol);
         row2.appendChild(chk);
+        row2.appendChild(diag);
 
         function fmt(s) {
             if (!isFinite(s)) { s = 0; }
             s = Math.round(s);
             return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
         }
-        play.addEventListener('click', function () {
-            if (a.paused) {
-                var pr = a.play();
-                if (pr && pr.catch) {
-                    pr.catch(function () { time.textContent = '(autoplay blocked)'; });
+        var playAt = 0;
+        var raf = null;
+
+        function syncButtons() {
+            if (player) { play.textContent = player.paused() ? '▶' : '❚❚'; }
+        }
+
+        function updateTime() {
+            if (!player) { return; }
+            var d = player.dur();
+            if (isFinite(d) && d > 0) { seek.max = d; }
+            seek.value = player.pos();
+            time.textContent = fmt(player.pos()) + ' / ' +
+                (isFinite(d) ? fmt(d) : '—');
+        }
+
+        /* A decoded buffer has no timeupdate events, so the position is
+           polled while it plays; the element path is polled the same way. */
+        function tick() {
+            raf = null;
+            if (!player) { return; }
+            updateTime();
+            if (!player.paused()) { raf = requestAnimationFrame(tick); }
+        }
+
+        if (player) {
+            player.onState = function (what) {
+                if (what === 'play') {
+                    onPlaying();
+                    syncButtons();
+                    if (!raf) { tick(); }
+                } else if (what === 'pause' || what === 'ended') {
+                    syncButtons();
+                    updateTime();
+                } else if (what === 'ready') {
+                    updateTime();
+                } else if (what === 'error') {
+                    /* Say what really happened: MediaError code 4 is "the
+                       browser cannot decode this" (an ADPCM WAV that never got
+                       converted), anything else is a load/play failure. */
+                    var c = player.errorCode ? player.errorCode() : 0;
+                    time.textContent = c === 4
+                        ? '(undecodable: ' + (e.codec || 'unknown codec') + ', ' +
+                          (e.sample_rate || '?') + ' Hz)'
+                        : '(' + what + ')';
+                    play.textContent = '▶';
                 }
+                stamp();
+            };
+            currentAudio = player;
+            player.prepare(function () { updateTime(); stamp(); });
+        } else {
+            time.textContent = '(no audio player)';
+        }
+
+        play.addEventListener('click', function () {
+            if (!player) { return; }
+            if (player.paused()) {
+                playAt = performance.now();
+                var d = player.dur();
+                var at = player.pos();
+                /* From the top when nothing has been heard yet or it finished:
+                   the element engine then waits for data and rewinds before
+                   it makes sound, which is what kept eating the attack. */
+                player.play(at <= 0.001 ||
+                    (isFinite(d) && d > 0 && at >= d - 0.05));
             } else {
-                a.pause();
+                player.pause();
             }
-        });
-        a.addEventListener('play', function () { play.textContent = '❚❚'; });
-        a.addEventListener('pause', function () { play.textContent = '▶'; });
-        a.addEventListener('ended', function () { play.textContent = '▶'; });
-        a.addEventListener('loadedmetadata', function () {
-            if (isFinite(a.duration)) {
-                seek.max = a.duration;
-                time.textContent = '0:00 / ' + fmt(a.duration);
-            }
-        });
-        a.addEventListener('timeupdate', function () {
-            seek.value = a.currentTime || 0;
-            time.textContent = fmt(a.currentTime) + ' / ' +
-                (isFinite(a.duration) ? fmt(a.duration) : '—');
         });
         seek.addEventListener('input', function () {
-            if (isFinite(a.duration) && a.duration > 0) {
-                a.currentTime = Number(seek.value);
-            }
+            if (player) { player.seek(Number(seek.value)); updateTime(); }
         });
-        vol.addEventListener('input', function () { a.volume = Number(vol.value); });
-        loop.addEventListener('change', function () { a.loop = loop.checked; });
+        vol.addEventListener('input', function () {
+            if (player) { player.setVolume(Number(vol.value)); }
+        });
+        loop.addEventListener('change', function () {
+            if (player) { player.setLoop(loop.checked); }
+        });
 
         p.appendChild(row);
         p.appendChild(row2);
         box.appendChild(p);
+
+        /* Downloads: what plays here (the AAC an AAC run wrote, or the PCM16
+           WAV if the corpus is still in that state) and, when the conversion
+           left it behind, the game's own IMA ADPCM file — which no browser can
+           decode, so a link is the only useful thing to offer. */
+        function dlLink(href, fname, label, tip) {
+            var a = document.createElement('a');
+            a.className = 'dl';
+            a.href = href;
+            a.download = fname;
+            a.textContent = label;
+            if (tip) { a.setAttribute('data-tip', tip); }
+            return a;
+        }
+        var dlRow = el('div', 'row dl-row');
+        var asPlayed = e.codec === 'aac' ? 'AAC .m4a' :
+            (e.codec === 'pcm' ? 'PCM16 WAV' : (e.codec || 'file'));
+        dlRow.appendChild(dlLink('assets/' + e.path, base(e.path),
+            '\u2b07 ' + asPlayed,
+            'the file this page plays (' + humanBytes(e.bytes) + ')'));
+        if (e.original) {
+            dlRow.appendChild(dlLink(
+                API + '?op=original&path=' + encodeURIComponent(e.path),
+                base(e.path).replace(/\.(wav|m4a)$/i, '') + '-original.wav',
+                '\u2b07 original IMA ADPCM',
+                'the game\u2019s own file before tools/convert_audio_pcm.py '
+                + 're-encoded it (' + humanBytes(e.original.bytes) + ')'));
+        }
+        p.appendChild(dlRow);
 
         var rows = [
             ['Kind', e.kind || '—'],
@@ -633,6 +764,10 @@
             ['Original file', e.origin || '—'],
             ['File size', humanBytes(e.bytes)]
         ];
+        if (e.original) {
+            rows.push(['Pre-conversion file',
+                'IMA ADPCM \u00b7 ' + humanBytes(e.original.bytes)]);
+        }
         rows = rows.concat(dlcRows(e));
         box.appendChild(metaTable(rows));
         return box;
@@ -860,13 +995,29 @@
         stopMotionIfNeeded();
         detail.innerHTML = '';
         var body;
-        if (e.type === 'image') { body = detailImage(e); }
-        else if (e.type === 'audio') { body = detailAudio(e); }
-        else if (e.type === 'video') { body = detailVideo(e); }
-        else if (e.type === 'anim') { body = detailAnim(e); }
-        else if (e.type === 'font') { body = detailFont(e); }
-        else if (e.type === 'i18n') { body = detailI18n(e); }
-        else { body = detailData(e); }
+        /* A renderer that throws must not leave the pane blank: the user is
+           left with an empty sidebar and no clue which of the six builders
+           failed. Render what worked and show the failure in its place. */
+        try {
+            if (e.type === 'image') { body = detailImage(e); }
+            else if (e.type === 'audio') { body = detailAudio(e); }
+            else if (e.type === 'video') { body = detailVideo(e); }
+            else if (e.type === 'anim') { body = detailAnim(e); }
+            else if (e.type === 'font') { body = detailFont(e); }
+            else if (e.type === 'i18n') { body = detailI18n(e); }
+            else { body = detailData(e); }
+        } catch (err) {
+            if (window.console && window.console.error) {
+                window.console.error('explorer: ' + e.type + ' detail failed', err);
+            }
+            detail.appendChild(el('div', 'placeholder',
+                base(e.path) + ': ' + (e.type || '?') + ' panel failed: ' +
+                (err && err.message ? err.message : err)));
+            if (err && err.stack && window.console && window.console.error) {
+                window.console.error(err.stack);
+            }
+            return;
+        }
         detail.appendChild(body);
         detail.scrollTop = 0;
     }

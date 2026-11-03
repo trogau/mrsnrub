@@ -381,6 +381,27 @@ table.meta td:first-child {
 .player input[type=range] { flex: 1; accent-color: var(--gold-bright); }
 .player .vol { width: 120px; flex: none; }
 .player label.chk { color: var(--text-dim); font-size: 12px; display: flex; gap: 6px; align-items: center; }
+/* download links under the audio player (the AAC file it plays + the kept original) */
+.player .dl-row { margin-top: 2px; }
+.player a.dl {
+    background: var(--panel2);
+    color: var(--gold-bright);
+    border: 1px solid #2c3a50;
+    border-radius: 14px;
+    padding: 4px 12px;
+    font-size: 12px;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.player a.dl:hover { border-color: var(--gold); text-decoration: none; }
+.player a.dl:active { transform: translateY(1px); }
+/* start-position / buffering readout next to the volume slider */
+.player .diag {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
 .video-player {
     display: block;
     width: 100%;
@@ -535,3 +556,42 @@ footer {
     }
     header input { width: 40vw; }
 }
+
+/* ---- Shared CSS tooltip (project convention; identical to app.css) ----------
+   Usage: put data-tip="text" on an element; no title attribute, no JS.
+   All tooltip call sites must use this one rule block. */
+[data-tip] { position: relative; }
+[data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%) translateY(2px);
+    white-space: nowrap;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: rgba(20, 16, 8, 0.95);
+    color: #ffe9a8;
+    font-family: 'HelveticaNeue', sans-serif;
+    font-size: 12px;
+    line-height: 1.2;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease 0.35s, transform 0.15s ease 0.35s;
+    z-index: 30;
+}
+[data-tip]::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% - 2px);
+    left: 50%;
+    transform: translateX(-50%) translateY(2px);
+    border: 5px solid transparent;
+    border-top-color: rgba(20, 16, 8, 0.95);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease 0.35s, transform 0.15s ease 0.35s;
+    z-index: 30;
+}
+[data-tip]:hover::after,
+[data-tip]:hover::before { opacity: 1; transform: translateX(-50%) translateY(0); }

@@ -2,7 +2,7 @@
 // of web/js/*.js in Node with a minimal DOM stub, at a simulated 60 fps.
 //
 // Catches the infinite-loop bug where the loading scene re-fired
-// setScene('city') + playSfx('10_next_segment.wav') every frame during the
+// setScene('city') + playSfx('10_next_segment') every frame during the
 // exit fade (the fade was reset to 0 each frame and never completed, and a
 // fresh Audio element — and network request — was created ~60x/sec).
 //
@@ -196,8 +196,8 @@ function check(label, cond, extra) {
     // Phase B: tap the splash
     canvasListeners['mousedown']({ clientX: 640, clientY: 360 });
     console.log('splash tap:');
-    check('tap SFX played', AUDIO_LOG.some((s) => s.endsWith('01_general_button.wav')));
-    check('main music started', AUDIO_LOG.some((s) => s.endsWith('mainmusic.wav')));
+    check('tap SFX played', AUDIO_LOG.some((s) => s.endsWith('01_general_button.m4a')));
+    check('main music started', AUDIO_LOG.some((s) => s.endsWith('mainmusic.m4a')));
     check('fade to loading in flight', G.fade && G.fade.to === Scenes.loading,
           G.fade ? (G.fade.from.name + ' -> ' + G.fade.to.name) : 'no fade');
 
@@ -217,10 +217,11 @@ function check(label, cond, extra) {
     // Phase D: audio must have fired exactly once (the reported bug spammed it)
     const count = (frag) => AUDIO_LOG.filter((s) => s.includes(frag)).length;
     console.log('audio (each file may be created exactly once):');
-    check('10_next_segment.wav once (was N/frame before fix)', count('10_next_segment') === 1,
+    check('10_next_segment.m4a once (was N/frame before fix)',
+          count('10_next_segment') === 1,
           'n=' + count('10_next_segment'));
-    check('bgloop.wav once', count('bgloop') === 1, 'n=' + count('bgloop'));
-    check('mainmusic.wav once', count('mainmusic') === 1, 'n=' + count('mainmusic'));
+    check('bgloop.m4a once', count('bgloop') === 1, 'n=' + count('bgloop'));
+    check('mainmusic.m4a once', count('mainmusic') === 1, 'n=' + count('mainmusic'));
     check('total audio elements small', AUDIO_LOG.length <= 8,
           'n=' + AUDIO_LOG.length + ': ' + AUDIO_LOG.join(', '));
 

@@ -374,15 +374,19 @@ def collect(root):
 
     # ---------------- assets -----------------------------------------------------
     by_type = {}
-    pcm = 0
+    playable = 0
     bsv3 = 0
     errors = 0
     for e in files:
         t = e.get('type', '?')
         by_type[t] = by_type.get(t, 0) + 1
         if t == 'audio':
-            if e.get('audio_format') == 1:
-                pcm += 1
+            # browsers play AAC-in-MP4 and PCM/float WAV; the corpus' own
+            # re-encode stamps codec 'aac' (no RIFF fmt tag) or codec 'pcm'
+            # with fmt tag 1. Anything else is still IMA ADPCM = silent.
+            if e.get('codec') in ('aac', 'pcm', 'float') or \
+                    e.get('audio_format') in (1, 3):
+                playable += 1
         if e.get('path', '').endswith('.bsv3'):
             bsv3 += 1
         if e.get('decode_error'):
@@ -392,9 +396,11 @@ def collect(root):
               'text'):
         if t in by_type:
             add('assets', 'assets.' + t, 'assets: ' + t, by_type[t])
-    add('assets', 'assets.audio.pcm', 'audio browser-playable (PCM16)',
-        pcm, by_type.get('audio'),
-        'files', {'note': 'rest are IMA ADPCM (deferred re-encode)'})
+    add('assets', 'assets.audio.pcm',
+        'audio browser-playable (AAC 96k / PCM16)', playable,
+        by_type.get('audio'),
+        'files', {'note': 'rest are IMA ADPCM (re-encode with '
+                          'tools/convert_audio_pcm.py --format aac)'})
     renderer = any('bsv3' in p.read_text(encoding='utf-8', errors='replace')
                    for p in (root / 'web/js').glob('*.js')) \
         if (root / 'web/js').is_dir() else False

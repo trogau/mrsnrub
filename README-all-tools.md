@@ -243,8 +243,15 @@ Features driven by the extracted data:
   th, tr) from the `.btp` string packs — switch live from the city screen;
   the splash logo swaps to the localized artwork.
 - **Audio**: all 62 WAVs from the APK (3 music tracks + UI SFX + Homer
-  lines). Button blips, dialog open/close, the main theme on tap-to-start,
-  background loop in the city.
+  lines), plus the DLC voice/ambient packs. Button blips, dialog
+  open/close, the main theme on tap-to-start, background loop in the city.
+  The game ships them IMA ADPCM, which no browser can decode, so
+  `tools/convert_audio_pcm.py` re-encodes the whole corpus to **AAC 96k
+  `.m4a`** with ffmpeg — 1.32 GB of WAV → 338 MB, so a cold play has a
+  quarter of the bytes to wait for (originals kept in `var/audio-adpcm/`;
+  see notes/01-binary-formats.md, 'Audio'). The short sounds play from
+  pre-decoded Web Audio buffers, which is what actually stops the first bit
+  of a tap sound going missing.
 - **Fonts**: the game's `ComicCrazy` and `Helvetica Neue` faces, used for
   canvas text.
 - **Generic popup** styled after the game's dialogs, using real strings
@@ -267,6 +274,17 @@ tools/gen_map_explorer.py  city save + data catalogs →
                            web/js/map-explorer-data.js (Map Explorer data)
 tools/gen_pb_layout.py     city save .pb → web/js/pb-layout-data.js
                            (Byte Map: per-field byte allocation + RE status)
+tools/convert_audio_pcm.py re-encode the corpus' audio with ffmpeg:
+                           --format aac (what ships: IMA ADPCM / PCM16 WAV →
+                           AAC 96k .m4a, renames + re-stamps the manifest) or
+                           --format pcm (ADPCM → PCM16 WAV, same name).
+                           Browsers decode neither ADPCM nor anything but
+                           PCM/AAC, so nothing plays until this has run once.
+                           Pre-conversion files are kept in
+                           var/audio-adpcm/ (+ var/audio-pcm/ for the CDN
+                           loops) for --restore; --restamp repairs manifest
+                           audio fields from disk. Re-run
+                           tools/build_assets_db.php afterwards.
 tools/build_assets_db.php  Asset Explorer indexer: streams the manifest
                            parts → web/api/assets.sqlite (entries + group
                            tables for the anim/DLC drill-downs; ~20 min)
@@ -335,7 +353,8 @@ web/
   js/
     boot.js                canvas, main loop, scene manager, input, startup
     assets.js              image loader + manifest lookups
-    audio.js               HTMLAudioElement mixer (SFX + crossfading music)
+    audio.js               mixer: Web Audio buffers for SFX, HTMLAudioElement
+                           for music, shared Player for the explorer's pane
     i18n.js                string lookup over the 16 decoded .btp tables
     splashlayout.js        splashscreen.xml parser + layout math
     ui.js                  buttons, text wrapping, generic popup
@@ -449,7 +468,14 @@ Movies, Animations and DLC), both drill-downs
 back), grid paging + Load more, a stratified sample of tiles (every video/audio/font/strings tile,
 capped image/anim/data samples — every detail renderer is exercised
 without the O(n²) cost of clicking every tile), the variant switcher,
-the motion canvases and search.
+the motion canvases and search. It **runs itself twice, once per audio engine**
+(`AUDIO_ENGINE=element|buffer`): the `buffer` pass stubs `AudioContext` (its
+`decodeAudioData` probes the real `.m4a` with ffprobe), which is the path a
+browser uses and the only way to catch a fault in the pre-decoded-buffer
+player; the `element` pass keeps the cold-start wait-and-rewind test. Both
+passes also require `op=asset` for an audio path to stay pure JSON under
+`-d open_basedir=<web> -d display_errors=1`, since a stray warning printed
+ahead of the body is what once blanked the audio detail pane.
 
 ## Formats decoded (findings)
 

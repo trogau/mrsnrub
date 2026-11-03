@@ -31,26 +31,49 @@ per-frame blits cannot explain it. The user will test later.
 - If slow even with `?animMax=0`: base-renderer regression, not the
   filmstrips — chase mode/fps per render path instead.
 
+## Awaiting user input (2026-11-03): does a cold play still lose its head?
+
+**Status: fixed structurally, needs one ear + one readout to close.** The
+corpus is AAC `.m4a` and short sounds play from pre-decoded Web Audio buffers
+(changelog 2026-11-03.9), which start on sample 0 by construction — so the
+only interesting case left is a sound whose readout says **`element`** (no
+`AudioContext`, or the file would not decode) *and* still starts late.
+
+**Update while checking (2026-11-03.10):** clicking an audio tile had stopped
+showing the pane at all. That was never the player or the corpus: `js/explorer.js`
+is a plain IIFE and read `global.AudioMixer`, which exists in Node (where both
+harnesses run) but not in a browser, so the audio detail threw a `ReferenceError`
+after the pane was cleared. Fixed by using `window.`, and the DOM harness now
+deletes `globalThis.global` before loading the page so it cannot come back. A
+second, latent way to get the same blank pane — an `open_basedir` warning
+printed into `op=asset`'s JSON body — is closed too and asserted by the harness
+(see *The API owes the page pure JSON* in `02-architecture-and-decisions.md`).
+Two things to look at while re-checking, on a hard refresh
+(`js/explorer.js?v=9`):
+
+- the pane should always appear; if a panel ever fails it now says
+  `<file>: <type> panel failed: <message>` instead of staying blank — paste
+  that line if you see one;
+- if the *⬇ original IMA ADPCM* link is missing, `api/assets.php?op=meta`
+  answers `originals.readable`; `false` means the pool cannot see
+  `var/audio-adpcm/` (open_basedir or file permissions), which is cosmetic —
+  the playable file and the player are unaffected.
+
+**User action needed** — hard-refresh the asset explorer (`js/explorer.js?v=9`),
+click a sound, and read the string beside ▶:
+`start … · wait … · buf … · buffer|element [· got … in … ms]`.
+
+- `… · buffer` with `start 0.000` → fixed; the element path never ran.
+- `… · element` with `start 0.000` and a big `wait` → working as designed
+  (it waits for the file, rewinds, then plays), just slow on a cold network.
+- `… · element` with `start > 0.02` → the remaining bug; also paste the
+  console line `explorer audio: … started at …`. If it says
+  `MediaError(4) unsupported or corrupt audio`, that file is not AAC and
+  `--restamp` / a re-run of the converter is the place to look.
+
 ## Deferred by explicit user instruction (design ready, just not approved)
-### 1. Audio: IMA ADPCM → PCM16 re-encode in the pipeline
 
-**Status: user said "No, leave the audio fix for now."** Still the single
-biggest functional gap: all 62 WAVs are IMA ADPCM, which browsers cannot
-decode, so **no sound plays anywhere in the web build** (game page swallows
-the error silently; the explorer once mislabeled it "(autoplay blocked)").
-
-The fix is fully specified (see `01-binary-formats.md`, Audio section):
-decode IMA ADPCM in `tools/extract_assets.py` (1024-byte blocks,
-standard IMA/DVI tables, decide nibble order by consecutive-sample MAD),
-re-encode as PCM16 RIFF WAV **with the same filenames**, compute duration
-from the decoded sample count (the `fact` chunk is slightly off), then
-re-run the pipeline, validate all 62 with Python `wave`, add a
-PCM-decodability assertion to `smoke-explorer.cjs`, and improve the
-explorer's `play()` handler (report the real `error.name`; tolerate
-`AbortError` from rapid re-clicks). Touch points: `wav_info()` and the
-audio emit section of `extract_assets.py`, `js/audio.js`, `js/explorer.js`.
-
-### 2. `.bsv3` canvas renderer (building animations)
+### 1. `.bsv3` canvas renderer (building animations)
 
 837 building-scene files are in the viewer as raw data only. The format is
 fully documented (`01-binary-formats.md`); a canvas renderer (cells are
@@ -58,7 +81,7 @@ crops of the building sprite sheets composited per frame, per the ×100
 fixed-point positions, with the named anim states) is the natural next
 step the project itself flagged ("a canvas renderer is future work").
 
-### 3. Phase 3 — `libscorpio.so` gameplay decompilation
+### 2. Phase 3 — `libscorpio.so` gameplay decompilation
 
 **Never approved.** Would need radare2 or Java + Ghidra installed (neither
 present on the old machine; the user has so far declined all installs).

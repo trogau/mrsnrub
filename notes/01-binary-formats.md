@@ -360,29 +360,68 @@ pieces to remap fs→direction), `flippedname`/`flippedbsv3`/`flippedanim`
 `LisaStatueFlipped`), `nameFlipSE/SW/NE/NW` (the fence families), and
 placement-UI flags `<Flippable value=>` / `<DirectionsToFlip value=>`.
 
-## Audio — all 62 APK WAVs are IMA ADPCM (browsers CANNOT play them)
+## Audio — the game's 13.6k WAVs ship as IMA ADPCM (browsers CANNOT play them)
 
-RIFF fmt **tag 17** (IMA/DVI ADPCM), mono, 22 050 Hz, FFmpeg-written
-(`ISFT Lavf56.40.101` tag). Browsers decode only PCM/IEEE-float WAV, so
-every `play()` rejects with `NotSupportedError` — this is why "no sound"
-was reported and why one handler misleadingly labeled it "(autoplay
-blocked)". **The fix (decode to PCM16 in the pipeline) is designed but
-still deferred by the user.** Full spec:
+RIFF fmt **tag 17** (IMA/DVI ADPCM), mono, 22 050 Hz (715 DLC files at
+24 000 Hz), FFmpeg-written (`ISFT Lavf…` in the LIST/INFO chunk). Browsers
+decode only PCM/IEEE-float WAV, so every `play()` rejects with
+`NotSupportedError` — that is the "no sound anywhere" report, and why the
+explorer handler mislabeled every rejection "(autoplay blocked)".
+**Fixed 2026-11-03: `tools/convert_audio_pcm.py` re-encodes the corpus with
+ffmpeg.** The playable corpus is now **AAC-LC 96k in `.m4a`** (`--format aac`,
+13 643 files, 1.32 GB of WAV → 338 MB). Each output is verified before it
+replaces the original — ffprobe says `aac`/same rate/same channels, the `moov`
+atom precedes `mdat` (`-movflags +faststart`, otherwise the browser cannot
+start before the whole file has arrived), it decodes back to s16le non-silent,
+and the decoded frame count agrees with the ADPCM block arithmetic. Nothing is
+deleted: the ADPCM originals live in `var/audio-adpcm/` (and the 67 PCM16 CDN
+loops that never were ADPCM in `var/audio-pcm/`), and `--restore` puts either
+kind back. `op=original` serves the ADPCM to the explorer's download link.
+PCM16 (`--format pcm`) is still supported — it is what the corpus was from
+2026-11-03 until the AAC switch, and `--restore` returns to it.
 
-- Block layout: **1024-byte blocks** = `u16 predictor` + `u16 index` (≤88)
-  + 1022 nibble bytes = **2,044 samples/block**; valid block headers at
-  offsets 0/1024/2048/3072/4096.
-- Standard IMA/DVI step table (132 … 1 461 560) and index deltas
-  `[-1,-1,-1,-1,2,4,6,8]×2`, index clamped 0–88, predictor clamped
-  ±32767, output s16 little-endian.
-- Per nibble: `diff = -(n&1) - 2*(n&2) - 4*(n&4) - 8*(n&8)`;
-  `diff = (diff * step[idx]) >> 3`; `pred += diff`; `idx += delta[n]`.
-- Low- vs high-nibble-first order: decide empirically by which order gives
-  the lower mean absolute difference of consecutive samples.
-- The RIFF `fact` chunk sample counts are slightly off — compute duration
-  from the decoded sample count.
-- Manifest already flags every entry `audio_format: 'WAV'`,
-  `codec: 'ima-adpcm'`; the explorer's audio detail shows the codec.
+Format notes, for anyone decoding these by hand again:
+
+- Block layout: **1 024-byte blocks** = `u16 predictor` + `u16 index` (≤88)
+  + 1 020 nibble bytes = **2 041 samples/block** = `(blockalign - 4) * 2 + 1`
+  (measured: `fact` says 10 205 samples for 5 blocks of `blockalign=1024`;
+  the "2 044 samples/block" written here earlier was wrong).
+- Standard IMA/DVI step table (89 entries, 7 … 2 149 687) and index deltas
+  `[-1,-1,-1,-1,2,4,6,8]` twice; index clamped 0–88, predictor clamped
+  ±32 767, output s16 little-endian.
+- Per nibble, canonical IMA with the sign in bit 3:
+  `diff = ((2 * (n & 7) + 1) * step[idx]) >> 3; if (n & 8) diff = -diff;`
+  then `pred += diff; idx += delta[n]`. The formula recorded here earlier —
+  `-(n&1) - 2*(n&2) - 4*(n&4) - 8*(n&8)` — uses bit *values* instead of bit
+  positions and does not decode IMA.
+- Nibble order is NOT ambiguous here: FFmpeg's `adpcm_ima_wav` (which wrote
+  these files) is low-nibble-first, unlike its `adpcm_ima_qt` sibling. Do
+  not settle it with the consecutive-sample MAD heuristic this file used to
+  recommend — on this corpus the two orders score within 1% of each other,
+  so the test can't tell them apart. Use a reference decoder.
+- The RIFF `fact` chunk sample counts are off — compute duration from the
+  decoded frame count (`bgloop.wav` was indexed at 50.7 s but is 55.0 s).
+- Manifest flags: `audio_format` is the fmt tag (PCM mode only — an MP4 has
+  no fmt tag, so an AAC entry drops it), `codec` is one of
+  `pcm`/`float`/`ima-adpcm`/`aac`, and re-encoded entries keep
+  `codec_src: 'ima-adpcm'` where an ADPCM original really is in the backup
+  tree. `tools/smoke-explorer.cjs` fails the build if an audio entry's file is
+  missing, is neither AAC-in-MP4 nor PCM/float WAV, has its `moov` after its
+  `mdat`, or whose `codec`/`duration_s` disagree with the container.
+- Why AAC and not MP3/Opus: encoded from the same PCM at 96k, AAC measured
+  32.7 / 35.2 / 43.7 dB SNR against the WAV on the three audition clips vs
+  ~25.8 dB for MP3 96k, at 25–30 % of the WAV size; Opus in Ogg was rejected
+  over Safari/Ogg support risk. The clips are in `mapdump/registration/`
+  (`m4-audio-{pcm,adpcm,aac96,mp396,mp364,opus48}-*`, plus
+  `m4-audio-aac96-playable-*` which are byte-identical to what the site
+  serves now).
+- The files themselves are intact: an independent stdlib IMA ADPCM decoder
+  (canonical step table, low-nibble-first) reproduced ffmpeg's PCM to
+  **max sample difference 0** over 77 558 frames, and the corpus' head
+  silence has a **median of 20 ms** (438 files ≥ 0.25 s, which is why a few
+  sounds *feel* late even when nothing is dropped). So "the beginning is
+  missing" was a playback-side problem, not a decoding one — see
+  notes/02-architecture-and-decisions.md.
 
 ## Video (movie packs)
 

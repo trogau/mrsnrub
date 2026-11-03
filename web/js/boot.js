@@ -99,8 +99,16 @@
         return [p.clientX - r.left, p.clientY - r.top];
     }
 
+    var warmedUp = false;
     function onTap(x, y) {
-        global.AudioMixer.resume();   // unblock music on first gesture
+        global.AudioMixer.resume();   // unblock audio on first gesture
+        if (!warmedUp) {
+            warmedUp = true;
+            /* Decode the UI sounds now, while the tap is being handled anyway:
+               a sound that is already an AudioBuffer starts on sample 0, and
+               the first press of a session stops losing its attack. */
+            global.AudioMixer.preload(global.AudioMixer.UI_SFX);
+        }
         if (global.UI.popup.onTap(x, y)) { return; }
         var s = (G.fade && G.fade.t > 0.5) ? G.fade.to : G.scene;
         if (s && s.onTap) { s.onTap(x, y); }

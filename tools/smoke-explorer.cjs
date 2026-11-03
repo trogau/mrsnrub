@@ -117,6 +117,130 @@ check('3 music tracks', aud.filter((e) => e.kind === 'music' &&
       !e.path.startsWith('dlc/')).length === 3);   // DLC packs add more
 check('all APK audio have kind + duration',
       aud.filter((e) => !e.dlc).every((e) => e.kind && e.duration_s != null));
+// Browsers decode PCM/IEEE-float WAV and AAC in an MP4 container, and nothing
+// else — a fmt-tag-17 (IMA ADPCM) file is silent whatever the play() handler
+// reports. That is the check that would have caught "no sound everywhere" plus
+// the explorer's misleading "(autoplay blocked)". tools/convert_audio_pcm.py
+// re-encodes the corpus to AAC .m4a (25-30 % of the WAV, a quarter of the
+// bytes to fetch before a cold play can start), so both shapes are accepted
+// here: whatever the corpus is in, everything on disk must be playable.
+function fmtTag(rel) {
+    const fd = fs.openSync(path.join(A, rel), 'r');
+    try {
+        const b = Buffer.alloc(8192);
+        fs.readSync(fd, b, 0, 8192, 0);
+        if (b.toString('latin1', 0, 4) !== 'RIFF' ||
+            b.toString('latin1', 8, 12) !== 'WAVE') { return -1; }
+        let off = 12, tag = -1;
+        while (off + 8 <= b.length) {
+            const size = b.readUInt32LE(off + 4);
+            if (b.toString('latin1', off, off + 4) === 'fmt ' &&
+                off + 24 <= b.length) { tag = b.readUInt16LE(off + 8); }
+            off += 8 + size + (size & 1);
+        }
+        return tag;
+    } finally { fs.closeSync(fd); }
+}
+function pcmSeconds(rel) {
+    const fd = fs.openSync(path.join(A, rel), 'r');
+    try {
+        const b = Buffer.alloc(8192);
+        fs.readSync(fd, b, 0, 8192, 0);
+        let off = 12, ch = 0, rate = 0, bits = 0, data = 0;
+        while (off + 8 <= b.length) {
+            const size = b.readUInt32LE(off + 4);
+            const cid = b.toString('latin1', off, off + 4);
+            if (cid === 'fmt ') {
+                ch = b.readUInt16LE(off + 10); rate = b.readUInt32LE(off + 12);
+                bits = b.readUInt16LE(off + 22);
+            } else if (cid === 'data') { data = size; }
+            off += 8 + size + (size & 1);
+        }
+        if (!rate || !ch || !bits || !data) { return null; }
+        return data / (ch * (bits / 8)) / rate;
+    } finally { fs.closeSync(fd); }
+}
+/* MP4: brand, whether the index (moov) precedes the audio (mdat) — a file
+   whose moov is last cannot start playing until it has fully arrived, which
+   is why the converter insists on -movflags +faststart — and the track
+   duration from mdhd, which is what the browser will report. */
+function mp4Info(rel) {
+    const fd = fs.openSync(path.join(A, rel), 'r');
+    try {
+        const size = Math.min(fs.fstatSync(fd).size, 1 << 20);
+        const b = Buffer.alloc(size);
+        fs.readSync(fd, b, 0, size, 0);
+        const out = {
+            ftyp: b.toString('latin1', 4, 8),
+            brand: b.toString('latin1', 8, 12),
+            moov: b.indexOf('moov'), mdat: b.indexOf('mdat'), seconds: null,
+        };
+        const i = b.indexOf('mdhd');
+        if (i > 0) {
+            const ver = b[i + 4];
+            if (ver === 0 && i + 24 <= b.length) {
+                const ts = b.readUInt32BE(i + 16), dur = b.readUInt32BE(i + 20);
+                if (ts) { out.seconds = dur / ts; }
+            } else if (ver === 1 && i + 36 <= b.length) {
+                const ts = b.readUInt32BE(i + 24);
+                const dur = Number(b.readBigUInt64BE(i + 28));
+                if (ts) { out.seconds = dur / ts; }
+            }
+        }
+        return out;
+    } finally { fs.closeSync(fd); }
+}
+const BRANDS = ['M4A ', 'mp42', 'isom', 'iso2', 'iso5', 'avc1'];
+const notPlayable = [], notStreamable = [], mislabeled = [], staleDur = [];
+const missingFile = [];
+aud.forEach((e) => {
+    if (!fs.existsSync(path.join(A, e.path))) { missingFile.push(e.path); return; }
+    let seconds = null;
+    if (/\.m4a$/i.test(e.path)) {
+        const m = mp4Info(e.path);
+        if (m.ftyp !== 'ftyp') { notPlayable.push(e.path + ' no ftyp'); return; }
+        if (BRANDS.indexOf(m.brand) < 0) {
+            notPlayable.push(e.path + ' brand=' + m.brand); return;
+        }
+        if (m.moov < 0 || (m.mdat >= 0 && m.moov > m.mdat)) {
+            notStreamable.push(e.path + ' moov=' + m.moov + ' mdat=' + m.mdat);
+        }
+        if (e.codec !== 'aac') { mislabeled.push(e.path + ' codec=' + e.codec); }
+        seconds = m.seconds;
+    } else if (/\.wav$/i.test(e.path)) {
+        const tag = fmtTag(e.path);
+        if (tag !== 1 && tag !== 3) {
+            notPlayable.push(e.path + ' fmt=' + tag); return;
+        }
+        if (e.codec !== 'pcm' && e.codec !== 'float') {
+            mislabeled.push(e.path + ' codec=' + e.codec);
+        }
+        seconds = pcmSeconds(e.path);
+    } else {
+        notPlayable.push(e.path + ' (unknown audio extension)'); return;
+    }
+    if (!e.codec) { mislabeled.push(e.path + ' (no codec)'); }
+    if (seconds !== null &&
+            Math.abs(Math.round(seconds * 10) / 10 - (e.duration_s || 0)) > 0.15) {
+        staleDur.push(e.path + '=' + e.duration_s + 's vs ' +
+                      (Math.round(seconds * 10) / 10) + 's');
+    }
+});
+check('every audio file exists where the manifest says',
+      missingFile.length === 0,
+      missingFile.length + ': ' + missingFile.slice(0, 5).join(', '));
+check('every audio file is browser-playable (AAC .m4a or PCM WAV)',
+      notPlayable.length === 0,
+      notPlayable.length + ': ' + notPlayable.slice(0, 5).join(', '));
+check('every .m4a keeps its moov before mdat (streams from the front)',
+      notStreamable.length === 0,
+      notStreamable.length + ': ' + notStreamable.slice(0, 5).join(', '));
+check('manifest codec matches the container',
+      mislabeled.length === 0,
+      mislabeled.length + ': ' + mislabeled.slice(0, 5).join(', '));
+check('duration_s matches the container (fact chunk is unreliable)',
+      staleDur.length === 0,
+      staleDur.length + ': ' + staleDur.slice(0, 5).join(', '));
 check('4 fonts', F.filter((e) => e.type === 'font' &&
       !e.path.startsWith('dlc/')).length === 4);    // DLC adds font packs
 const i18n = F.filter((e) => e.type === 'i18n');

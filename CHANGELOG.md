@@ -1,5 +1,59 @@
 # Changelog
 
+## 2026-11-03.10
+
+- **Clicking an audio tile stopped showing the player pane: `explorer.js` was
+  reading `global.AudioMixer`, and a browser has no `global`.** The file is a
+  plain `(function () { … })()` — unlike every other module in `web/js`, which
+  is `(function (global) { … })(window)` — so the `global.` references the audio
+  player added were bare identifiers that only resolve under Node. In Chrome the
+  first one, `global.AudioMixer` in `detailAudio()`, threw
+  `ReferenceError: global is not defined` *after* `renderDetail()` had cleared
+  the pane and *before* it appended anything: audio tiles alone, blank pane
+  alone, nothing in the page to say why. Both harnesses passed because Node
+  defines `global`. All thirteen sites now use `window.` — this file's own
+  convention (`window.EXPLORER_API`, `window.WEBDATA`) — and the DOM harness
+  `delete`s `globalThis.global` before it loads the page's scripts, so a bare
+  `global` throws there exactly as it does in a browser. Re-introducing the old
+  line reproduces the failure there verbatim (`explorer: audio detail failed
+  ReferenceError: global is not defined at detailAudio`), which is the negative
+  control that says the test has teeth. (`js/explorer.js?v=9`.)
+- **A detail panel that throws says so instead of showing nothing.**
+  `renderDetail()` in `web/js/explorer.js` builds the pane through a `try`; a
+  builder that throws used to leave `detail` cleared, which reads as "the
+  player vanished" and names nothing. It now keeps whatever rendered and shows
+  `<file>: <type> panel failed: <message>` in the pane, with the stack in the
+  console — which is what made this class of bug reportable at all.
+- **`op=asset` can no longer lose the audio pane to the pool either.** A second,
+  latent version of the same symptom was found on the way: the audio detail is
+  the only panel whose API call touches `var/audio-adpcm/` — outside the
+  document root — and a pool that restricts `open_basedir` answers the
+  `realpath()` / `is_file()` / `filesize()` there with an *"open_basedir
+  restriction in effect"* `E_WARNING`; with `display_errors` on that text is
+  printed **ahead of the JSON body**, so `r.json()` throws and only audio
+  entries go blank. The CLI could never see it (no restriction, no
+  `display_errors`). So `original_wav()` now `@`-suppresses every probe, treats
+  any failure as "no original kept" instead of "no pane", and keeps `realpath()`
+  only as a containment check for pools that allow it; `web/api/assets.php`
+  buffers from the first line and throws away (into `error_log`) anything that
+  escapes before a body, so no stray warning anywhere in the file can corrupt a
+  response; `op=original` checks readability before it sends headers; and
+  `op=meta` reports `originals: {dir, readable}`, because a missing *⬇ original
+  IMA ADPCM* link is a disk-permission question rather than a data question.
+- **The DOM harness now drives the page twice, once per audio engine.**
+  `tools/smoke-explorer-dom.cjs` re-launches itself with `AUDIO_ENGINE=element`
+  and `AUDIO_ENGINE=buffer`: with no `AudioContext` it could only ever exercise
+  the `HTMLAudioElement` fallback the browser never uses, so a buffer-engine
+  fault was invisible here. The `buffer` run stubs `AudioContext` — its
+  `decodeAudioData` probes the genuine `.m4a` with ffprobe — and asserts the
+  five audio tiles all stay on the buffer engine (a fall-back to `element`
+  means the engine threw), that a cold click reports `start 0.000 s`, that the
+  buffer covers the clip, and that a buffer source starts at offset 0. The
+  element run keeps the existing wait-for-`canplay`-and-rewind test. Both runs
+  now also fetch `op=asset` under `-d open_basedir=<web> -d display_errors=1`
+  and require pure JSON with no warning text — the regression test for the
+  second bug above.
+
 ## 2026-11-03.9
 
 - **The playable audio corpus is now AAC 96k `.m4a` instead of PCM16 `.wav`

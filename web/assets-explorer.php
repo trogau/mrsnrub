@@ -102,11 +102,12 @@ $countsLine = $total ? ($total . ' assets · ' . ($counts['image'] ?? 0) . ' ima
 window.EXPLORER_API = 'api/assets.php';</script>
 <script src="assets/data/webdata.js"></script>
 <script src="js/i18n.js"></script>
+<script src="js/audio.js?v=2"></script>
 <script src="js/assets.js"></script>
 <script src="js/splashlayout.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/scenes.js"></script>
-<script src="js/explorer.js?v=2"></script>
+<script src="js/explorer.js?v=9"></script>
 <?php endif; ?>
 </body>
 </html>
