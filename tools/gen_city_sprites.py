@@ -4282,7 +4282,9 @@ def _char_inventory():
     frames external in '<stem>_image_N.rgb' companions) are added last so
     a renderable bcell10 for the same stem+role always shadows them;
     their companions are harvested on demand at render time
-    (_fetch_companions). bcell11 cells stay skipped (undecoded)."""
+    (_fetch_companions). bcell11 cells stay skipped here too — do_chars has no bcell11
+     renderer; the dynamic endpoint (web/api/bcell.php) decodes them, and
+     the `char-companions` subcommand harvests their companions for it."""
     import io
     import zipfile
     inv = {}
@@ -4398,6 +4400,179 @@ def _fetch_companions(need_by_fam):
             pass
         shutil.rmtree(work, ignore_errors=True)
     return got
+
+
+def do_char_companions():
+    """Harvest the '_image_N.rgb' companions the dynamic character endpoint
+    (web/api/bcell.php, src=pool) needs, so placed characters render instead
+    of the red wireframe. External-companion cells store their frames in
+    '<stem>_image_N.rgb' beside the cell (see extract_assets.parse_bcell11 /
+    parse_bcell13). Two sets are pulled:
+
+      1. EVERY bcell11 cell in the pool. do_chars renders only bcell10/
+         bcell13 and SKIPS bcell11, so those companions never enter the pool
+         any other way (e.g. slug 'homeridleblink' -> homer_idle_blink, the
+         character #3 idle, decoded but failed 'missing companion').
+
+      2. The external-companion cell each PLACED-CHARACTER slug resolves to,
+         resolved here exactly the way web/api/bcell.php pool_source() does
+         (exact stem, then alphanumeric slug_key, then the idle-suffix
+         fallback mirroring CHAR_IDLE_SUFFIXES). do_chars baked many core
+         characters (Marge/Abe/Moe/Krusty idles) from a self-contained CORE
+         bcell10 twin, so the pool's bcell13 twin — the cell the endpoint
+         actually reads — had its companions never fetched.
+
+    Companions already in the pool are skipped; the rest are pulled per
+    family pack (idempotent).
+
+    The first pass reuses _fetch_companions (the same pass do_chars uses).
+    But load_families() keeps only each family's FIRST candidate row, and for
+    the 2025 re-pack families that row is a 47KB stub carrying the tiny .bcell
+    but NOT the multi-MB .rgb art — its sibling revision zip does. So whatever
+    the first pass could not satisfy is retried across EVERY candidate inner
+    zip of the cell's .7z BUNDLE, stopping once the needed set is complete.
+    Grouping by bundle (not by the index family key) is deliberate: a cell can
+    be kept under a partial re-pack family (e.g. XMAS2013CharacterGame-100-
+    r57598) while its full art lives in a SIBLING family sharing the same .7z
+    (the plain XMAS2013CharacterGame-100 r146180) — load_rows() documents the
+    same sibling-revision recovery for the building fill pass."""
+    import json as _json
+    import zipfile
+    from extract_assets import parse_bcell11, parse_bcell13
+    idx = _bcell_index()
+    need = {}          # family -> {companion basenames}   (for _fetch_companions)
+    need_by_pack = {}  # .7z bundle -> {basenames}          (for the fallback)
+    handled = set()    # pool stems (lower) we've queued companions for
+
+    def queue(stem, blob, magic):
+        """Queue stem's still-missing frame companions into need/need_by_pack."""
+        ent = idx.get(stem.lower())
+        if ent is None:
+            return                        # no pool-keep family row -> unfetchable
+        parse = parse_bcell11 if magic == b'bcell11' else parse_bcell13
+        try:
+            recs = parse(blob, stem + '.bcell')
+        except Exception:
+            return
+        for rec in recs:                  # rec = (delay, x_off, y_off, image_name)
+            fn = rec[3].lower()
+            if not (POOL / fn).exists():
+                need.setdefault(ent[0], set()).add(fn)
+                need_by_pack.setdefault(ent[1], set()).add(fn)
+        handled.add(stem.lower())
+
+    # (1) every bcell11 cell the pool holds
+    for p in sorted(POOL.glob('*.bcell')):
+        try:
+            with p.open('rb') as fh:
+                magic = fh.read(7)
+                if magic != b'bcell11':
+                    continue
+                fh.seek(0)
+                blob = fh.read()
+        except OSError:
+            continue
+        queue(p.name[: -len('.bcell')], blob, magic)
+
+    # (2) the external-companion cell each placed-character slug resolves to,
+    # mirroring pool_source()'s resolution in web/api/bcell.php exactly
+    by_key = {}
+    for st in sorted(p.name[: -len('.bcell')] for p in POOL.glob('*.bcell')):
+        by_key.setdefault(_char_norm(st), st)      # first sorted match wins
+
+    def resolve(name):
+        if (POOL / (name + '.bcell')).exists():
+            return name
+        st = by_key.get(_char_norm(name))
+        if st:
+            return st
+        for sfx in CHAR_IDLE_SUFFIXES:
+            st = by_key.get(_char_norm(name + '_' + sfx))
+            if st:
+                return st
+        return None
+
+    cpath = ROOT / 'web' / 'assets' / 'characters' / 'characters.json'
+    slugs = set()
+    if cpath.is_file():
+        try:
+            chars = _json.loads(cpath.read_text()).get('characters', {})
+            slugs = {v['slug'] for v in chars.values() if v.get('slug')}
+        except (OSError, ValueError):
+            slugs = set()
+    for slug in sorted(slugs):
+        stem = resolve(slug)
+        if stem is None or stem.lower() in handled:
+            continue
+        try:
+            with (POOL / (stem + '.bcell')).open('rb') as fh:
+                magic = fh.read(7)
+                if magic not in (b'bcell11', b'bcell13'):
+                    continue
+                fh.seek(0)
+                blob = fh.read()
+        except OSError:
+            continue
+        queue(stem, blob, magic)
+
+    total = sum(len(v) for v in need.values())
+    fetched = _fetch_companions(need)
+
+    # second pass: companions the first pass could not satisfy (a stub first
+    # row, or the art kept under a sibling family in the same bundle). Retry
+    # them across every inner zip of each .7z bundle until the set is complete.
+    still = {}
+    for pack, names in need_by_pack.items():
+        miss = {n for n in names if not (POOL / n).exists()}
+        if miss:
+            still[pack] = miss
+    if still:
+        bundle_inners = {}
+        for _fam, pack, inner, _size in load_rows():
+            inners = bundle_inners.setdefault(pack, [])
+            if inner not in inners:
+                inners.append(inner)
+        for pack, missing in sorted(still.items()):
+            remaining = set(missing)
+            for inner in sorted(bundle_inners.get(pack, []), reverse=True):
+                if not remaining:
+                    break
+                work = WORK_BASE / 'lazy11' / re.sub(r'[^A-Za-z0-9_.-]',
+                                                     '_', pack)
+                shutil.rmtree(work, ignore_errors=True)
+                try:
+                    zpath = open_inner_zip(work, pack, inner)
+                    if zpath is None:
+                        continue
+                    z = zipfile.ZipFile(zpath)
+                    want = {}
+                    for n in z.namelist():
+                        base = os.path.basename(n).lower()
+                        if base.endswith('.rgb') and base not in want:
+                            want[base] = n
+                    for name in sorted(remaining):
+                        if (POOL / name).exists():
+                            remaining.discard(name)
+                            continue
+                        zn = want.get(name)
+                        if zn is None:
+                            continue
+                        tmp = POOL / (name + '.part')
+                        tmp.write_bytes(z.read(zn))
+                        tmp.rename(POOL / name)
+                        fetched += 1
+                        remaining.discard(name)
+                    z.close()
+                except (OSError, zipfile.BadZipFile):
+                    pass
+                finally:
+                    shutil.rmtree(work, ignore_errors=True)
+
+    left = sum(1 for v in need.values() for n in v
+               if not (POOL / n).exists())
+    print(f'char-companions: {len(handled)} external-companion cells, '
+          f'{total} companions needed, {fetched} fetched into {POOL}'
+          + (f' ({left} still missing)' if left else ''))
 
 
 def _dedup_built(built):
@@ -5161,6 +5336,11 @@ def main():
     sub.add_parser('bridges', help='bake the engine-composited road-bridge '
                                    'deck/strut frames (notes/09 §10)')
     sub.add_parser('chars')
+    sub.add_parser('char-companions',
+                   help='harvest the _image_N.rgb companions of every bcell11 '
+                        'cell the pool holds into the pool (fills the gap left '
+                        'by do_chars skipping bcell11; lets web/api/bcell.php '
+                        'serve bcell11 via src=pool)')
     sub.add_parser('reanchor')
     an = sub.add_parser('anims')
     an.add_argument('--slug', default=None)
@@ -5207,6 +5387,8 @@ def main():
             do_behavior_map()
     elif a.cmd == 'chars':
         do_chars()
+    elif a.cmd == 'char-companions':
+        do_char_companions()
     elif a.cmd == 'reanchor':
         do_reanchor()
     elif a.cmd == 'flags':

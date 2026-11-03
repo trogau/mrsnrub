@@ -1,5 +1,308 @@
 # Changelog
 
+## 2026-11-03.9
+
+- **The playable audio corpus is now AAC 96k `.m4a` instead of PCM16 `.wav`
+  (1.32 GB → 338 MB), and short sounds play from pre-decoded Web Audio
+  buffers.** Two halves of the same "the beginning of the sound is missing"
+  problem (see 2026-11-03.7/.8):
+  * *Less to fetch.* `tools/convert_audio_pcm.py` gained `--format aac`
+    (`--bitrate`, default 96k), which re-encodes every WAV to AAC-LC in an
+    MP4 with `-movflags +faststart` and renames `x.wav` → `x.m4a`. All
+    13 643 files converted, 0 failures; a browser now has a quarter of the
+    bytes to download before a cold play can start. AAC was chosen over
+    MP3/Opus by measurement, not taste: 32.7 / 35.2 / 43.7 dB against the
+    WAV on the audition clips vs ~25.8 dB for MP3 96k, with universal
+    support (Opus dropped over Safari/Ogg risk). The clips, including the
+    byte-exact files the site now serves, are in
+    `mapdump/registration/m4-audio-*` for auditioning.
+    Each output is verified before it replaces anything (ffprobe codec /
+    rate / channels, `moov` before `mdat`, decodes back to non-silent
+    s16le, frame count within tolerance), the pre-conversion file is kept —
+    IMA ADPCM in `var/audio-adpcm/`, the 67 PCM16 CDN loops in the new
+    `var/audio-pcm/` — and `--restore` puts either kind back and deletes the
+    `.m4a`. The manifest `path` of an affected entry is re-stamped too, so
+    **`php tools/build_assets_db.php` has to run after a conversion or
+    rename** (the audio board and every audio deep link come from that
+    index).
+  * *A start time the app controls.* Waiting for `canplay` was necessary
+    but not sufficient: an `HTMLAudioElement`'s start position is still not
+    the page's to choose, and two taps of one sound cannot overlap. Short
+    sounds are now fetched once, decoded to an `AudioBuffer`, and replayed
+    with `BufferSource.start(0, offset)` — sample-exact and overlap-safe —
+    with the element path kept as the fallback (no `AudioContext`, or
+    `file://`). `boot.js` warms `AudioMixer.UI_SFX` on the first gesture, so
+    the first tap of a session is as exact as the tenth; music stays on
+    `<audio>`, where progressive buffering is the point. Call sites still
+    name sounds by their old `.wav` names — `fileUrl()` in `web/js/audio.js`
+    decides the extension.
+- **The Asset Explorer's audio player uses the same mixer.** The detail pane
+  had its own `HTMLAudioElement` code; it now drives a shared
+  `AudioMixer.makePlayer()` (buffer engine, element fallback), which also
+  pulls `js/audio.js` onto the explorer page where `ui.js` had been calling
+  `AudioMixer` unguarded. The readout next to ▶ now also says which engine
+  answered — `… · buffer` vs `… · element` — so a sound that still starts
+  late is diagnosable from the page, and the download row labels the playable
+  file correctly (`⬇ AAC .m4a`) beside the kept original.
+  (`js/audio.js?v=2`, `js/explorer.js?v=7`, `js/boot.js?v=1`.)
+- **`op=original` follows the rename.** `web/api/assets.php` accepts either
+  playable name (`audio/x.wav` or `audio/x.m4a`) and maps it back to the ADPCM
+  `.wav` it kept in `var/audio-adpcm/`; the DB stays the allow-list and
+  traversal / non-audio paths still 404.
+- **Harnesses understand both corpus shapes.** `tools/smoke-explorer.cjs`
+  now checks every audio entry's file exists, is browser-playable as either
+  AAC-in-MP4 (brand, `moov` before `mdat`) or PCM/float WAV, and that
+  `codec` / `duration_s` agree with the container; `smoke-explorer-dom.cjs`
+  loads `js/audio.js`, points its audio checks at the `.m4a` names, and
+  asserts the player readout reports its engine; `smoke-scene.cjs` expects
+  `.m4a` sources.
+- **The Progress board's audio meter counts AAC as playable.**
+  `tools/progress_scan.py` judged browser-playability by RIFF fmt tag 1,
+  which an MP4 has not got, so the whole corpus would have read as "still
+  ADPCM". It now accepts `codec` `aac`/`pcm`/`float` as well (the meter keeps
+  its `assets.audio.pcm` id so its history survives).
+
+## 2026-11-03.8
+
+- **Cold playback no longer eats the beginning of a sound.** The report was
+  that most sounds seemed to start with their attack missing, and the decisive
+  clue was that ticking **loop** made the whole sound audible: with loop the
+  file is already buffered, so the difference is a *cold* element, not the
+  audio. Both play paths called `play()` on an element that was still
+  fetching — the explorer's ▶ (`web/js/explorer.js`) on an element built when
+  the tile was selected, and `Mixer.playSfx` (`web/js/audio.js`) on an element
+  built in the same tick, which means every sound's first play was cold, with
+  only repeats warm — so output began as soon as the first chunk decoded and
+  the front of the sound went with it. The 8× larger PCM16 files made it
+  obvious; the samples themselves are intact (see 2026-11-03.7).
+  Both now do the same thing: if `readyState < 3`, wait for `canplay`, set
+  `currentTime = 0` explicitly, then play; a warm element still starts on the
+  click with no extra delay. `playMusic`'s fade-in start pins the playhead to
+  the top too, so a cold music track fades in from the real beginning instead
+  of from wherever the download had got to.
+  `tools/smoke-explorer-dom.cjs` guards it: its `Audio` stub became a real
+  listener-capable stub with a `AUDIO_COLD` switch, and three new checks
+  assert that clicking ▶ on an unbuffered element does **not** start playback,
+  that `canplay` then starts exactly one play, and that it started at
+  `currentTime === 0` (`js/explorer.js?v=6`, `js/audio.js?v=1` — the game page
+  had no cache-buster for `audio.js` before).
+  `tools/smoke-scene.cjs` still boots to the city with every file requested
+  once; note it now needs `node --max-old-space-size=12288` (it OOMs at the
+  ~4 GB default with or without local changes — pre-existing).
+
+## 2026-11-03.7
+
+- **The audio player now shows where playback actually started, to settle
+  "the first bit of every sound is cut off".** Measured rather than
+  guessed, and the files are innocent: decoding `audio/homer_donut_money-05.wav`
+  with an independent hand-written IMA ADPCM decoder reproduces
+  `ffmpeg`'s PCM16 output with a **maximum sample difference of 0** over all
+  77 558 frames (same frame count and duration as the original's own `fact`
+  chunk), its audible onset is at 4.6 ms, and its envelope rises from sample 0
+  like any speech attack. Across all 13 643 converted WAVs the median leading
+  silence is **20 ms** (8 242 files under 30 ms, 11 755 under 100 ms; the 59
+  that look silent are quiet ambient loops, not truncated), so nothing is
+  being clipped off the
+  front by `tools/convert_audio_pcm.py`. What the player does next is now
+  visible: under the volume slider the audio panel reads
+  `start 0.000 s · wait 12 ms · buf 3.52 s · got 151 KB in 4 ms` — the position
+  playback really began at, how long the click waited for the first `playing`
+  event, how much is buffered, and what the network delivered (Resource
+  Timing). A start position above 0 means samples were genuinely skipped; a
+  long wait with `start 0.000` means the head is only *delayed* by the
+  fetch/decode. Anything over 60 ms of waiting or a start past 20 ms is also
+  logged once per file to the console (`js/explorer.js?v=5`).
+  Two causes of the symptom already live in our own code and produce exactly
+  "silence, then the sound": `web/js/audio.js` fades music up from volume 0
+  over **1.2 s** (`playMusic`'s default `fadeIn`), and `playSfx` builds a fresh
+  `<audio>` element per play and never reuses one, so the first play of a file
+  pays fetch + decode for a file that is now eight times larger than the
+  ADPCM it replaced.
+  Listening evidence for the comparison sits in `mapdump/registration/`:
+  `m4-audio-pcm-homer_donut_money-05.wav` (the exact bytes the browser gets)
+  next to `m4-audio-adpcm-homer_donut_money-05.wav` (the game's own file).
+
+## 2026-11-03.6
+
+- **The Asset Explorer's audio panel now offers both files as downloads.**
+  Under the player in the side panel there are two pill links:
+  **⬇ PCM16 WAV** — the 16-bit file this page actually plays, a plain
+  `assets/<path>` link with a `download` attribute so the browser saves it
+  instead of navigating — and **⬇ original IMA ADPCM**, the game's own file
+  as it came out of the APK. That second one lives in the gitignored
+  `var/audio-adpcm/` tree *outside* the document root (so it cannot be
+  fetched directly, and it is not copied into the docroot just to serve it),
+  and no browser can decode it, so a download is the only useful thing to
+  offer. It arrives through a new API op, and the meta table gains a
+  **Pre-conversion file** row (`IMA ADPCM · 5.1 KB`) so it is clear which
+  size belongs to which file (`js/explorer.js?v=4`).
+
+  - `web/api/assets.php op=original&path=…` streams the backup as
+    `audio/x-wav` with `Content-Disposition: attachment`,
+    `filename="<stem>-original.wav"`, an ETag and immutable caching. The
+    path must pass a character-class regex, a `..` check *and* a
+    `realpath` prefix check against `var/audio-adpcm/`, and the SQLite index
+    is the allow-list: only paths stored as `type='audio'` are served, so the
+    tree outside the docroot stays closed (`../../../etc/passwd`, a `.png`,
+    an unconverted CDN ambient loop and an unknown name all 404). It also
+    runs under CLI for the harness (`…&out=/tmp/x.wav`).
+  - `op=asset` reports `entry.original = {bytes, codec}` for the files that
+    have one. That is a `stat`, not a new indexed column — adding a column
+    would mean another 20-minute `build_assets_db.php` run for one number
+    the panel needs only when an audio tile is open.
+  - No native `title` tooltips: both links describe themselves with
+    `data-tip`, using the shared `[data-tip]` rule block — duplicated into
+    `web/css/explorer.css` because that page does not load `app.css` (same
+    precedent as `cdn-explorer.css`), so the new call sites add only the
+    attribute.
+  - `tools/smoke-explorer-dom.cjs` gained four checks (both links present,
+    the PCM16 href/download name, the `op=original` href/download name/
+    tooltip, and the pre-conversion meta row) plus `setAttribute`/
+    `getAttribute` on the element stub, which the page code was the first to
+    need. `php web/api/assets.php 'op=original&path=…&out=…'` byte-matches
+    the copy in `var/audio-adpcm/`.
+
+## 2026-11-03.5
+
+- **Sound now plays: the whole WAV corpus is PCM16.** Every sound in the
+  web build has been silent from the start, and it was never the autoplay
+  policy. 13 576 of the 13 643 WAVs the pipeline emits are RIFF **fmt tag
+  17 (IMA ADPCM)** — mono, 22 050 Hz (715 DLC files at 24 000 Hz), written
+  by FFmpeg inside the original game — and browsers decode only
+  PCM/IEEE-float WAV, so `play()` rejects with `NotSupportedError` and
+  nothing sounds. The explorer caught *every* rejection and said
+  "(autoplay blocked)", which is what hid the real cause.
+  `tools/convert_audio_pcm.py` re-encodes the corpus with ffmpeg
+  (`-map_metadata -1 -c:a pcm_s16le -f wav`) keeping **the same
+  filenames**, so manifest paths, the SQLite index and explorer deep links
+  all stay valid:
+
+  - only fmt-tag-17 files are touched, so re-running is a no-op — the 67
+    CDN ambient loops that were already PCM16 are skipped;
+  - every ffmpeg output is verified with the stdlib `wave` module (16-bit,
+    same rate/channels, frame count matching the ADPCM block arithmetic
+    `(blockalign − 4) × 2 + 1`, not pure silence) before it replaces the
+    original; a file that fails is left untouched and lands in `--report`;
+  - originals are copied to `var/audio-adpcm/` (gitignored, 339 MB) first
+    — `--restore` puts them back without re-running the multi-hour
+    extraction, and `--restamp` repairs the manifest from the WAVs on disk;
+    `--dry-run`, `--only GLOB`, `--limit N` and `-P N` support staged runs;
+  - `manifest.json` and `manifest-parts/*.js` are re-stamped for the
+    converted entries (`audio_format: 1`, `codec: "pcm"`, new `bytes`,
+    corrected `duration_s`, plus `codec_src: "ima-adpcm"` for provenance).
+    The 2.1 GB `manifest.json` is patched through an mmap in one sorted
+    forward pass — all 13 643 entries in 25 s, every other byte copied
+    verbatim (verified segment-wise against the original).
+
+  Then rebuild the board's index: `php tools/build_assets_db.php`. Volume:
+  317 MB of ADPCM → 1.24 GB of PCM16, about 4 minutes at `-P12`. **New
+  external requirement: ffmpeg** (`sudo apt-get install ffmpeg`, 8.0.1),
+  needed only when the audio corpus changes — `tools/extract_assets.py`
+  itself stays pure-stdlib, the conversion is a separate step. Evidence for
+  listening: `mapdump/registration/m4-audio-pcm-*.wav` next to the
+  `m4-audio-adpcm-*.wav` originals, plus an already-PCM control file.
+
+- **Indexed durations were short wherever the RIFF `fact` chunk was
+  trusted.** These files' `fact` sample counts are off, and `wav_info()`
+  divided the data chunk by the header's bogus `byterate` (22 050 Hz files
+  carried `byterate: 12000`), so the board understated lengths — e.g.
+  `bgloop.wav` was listed at 50.7 s and is actually 55.0 s. The converter
+  writes `duration_s` from the decoded frame count, so the grid and the
+  detail panel now match what plays. `notes/01-binary-formats.md` (Audio)
+  also had two wrong numbers for anyone hand-decoding these: 2 041
+  samples/block, not 2 044, and the canonical per-nibble step
+  `((2·(n&7)+1)·step[idx])>>3` with the sign in bit 3 — the previously
+  recorded `-(n&1)-2*(n&2)-4*(n&4)-8*(n&8)` uses bit values rather than
+  positions and does not decode IMA. The suggested nibble-order MAD test
+  was dropped too: on this corpus the two nibble orders score within 1% of
+  each other, so it cannot tell them apart (ffmpeg's `adpcm_ima_wav` is
+  low-nibble-first, which settles it).
+
+- **The explorer and the mixer now say why a sound failed.**
+  `web/js/explorer.js` shows the real reason instead of "(autoplay
+  blocked)": the `play()` rejection name (`NotSupportedError`,
+  `NotAllowedError`, …), or `(undecodable: ima-adpcm, 22050 Hz)` from the
+  `MediaError` event, and it ignores `AbortError` so rapid re-clicks stop
+  reporting anything (`js/explorer.js?v=3`). `web/js/audio.js` no longer
+  swallows failures silently — gameplay stays quiet, but the console now
+  gets one warning per file per reason, so a codec regression is visible
+  instead of sounding like silence.
+
+- **A regression guard so this can't come back silently.**
+  `tools/smoke-explorer.cjs` gained three checks over every manifest audio
+  entry: the WAV on disk must be fmt tag 1, its manifest `codec` must agree
+  with the WAV header, and `duration_s` must match the decoded frame count.
+  `node tools/smoke-explorer.cjs` passes (13 643 audio files).
+
+## 2026-11-03.4
+
+- **The other red-squared characters now render.** After the `bcell11` fix
+  the viewer still drew a red wireframe on ~90 characters (Pet Star, Marge,
+  Abe, Moe, Krusty, Cthulhu, Advisor Frink…). The symptom is one rule in
+  `emitChar()` (`web/viewer/city-view-pixi.js`): when the dynamic
+  `bcell.php` request for a character's baked-asset slug fails, it flags the
+  spot with a red box and does NOT fall back to the pre-baked PNG. Scanning
+  the 759 distinct placed-character slugs against the endpoint showed two
+  remaining failure causes (distinct from the `bcell11` magic bug), both now
+  fixed at the endpoint/tooling layer so the red box stays a real error
+  signal:
+
+  1. **18 core characters** (`margeidleblink`, `abeidleblink`, …) resolved to
+     a real pool cell, but it was a `bcell13` whose external `_image_N.rgb`
+     were never harvested — `do_chars` had baked them from a self-contained
+     core-pack `bcell10` twin, so the pool's `bcell13` (the cell the endpoint
+     reads) was left companion-less. The `char-companions` subcommand now
+     harvests, on top of every `bcell11` cell, the external-companion cell
+     each placed-character slug resolves to (`bcell11` **and** `bcell13`).
+  2. **74 characters** (`starspawn`, `cthulhu`, `advisorfrink`, …) had a slug
+     baked from the bare base name, which never equals a real cell stem — the
+     pool has `starspawn_idle_blink`, not `starspawn`. `pool_source()` in
+     `web/api/bcell.php` now falls back to the idle-loop suffixes
+     (`IDLE_SUFFIXES`, mirroring `CHAR_IDLE_SUFFIXES` in
+     `tools/gen_city_sprites.py`) and resolves the bare slug to its idle
+     cell; the stem lookup is memoised in `pool_find_stem()`.
+
+  `tools/smoke-bcell-api.py` grows an idle-suffix-fallback check (20 total).
+  End to end, 758/759 placed slugs now serve a manifest/sheet; the lone
+  exception is `mutantplant03front` — a MutantPlant prop whose pool cells are
+  walk-only (no idle), so there is genuinely no idle cell to serve and the
+  red box is honest. No new HTTP surface; the changes ride the existing
+  endpoint and the `char-companions` harvest (which writes only to the
+  gitignored pool).
+
+## 2026-11-03.3
+
+- **The city viewer's character sprites now render.** Homer and the other
+  seven characters that share the `homeridleblink` slug drew a red wireframe
+  because the viewer routes every character through the dynamic endpoint
+  `web/api/bcell.php` (`--src=pool`), and their idle cell is a `bcell11` — a
+  format the endpoint rejected as `unsupported cell magic`. A `bcell11` cell
+  is the sibling of `bcell13`: its frames live in external
+  `<stem>_image_N.rgb` companions and its per-frame header is `bcell13`'s
+  minus the one filler byte that precedes the layer count. Added a `bcell11`
+  decoder to the endpoint (`parse_bcell11` plus its `build_model`
+  external-companion branch, mirroring `bcell13`), backed by a matching
+  reference decoder `extract_assets.parse_bcell11` (verified to parse all
+  413 pool `bcell11` cells to exact EOF, every one layer-free). Decoding
+  alone was not enough: the sprite pipeline only ever rendered
+  `bcell10`/`bcell13`, so a `bcell11` cell's `.rgb` companions had never
+  entered the pool. Added a `char-companions` subcommand to
+  `tools/gen_city_sprites.py` that scans the pool's `bcell11` cells and
+  harvests their companions into the pool (reusing the `bcell13` lazy-fetch,
+  `open_inner_zip`/`load_rows`). Because `load_families()` keeps only each
+  family's FIRST candidate row — a 2025 re-pack stub for many seasonal
+  families, and a partial repack that even drops a frame
+  (`mrcostington_victory_pose_right` `image_9`) — the harvest falls back to
+  every inner zip of the cell's `.7z` bundle, spanning sibling family keys
+  that share it, so all 413 cells (5,099 frames) now hydrate.
+  `tools/smoke-bcell-api.py` grows four `bcell11` checks (manifest parses,
+  frame names/offsets/delays match `parse_bcell11`, `mode=frame` is
+  pixel-identical to the `.rgb` decode, and the flattened slug resolves to
+  the underscored stem), all skipped-not-failed when the companions are
+  absent. No new HTTP surface — the fix rides the existing endpoint; the
+  `--src=pack` path was already exercised against the core pack's
+  self-contained `bcell10` twin.
+
 ## 2026-11-03.2
 
 - **The animation rate now ships at 2× (24 ticks/s).** With the new

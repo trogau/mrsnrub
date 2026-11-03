@@ -94,6 +94,26 @@ function safe_name(string $name): string {
    first match in sorted order). */
 function slug_key(string $s): string { return preg_replace('/[^a-z0-9]/', '', strtolower($s)); }
 
+/* Idle-loop suffixes tried for a bare-name slug (see pool_source). Mirrors
+   CHAR_IDLE_SUFFIXES in tools/gen_city_sprites.py, most-specific first so a
+   blink loop wins over a bare idle — keep the two lists in step. */
+const IDLE_SUFFIXES = ['idleblink', 'idleblinkleft', 'idleblinkright',
+                       'idle', 'idleleft', 'idleright', 'idlestandby',
+                       'standby', 'blink'];
+
+/* First pool stem (sorted, so deterministic) whose alphanumeric-only key
+   equals $want. The stem list is globbed and sorted once per request. */
+function pool_find_stem(string $dir, string $want): ?string {
+    static $stems = null;
+    if ($stems === null) {
+        $stems = [];
+        foreach (glob($dir . '/*.bcell') ?: [] as $p) $stems[] = basename($p, '.bcell');
+        sort($stems);
+    }
+    foreach ($stems as $b) if (slug_key($b) === $want) return $b;
+    return null;
+}
+
 /* ---------------------------------------------------------------- sources */
 
 /* A Source is a callable bundle: blob(name) -> string|null plus a cache-id
@@ -104,12 +124,19 @@ function pool_source(string $name): array {
     if ($dir === false || !is_dir($dir)) fail('pool not present: ' . POOL_DIR, 503);
     $cell = $dir . '/' . $name . '.bcell';
     if (!is_file($cell)) {
-        $want = slug_key($name);
-        foreach (glob($dir . '/*.bcell') ?: [] as $p) {
-            $b = basename($p, '.bcell');
-            if (slug_key($b) === $want) { $cell = $p; $name = $b; break; }
+        $stem = pool_find_stem($dir, slug_key($name));
+        if ($stem === null) {
+            // a bare-name slug baked from the base idle (starspawn, cthulhu)
+            // carries no role token, so it never equals a real cell stem —
+            // retry with the idle suffixes do_chars prefers
+            foreach (IDLE_SUFFIXES as $sfx) {
+                $stem = pool_find_stem($dir, slug_key($name . '_' . $sfx));
+                if ($stem !== null) break;
+            }
         }
-        if (!is_file($cell)) fail("no such cell: $name.bcell in pool", 404);
+        if ($stem === null) fail("no such cell: $name.bcell in pool", 404);
+        $cell = $dir . '/' . $stem . '.bcell';
+        $name = $stem;
         dbg_info('cell stem', $name . ' (resolved from slug)');
     }
     $id = 'pool|' . $cell;
@@ -323,6 +350,37 @@ function parse_bcell13(string $blob, string $src): array {
     return $out;
 }
 
+/* bcell11 -> frames [[delay, x_off, y_off, image_name]] (pixels external).
+   The sibling of bcell13: frames reference external '<cell>_image_N.rgb'
+   companions exactly as bcell13 does; the ONLY structural difference is the
+   per-frame header, where bcell13 reads two bytes (a u8 0 filler then u8
+   n_layers) and bcell11 reads a single u8 n_layers (no filler). Verified to
+   parse to exact EOF on all 413 pool bcell11 cells (2026-11-03), every one
+   with n_layers == 0. Mirrors extract_assets.parse_bcell11. */
+function parse_bcell11(string $blob, string $src): array {
+    if (substr($blob, 0, 7) !== 'bcell11') fail("$src: not bcell11", 422);
+    $n = u16($blob, 8);
+    $off = 10;
+    $out = [];
+    for ($f = 0; $f < $n; $f++) {
+        $ln = ord($blob[$off]);
+        $name = explode("\0", substr($blob, $off + 1, $ln))[0];
+        $off += 1 + $ln;
+        [$delay, $x, $y] = f32i16i16($blob, $off);
+        $off += 8;
+        $nlayers = ord($blob[$off]);   // bcell13 has a leading u8 0 here; bcell11 not
+        $off += 1;
+        for ($li = 0; $li < $nlayers; $li++) {
+            $l1 = ord($blob[$off]); $off += 1 + $l1;
+            $l2 = ord($blob[$off]); $off += 1 + $l2;
+            $off += 28;
+        }
+        $out[] = [$delay, $x, $y, $name];
+    }
+    if ($off !== strlen($blob)) fail("$src: bcell11 trailing bytes ($off != " . strlen($blob) . ')', 422);
+    return $out;
+}
+
 /* ------------------------------------------------------------ sheet build */
 
 /* Normalize a parsed cell to: images[] (unique decoded frames, sheet slots
@@ -345,9 +403,15 @@ function build_model(string $name, string $cellBlob, callable $read): array {
             $frames[] = ['i' => $i, 'image' => $bi, 'delay_ms' => round($delay * 1000) / 1000,
                         'x_off' => $x, 'y_off' => $y];
         }
-    } elseif ($magic === 'bcell13') {
+    } elseif ($magic === 'bcell13' || $magic === 'bcell11') {
+        // bcell11 and bcell13 both keep the frame pixels EXTERNAL, in the
+        // cell's '_image_N.rgb' companions; only their per-frame record
+        // headers differ (see parse_bcell11 / parse_bcell13). Shared here.
+        $recs = $magic === 'bcell13'
+            ? parse_bcell13($cellBlob, $name)
+            : parse_bcell11($cellBlob, $name);
         $byName = [];
-        foreach (parse_bcell13($cellBlob, $name) as $i => [$delay, $x, $y, $img]) {
+        foreach ($recs as $i => [$delay, $x, $y, $img]) {
             if (!isset($byName[$img])) {
                 $blob = $read(safe_name($img));
                 if ($blob === null) fail("missing companion $img (cell $name)", 422);

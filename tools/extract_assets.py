@@ -338,6 +338,55 @@ def parse_bcell13(blob, src_name):
     return out
 
 
+def parse_bcell11(blob, src_name):
+    """Parse a 'bcell11' character-animation cell (4.x packs).
+
+    The sibling of bcell13: the frame pixels are ALSO external, in
+    '<cell>_image_N.rgb' files beside the cell. The only structural
+    difference is the per-frame header — bcell13 reads two bytes there
+    (a u8 0 filler then u8 n_layers) while bcell11 reads a SINGLE u8
+    n_layers, no filler. Verified to parse to exact EOF on all 413 pool
+    bcell11 cells (2026-11-03); every one carries n_layers == 0 (a bare
+    sprite frame, no ground overlays), so the layer walk is kept only to
+    stay honest if a layered bcell11 ever turns up.
+
+      'bcell11' u8 ver u16 n_frames
+      per frame:
+        u8 name_len (incl NUL), '<...>_image_N.rgb\\0'
+        f32 delay_ms, i16 x_off, i16 y_off, u8 n_layers
+        n_layers x (u8 l1 s1\\0, u8 l2 s2\\0, 7 x f32)
+      x_off/y_off are the frame image's top-left relative to the
+      character origin — the same convention as bcell13/bcell10.
+
+    Returns [(delay_ms, x_off, y_off, image_name)] — pixel data lives in
+    the referenced .rgb files (same pack / pool).
+    """
+    if blob[:7] != b'bcell11':
+        raise ValueError(f'{src_name}: not a bcell11 file')
+    n = struct.unpack_from('<H', blob, 8)[0]
+    off = 10                      # 7 magic + u8 ver + u16 count
+    out = []
+    for _ in range(n):
+        ln = blob[off]
+        name = blob[off + 1:off + 1 + ln].split(b'\0')[0].decode('latin1')
+        off += 1 + ln
+        delay, x, y = struct.unpack_from('<fhh', blob, off)
+        off += 8                  # delay + i16 x_off + i16 y_off
+        nlayers = blob[off]       # bcell13 has a leading u8 0 here; bcell11 not
+        off += 1
+        for _li in range(nlayers):
+            l1 = blob[off]
+            off += 1 + l1
+            l2 = blob[off]
+            off += 1 + l2
+            off += 28
+        out.append((delay, x, y, name))
+    if off != len(blob):
+        raise ValueError(f'{src_name}: bcell11 trailing bytes '
+                         f'({off} != {len(blob)})')
+    return out
+
+
 def rgb_to_png(rgb_bytes, out_path, src_name=''):
     """Convert a Bight .rgb blob to PNG. Returns (w, h, bpp)."""
     w, h, bpp, rgba, _premul = rgb_to_rgba(rgb_bytes, src_name or out_path)
