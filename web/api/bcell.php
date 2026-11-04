@@ -10,6 +10,10 @@
 
      ?mode=manifest ...   -> the same manifest as standalone JSON
      ?mode=frame&n=N ...  -> one frame as its own PNG
+     ?mode=anims&name=X   -> the skin's locomotion cells that really exist,
+                            as {name, src, anims:[{tail, stem}]} — one small
+                            request that replaces the client's guess-and-404
+                            probe over the 8 WALK_TAILS (see pool_walks)
 
    Sources (src=):
      pool  <POOL_DIR>/<name>.bcell, companions <name>_image_N.rgb beside it
@@ -101,17 +105,87 @@ const IDLE_SUFFIXES = ['idleblink', 'idleblinkleft', 'idleblinkright',
                        'idle', 'idleleft', 'idleright', 'idlestandby',
                        'standby', 'blink'];
 
-/* First pool stem (sorted, so deterministic) whose alphanumeric-only key
-   equals $want. The stem list is globbed and sorted once per request. */
-function pool_find_stem(string $dir, string $want): ?string {
+/* Every pool stem, sorted (so deterministic), globbed once per request. */
+function pool_stems(string $dir): array {
     static $stems = null;
     if ($stems === null) {
         $stems = [];
         foreach (glob($dir . '/*.bcell') ?: [] as $p) $stems[] = basename($p, '.bcell');
         sort($stems);
     }
-    foreach ($stems as $b) if (slug_key($b) === $want) return $b;
+    return $stems;
+}
+
+/* First pool stem (sorted, so deterministic) whose alphanumeric-only key
+   equals $want. */
+function pool_find_stem(string $dir, string $want): ?string {
+    foreach (pool_stems($dir) as $b) if (slug_key($b) === $want) return $b;
     return null;
+}
+
+/* The locomotion vocabulary the shipped content actually asks for. Taken
+   from the <MoveGroup><MovePick x y><Animation name=…>> tables in the
+   gamescripts job XML (461 distinct locomotion names across the
+   gamescripts-rNNNNNN data directory): front_walk / back_walk (429 + 412
+   uses) and their _left / _right variants (68 + 67 + 52 + 51), plus the rare
+   front_run / back_run pair. Anything else (an active pose a job happens to
+   walk with) is content-specific and not this endpoint's business. */
+const WALK_TAILS = ['front_walk', 'back_walk',
+                    'front_walk_left', 'front_walk_right',
+                    'back_walk_left', 'back_walk_right',
+                    'front_run', 'back_run'];
+
+/* The shipped-game inventory: data/pack_census.tsv, one row per asset name the
+   pack manifests list, written by tools/scan_pack_manifests.py from the entry
+   `0` manifest of all 22,481 packs in cdn/. The pool is a FILTERED extraction
+   (gen_city_sprites pulls the slugs the save needs, plus a backfill pass), so
+   "no such cell in pool" has never by itself meant the game does not ship it —
+   this is the file that says which of the two it is. Rows:
+       <name>.bcell<TAB>kind<TAB>packs<TAB>sample-pack
+   with provenance in the leading `#` line. */
+const CENSUS = __DIR__ . '/../../data/pack_census.tsv';
+
+/* [name => [packs, sample_pack]] plus the header's provenance, parsed once. */
+function census_data(): array {
+    static $cache = null;
+    if ($cache !== null && $cache['mtime'] === (int)@filemtime(CENSUS))
+        return $cache;
+    $rows = []; $meta = ['bundles' => 0, 'packs' => 0, 'generated' => null];
+    if (($fh = @fopen(CENSUS, 'r')) !== false) {
+        while (($line = fgets($fh)) !== false) {
+            if ($line[0] === '#') {
+                if (preg_match('/bundles=(\d+) packs=(\d+).*generated=(\S+)/',
+                               $line, $m)) {
+                    $meta = ['bundles' => (int)$m[1], 'packs' => (int)$m[2],
+                             'generated' => $m[3]];
+                }
+                continue;
+            }
+            $c = explode("\t", rtrim($line, "\n"));
+            if (count($c) < 3) continue;
+            $rows[slug_key(basename($c[0], '.bcell'))] =
+                [(int)$c[2], $c[3] ?? null];
+        }
+        fclose($fh);
+    }
+    return $cache = ['mtime' => (int)@filemtime(CENSUS), 'rows' => $rows,
+                     'meta' => $meta];
+}
+
+/* Which of those cells a skin really has: exact alphanumeric match on
+   <name>_<tail>, so the costume next door (homer_adam_front_walk) is NOT
+   reported for skin 'homer' — its key has 'adam' inside the tail. */
+function pool_walks(string $dir, string $name): array {
+    $want = [];
+    foreach (WALK_TAILS as $t) $want[slug_key($name . '_' . $t)] = $t;
+    $got = [];
+    foreach (pool_stems($dir) as $stem) {
+        $k = slug_key($stem);
+        if (isset($want[$k])) $got[] = ['tail' => $want[$k], 'stem' => $stem];
+    }
+    usort($got, fn (array $a, array $b) => [$a['tail'], $a['stem']] <=>
+                                           [$b['tail'], $b['stem']]);
+    return $got;
 }
 
 /* ---------------------------------------------------------------- sources */
@@ -670,13 +744,88 @@ function main(array $args, bool $cli): void {
     $GLOBALS['debug'] = !$cli && isset($args['debug']) && $args['debug'] !== '0';
     $mode = $args['mode'] ?? 'sheet';
     $srcKind = $args['src'] ?? 'pool';
-    if (!in_array($mode, ['sheet', 'manifest', 'frame'], true)) fail('mode: sheet|manifest|frame');
+    if (!in_array($mode, ['sheet', 'manifest', 'frame', 'anims', 'census'], true))
+        fail('mode: sheet|manifest|frame|anims|census');
     $name = safe_name($args['name'] ?? '');
     if ($name === '') fail('name required');
     dbg_info('request', $cli ? '(cli)' : ($_SERVER['REQUEST_URI'] ?? '?'));
     dbg_info('params', ['mode' => $mode, 'src' => $srcKind, 'name' => $name,
                         'pack' => $args['pack'] ?? null, 'n' => $args['n'] ?? null]);
     set_time_limit(120);
+
+    /* the skin's locomotion inventory: one small JSON answer to "which walk
+       cycles does this skin actually ship", so the viewer asks once per skin
+       instead of probing (and 404ing) eight guessed names. Pool-only: a
+       pack's contents are a zip listing away, and the viewer uses the pool. */
+    if ($mode === 'anims') {
+        if ($srcKind !== 'pool') fail('mode anims needs src=pool');
+        $cacheable = ensure_cache_dir();
+        $GLOBALS['diag']['cache']['dir'] = CACHE_DIR;
+        $GLOBALS['diag']['cache']['dir_writable'] = $cacheable;
+        $dir = realpath(POOL_DIR);
+        if ($dir === false || !is_dir($dir)) fail('pool not present: ' . POOL_DIR, 503);
+        $all = pool_stems($dir);
+        $id = 'pool-list|' . $dir;
+        $key = sha1($id . '|' . filemtime($dir) . '|' . count($all) .
+                    '|anims|' . $name);
+        $cacheFile = CACHE_DIR . '/' . $key . '.json';
+        $GLOBALS['diag']['cache']['file'] = $cacheFile;
+        if (is_file($cacheFile)) {
+            $GLOBALS['diag']['cache']['hit'] = true;
+            dbg_mark('cache read');
+            send(file_get_contents($cacheFile),
+                 'application/json; charset=utf-8', '"' . $key . '"', $cli,
+                 $args['out'] ?? null);
+            return;
+        }
+        $GLOBALS['diag']['cache']['hit'] = false;
+        $anims = pool_walks($dir, $name);
+        dbg_info('pool cells scanned', count($all));
+        dbg_info('locomotion cells', array_column($anims, 'stem'));
+        $body = json_encode(['name' => $name, 'src' => 'pool',
+                             'cells' => count($all), 'anims' => $anims],
+                            JSON_UNESCAPED_SLASHES);
+        cache_put($cacheFile, $body, $cacheable);
+        send($body, 'application/json; charset=utf-8', '"' . $key . '"',
+             $cli, $args['out'] ?? null);
+        return;
+    }
+
+    /* The shipped-game answer: is this cell absent because the game does not
+       ship it, or because our extraction never pulled it? The pool cannot
+       answer that on its own — it is a filtered extraction — so a missing cell
+       used to be one undifferentiated "no such cell", which is exactly the
+       ambiguity that lets "we never extracted it" be read as "it does not
+       exist". The census is the packs' own inventory (entry 0 of every pack in
+       cdn/, via tools/scan_pack_manifests.py). */
+    if ($mode === 'census') {
+        $dat = census_data();
+        if (!$dat['rows'])
+            fail('no census: run tools/scan_pack_manifests.py merge', 503);
+        $dir = realpath(POOL_DIR);
+        $pool = $dir !== false && is_file($dir . '/' . $name . '.bcell');
+        $row = $dat['rows'][slug_key($name)] ?? null;
+        dbg_info('census', $dat['meta']);
+        $body = json_encode([
+            'name' => $name,
+            'in_pool' => $pool,
+            'shipped' => $row !== null,
+            'packs' => $row ? $row[0] : 0,
+            'sample_pack' => $row ? $row[1] : null,
+            'verdict' => $row === null ? 'not shipped by any pack'
+                       : ($pool ? 'shipped and extracted'
+                                : 'shipped but never extracted'),
+            'census' => $dat['meta'],
+        ], JSON_UNESCAPED_SLASHES);
+        /* keyed on the two inputs, so re-scanning or re-extracting changes the
+           ETag; the viewer busts the URL with ?v= when it wants a fresh answer */
+        $etag = '"' . sha1($name . '|' . $dat['mtime'] . '|' .
+                           ($dir ? filemtime($dir) : 0) . '|' . ($pool ? 1 : 0)) . '"';
+        send($body, 'application/json; charset=utf-8', $etag, $cli,
+             $args['out'] ?? null);
+        return;
+    }
+
     $cacheable = ensure_cache_dir();
     $GLOBALS['diag']['cache']['dir'] = CACHE_DIR;
     $GLOBALS['diag']['cache']['dir_writable'] = $cacheable;

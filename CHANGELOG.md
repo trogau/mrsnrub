@@ -1,5 +1,62 @@
 # Changelog
 
+## 2026-11-05.2
+
+- **Buildings whose engine idle is missing from their art now play their
+  own Neutral loop (fixes frozen Atlantis, holo trees, sleighs and 56
+  more).** The behavior gate resolved the engine's named idle verb
+  against the baked filmstrips and gave up when no strip matched — but
+  many assets don't ship the anim the engine asks for: `Atlantis` names
+  `Active` yet its one and only loop is its 72-frame `Neutral` (thinned
+  to 16 poses), the `*_holo` trees name `HoloNeutral`, the sleighs
+  `NeutralFastBreak`. The engine itself falls back to the promoted
+  `neutral/0` atlas in that case (`bsv.py, neutral_atlas_index`), so
+  `tools/gen_city_sprites.py::_behavior_map()` now does too: when the
+  engine named an idle, nothing resolved, no click-machine branch
+  claimed it and no part stack wants the slot, the asset's whole-body
+  `Neutral` loop gates as the idle (mirroring the existing
+  faces/heavengate rule; part-stack composites like
+  `springfieldmaximumsecurityprison` keep their layering untouched).
+  Idle loops in `city-anims.json` go 636 → 695; a diff of the map
+  against the previous rules shows 59 gained idles and no lost
+  idle/tap/toggle/layers field. `tools/smoke-bsprite-api.py` pins it
+  with an atlantis gate check, and its cache-mtime snapshot now skips
+  files the live endpoint's stale-strip prune removes mid-scan (the
+  warm-call check raced it). Viewer cache-busters already at
+  `?v=20261105.1`.
+
+## 2026-11-05
+
+- **Eiffel Tower (and 91 other buildings) now bake their complete idle
+  sprite: the neutral-pose pick prefers the plain `Neutral` anim.**
+  `tools/gen_city_sprites.py::_neutral_frame_index()` used to take the
+  first animation whose name merely *contains* "neutral". For four-part
+  4-sub-building assets that is a directional piece anim — for
+  `eiffeltower` it picked `Neutral2_South` (body crops + flag, 9
+  blocks), so the baked body was a tower standing on one narrow pillar
+  with no splayed legs or ground shadow (the reference `transimage`
+  shows all of them; only the winter seasonal ever baked the full
+  17-block frame). The pick now returns the first frame of the exact
+  `Neutral` anim — the atlas tsto2rgb itself promotes (`bsv.py,
+  neutral_atlas_index`) — and only falls back to the fullest
+  *Neutral*-named anim when no exact match draws. A corpus scan of all
+  3604 manifest slugs found 92 whose pick changes; all were
+  piece-idle swaps (`Neutral_Top`, `NeutralBot`, `Moat_Neutral`, …)
+  for the complete idle — e.g. `aircraftcarrier` regains its parked
+  aircraft and island, `simpsonscarbot` becomes the parked car (the
+  robot is its tap pose, per the engine's promoted atlas), while
+  `hotdogbot` keeps its closed hot-dog-box idle. The 92 slugs were
+  re-baked (`sprites --slug …` + `behavior --write-map` to refresh the
+  oversized-stack composites; four ship stacks — `aircraftcarrier(+
+  flipped)`, `pazifficprincessflipped`, `shipwreck` — are correctly
+  pruned as no-ops now that the body already contains the layer
+  cell-0). `tools/smoke-bsprite-api.py`'s stack checks move from
+  `aircraftcarrier` (stackless now) to `whale`. Evidence renders for
+  review: `mapdump/registration/m4-eiffeltower-neutral-fix-compare.jpg`
+  and `m4-neutral-rule-review-sidebyside.jpg`. Viewer cache-busters
+  `ASSET_V` / `MANIFEST_V` bumped to `?v=20261105.1`; `bsprite.php`
+  busts its disk cache on the generator's mtime automatically.
+
 ## 2026-11-04.9
 
 - **The dragon was still slow because the fix never reached the browser: the

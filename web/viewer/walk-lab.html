@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Walk lab — which sprite plays in which direction</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* walk-lab.html — dev tool (2026-11-04, notes/13 §8).
+   Four sections (north / east / south / west), each showing every walk cell
+   the shipped game has for one skin, its lean measured from the pixels, and
+   the cell the viewer's rule would pick today. Picks + notes collapse into a
+   paste-back report. Standalone: no build step, no new API. */
+:root { color-scheme: dark; }
+body { background: #1c1e22; color: #e8eaed; font: 14px/1.45 system-ui, sans-serif;
+       margin: 0; padding: 18px 20px 60px; }
+h1 { font-size: 18px; margin: 0 0 4px; }
+h2 { font-size: 15px; margin: 0 0 2px; }
+.sub { color: #9aa0a6; font-size: 12px; }
+code { font: 12.5px ui-monospace, Menlo, monospace; color: #8ab4f8; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+       padding: 10px 12px; background: #23262b; border: 1px solid #33373d;
+       border-radius: 8px; margin: 12px 0 18px; }
+.bar label { color: #9aa0a6; font-size: 12px; }
+input[type=text], select, textarea { background: #17191c; color: #e8eaed;
+       border: 1px solid #3a3f46; border-radius: 5px; padding: 5px 7px;
+       font: 13px ui-monospace, Menlo, monospace; }
+button { background: #2b3a55; color: #dce6f7; border: 1px solid #3f5474;
+       border-radius: 5px; padding: 5px 11px;
+       font-size: 13px; cursor: pointer; }
+button:hover { background: #35486a; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(520px, 1fr));
+        gap: 16px; }
+section { background: #212429; border: 1px solid #33373d; border-radius: 9px;
+          padding: 12px 14px; }
+section h2 .vec { color: #9aa0a6; font-weight: 400; font-size: 12px; }
+.plays { font-size: 12.5px; color: #9aa0a6; margin: 4px 0 8px; }
+.plays b { color: #f0f4c0; font-weight: 600; }
+.plays .miss { color: #e8a33d; }
+.plays .mir { color: #7fd08a; }
+.stage { display: flex; gap: 12px; align-items: flex-end; }
+.stage .frame { position: relative; background: #14161a;
+       border: 1px solid #33373d; border-radius: 6px; padding: 4px; }
+.stage .frame canvas { display: block; }
+.origin { position: absolute; top: 4px; bottom: 4px; width: 1px;
+          background: rgba(220,70,60,.85); }
+.ground { position: absolute; left: 4px; right: 4px; height: 1px;
+          background: rgba(120,126,138,.8); }
+.tiles { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+.tile { position: relative; background: #191c20; border: 1px solid #33373d;
+        border-radius: 6px; padding: 4px 6px 5px; cursor: pointer;
+        text-align: center; max-width: 158px; }
+.tile:hover { border-color: #5f6b7d; }
+.tile.sel { border-color: #8ab4f8; background: #1d2735; }
+.tile canvas { display: block; margin: 0 auto; background: #14161a; }
+.tile .meta { font: 10.5px/1.3 ui-monospace, Menlo, monospace; margin-top: 3px;
+              word-break: break-all; }
+.tile .meta .stem { color: #cfe3ff; }
+.tile .nums { color: #86909c; }
+.badge { display: inline-block; font-size: 9.5px; padding: 0 4px; margin: 1px 1px 0;
+         border-radius: 3px; background: #2a3340; color: #a8c7fa; }
+.badge.card { background: #2c3a2c; color: #a5d6a7; }
+.badge.lean-hi { background: #43331d; color: #ffcc80; }
+/* links to the shipped source behind a cell; they sit OUTSIDE the tile's
+   label on purpose, so clicking one does not also select that radio */
+.srcs { font: 10.5px/1.7 ui-monospace, Menlo, monospace; margin-top: 2px; }
+.srcs a { color: #8ab4f8; text-decoration: none; margin-right: 8px;
+          white-space: nowrap; }
+.srcs a:hover { text-decoration: underline; }
+.srcs .path { color: #6f7680; }
+/* why a cell is missing: grey = the game does not ship it, amber = we do not
+   have it but the packs do (an extraction gap, i.e. an actionable thing) */
+.why { color: #7f8792; }
+.why.gap { color: #e8a33d; }
+.absent .srcs { display: inline; margin: 0 0 0 5px; }
+.absent code, .absent .srcs { vertical-align: baseline; }
+.stage .col { display: flex; flex-direction: column; gap: 6px; }
+.tile .tilebody { display: block; cursor: pointer; }
+.brandlink { font-size: 12px; color: #8ab4f8; text-decoration: none; }
+.brandlink:hover { text-decoration: underline; }
+.absent { font-size: 11.5px; color: #7f8792; margin: 4px 0 6px; }
+.absent code { color: #7f8792; text-decoration: line-through; }
+.note { width: 100%; box-sizing: border-box; margin-top: 6px; }
+aside { margin-top: 20px; }
+textarea { width: 100%; box-sizing: border-box; height: 340px;
+           white-space: pre; font-size: 12px; }
+.legend { font-size: 11.5px; color: #9aa0a6; margin-top: 8px; }
+.warn { color: #e8a33d; font-size: 12.5px; }
+.ok { color: #81c995; }
+</style>
+</head>
+<body>
+<h1>Walk lab <span class="sub">— which sprite plays when a character walks each way</span></h1>
+<div class="sub">
+  Cell art comes from the two sources the viewer really uses: the
+  <code>.bcell</code> pool via <code>api/bcell.php</code> (byte-exact) and the
+  pre-baked card art under <code>assets/characters/</code>.
+  <b>lean</b> = the frame's alpha bounding-box midpoint minus the character
+  origin, measured in this page from the pixels: about 0&nbsp;px means the art
+  is drawn square-on (no facing), ±20–30&nbsp;px means it is drawn in profile
+  and has one. Hover a tile to play it; the big stage plays the selected cell.
+</div>
+
+<div class="bar">
+  <label>skin <input type="text" id="skin" size="16" value="homer"></label>
+  <label>card id <input type="text" id="cid" size="7" value="3"></label>
+  <label>stem group <select id="group"></select></label>
+  <label>cell filter <input type="text" id="filter" size="14" placeholder="e.g. walk"></label>
+  <button id="load">Load</button>
+  <button id="reset">Reset to viewer rule</button>
+  <button id="copy">Copy report</button>
+  <a class="brandlink" id="link-anims" target="_blank" rel="noopener">pool inventory</a>
+  <a class="brandlink" id="link-card" target="_blank" rel="noopener">card json</a>
+  <a class="brandlink" id="link-census" target="_blank" rel="noopener">pack census</a>
+  <span id="status" class="sub"></span>
+</div>
+
+<div class="grid" id="sections"></div>
+
+<aside>
+  <h2>Report <span class="sub">— paste this back into the chat</span></h2>
+  <textarea id="report" readonly spellcheck="false"></textarea>
+  <div class="legend">
+    The rule the viewer applies today (notes/13 §6, §8): the four directions are
+    the engine's four unit tile steps, which draw as 2:1 diagonals — up-left
+    <i>north</i>, up-right <i>east</i>, down-right <i>south</i>, down-left
+    <i>west</i>. Family = screen <code>dy &lt; 0 ? back : front</code>; side =
+    screen <code>dx &lt; 0 ? left : right</code>; then the shipped PriorityList
+    order — the <b>authored side cell, drawn exactly as authored</b>, then the
+    plain cycle of the same family, then the other family. On the two steps a
+    flat-authored crowd skin has no art for, the plain cycle is
+    <b>mirrored</b>: <code>(back &amp;&amp; right) || (front &amp;&amp; left)</code>,
+    i.e. east and west. That last part is a ruling from this page, not a
+    finding — the lean column says these cycles are square-on (homer −2.0 px,
+    well inside the ±12 px band), so nothing in the pixels picks a side. It is
+    also only a stand-in: a skin that ships its own <code>_left</code>/
+    <code>_right</code> art plays it unflipped. Unchecking the box takes any
+    cell back to how it was drawn.
+  </div>
+</aside>
+
+<script>
+(function () {
+'use strict';
+
+var ART = '../assets/characters/';        /* card frame PNGs        */
+var CARD = '../assets/characters/families/';
+var API = '../api/bcell.php';
+
+/* The four steps the wander actually takes. The A* is 4-neighbour in the
+   ENGINE's grid, and in this 2:1 oblique (CAM.TILE 2:1, CAM.ORIENT
+   (1,-1,swap)) a unit tile step draws as a 2:1 DIAGONAL — never straight up,
+   down, or across (notes/13 §6, verified against CAM.tileAffine). The compass
+   names are the user's, and each one is the engine's own MovePick row:
+     tile (0,-1) draws up-left    → Back_Walk_Left      "north"
+     tile (+1,0) draws up-right   → Back_Walk_Right     "east"
+     tile (0,+1) draws down-right → Front_Walk_Right    "south"
+     tile (-1,0) draws down-left  → Front_Walk_Left     "west"
+   vx/vy here are the DRAWN vector (2:1), which is what the rule reads. */
+var DIRS = [
+    { id: 'north', title: 'walking north', vec: 'up-screen and to the left, away' +
+        ' from the camera — tile (0,-1), the engine asks Back_Walk_Left',
+      tile: '(0,-1)', ask: 'Back_Walk_Left', vx: -2, vy: -1 },
+    { id: 'east', title: 'walking east', vec: 'up-screen and to the right, away' +
+        ' from the camera — tile (+1,0), the engine asks Back_Walk_Right',
+      tile: '(+1,0)', ask: 'Back_Walk_Right', vx: 2, vy: -1 },
+    { id: 'south', title: 'walking south', vec: 'down-screen and to the right,' +
+        ' toward the camera — tile (0,+1), the engine asks Front_Walk_Right',
+      tile: '(0,+1)', ask: 'Front_Walk_Right', vx: 2, vy: 1 },
+    { id: 'west', title: 'walking west', vec: 'down-screen and to the left,' +
+        ' toward the camera — tile (-1,0), the engine asks Front_Walk_Left',
+      tile: '(-1,0)', ask: 'Front_Walk_Left', vx: -2, vy: 1 }
+];
+var TAILS = ['front_walk', 'front_walk_left', 'front_walk_right',
+             'back_walk', 'back_walk_left', 'back_walk_right'];
+var S = { skin: 'homer', cid: '3', group: '', filter: '',
+          cells: {}, pool: null, picks: {}, mirrors: {}, notes: {},
+          census: {} };
+var anim = [];                            /* canvases the rAF loop drives */
+
+function el(t, c, txt) {
+    var n = document.createElement(t);
+    if (c) n.className = c;
+    if (txt !== undefined) n.textContent = txt;
+    return n;
+}
+function status(msg, bad) {
+    var n = document.getElementById('status');
+    n.textContent = msg;
+    n.className = 'sub' + (bad ? ' warn' : '');
+}
+
+/* ---- links to the shipped source behind a cell --------------------------
+   Everything on this page should be inspectable rather than taken on trust:
+     sheet.png      the one packed PNG the frames are sliced from
+     manifest.json  the cell's own frame table (delay_ms, x_off, y_off)
+     debug          bcell.php ?debug=1 — embedded image, per-stage timings,
+                    cache hit/write + path, the decoded cell/frame tables,
+                    and the error text when the pool has no such cell
+     f0 f1 …        one frame as its own PNG
+     card.json      the pre-baked card entry under assets/characters/
+   A pool cell links through the API; a card-only cell has no pool .bcell, so
+   it links its pre-baked PNGs and still offers the debug page, which names
+   the pool path it looked in.                                              */
+function srcLinks(stem, cell, big) {
+    var box = el('div', 'srcs');
+    function add(label, url) {
+        var a = el('a');
+        a.textContent = label;
+        a.setAttribute('href', url);
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener');
+        box.appendChild(a);
+    }
+    var q = '&src=pool&name=' + encodeURIComponent(stem);
+    var fromPool = !!cell && cell.src !== 'card';
+    if (fromPool) {
+        add('sheet.png', API + '?mode=sheet' + q);
+        add('manifest.json', API + '?mode=manifest' + q);
+    }
+    if (cell) {
+        cell.frames.forEach(function (f, i) {
+            if (!big && i) return;      /* tiles get their first frame, the stage all of them */
+            add('f' + i, fromPool ? API + '?mode=frame&n=' + i + q
+                                  : ART + encodeURIComponent(f.file));
+        });
+    }
+    add('debug', API + '?mode=sheet' + q + '&debug=1');
+    if (cell && !fromPool) add('card.json', CARD + encodeURIComponent(S.cid) + '.json');
+    if (!cell) {                            /* nothing to show: say where it would be */
+        add('census', API + '?mode=census&name=' + encodeURIComponent(stem));
+        var p = el('span', 'path', ' pool/' + stem + '.bcell');
+        box.appendChild(p);
+    }
+    return box;
+}
+
+/* ---- "is it missing, or did we just never extract it?" -------------------
+   The pool is a filtered extraction, so a cell being absent from it proves
+   nothing on its own. mode=census consults data/pack_census.tsv — every asset
+   name listed by every pack manifest in cdn/ — which does: `not shipped by any
+   pack` is an authoring fact, `shipped but never extracted` is our gap. */
+function censusOf(stem) {
+    if (S.census[stem]) return Promise.resolve(S.census[stem]);
+    return getJSON(API + '?mode=census&name=' + encodeURIComponent(stem))
+        .then(function (j) { S.census[stem] = j; return j; })
+        .catch(function () { return null; });
+}
+function censusPhrase(c) {
+    if (!c) return 'census unavailable';
+    if (!c.shipped) return 'absent from all ' + c.census.packs + ' pack manifests';
+    return 'shipped by ' + c.packs + ' pack(s), e.g. ' + c.sample_pack +
+           ' — never extracted';
+}
+
+/* ---- the viewer's rule, copied so this page cannot drift from it -------- */
+
+function ruleOf(vx, vy) {
+    return { fam: vy < 0 ? 'back' : 'front', side: vx < 0 ? 'left' : 'right' };
+}
+/* The viewer's rule, copied so this page cannot drift from it (walkPlan in
+   city-view-pixi.js). Order: the AUTHORED side cell, drawn exactly as
+   authored — the engine never mirrors a walk, so a cell that exists for this
+   side must never be flipped (notes/13 §8) — then the plain cycle of the same
+   family, then the other family: the PriorityList order the shipped XML
+   carries. On top of that, the user's ruling MIRROR (2026-11-04, notes/13 §6):
+   the plain cycle is flipped on the two steps a flat-authored skin has no
+   authored art for — Back_Walk_Right ("east") and Front_Walk_Left ("west"),
+   where every pack manifest is empty (§9). So the mirror belongs to the STEP,
+   not to the cell:
+     mirror = (family back && side right) || (family front && side left)
+   It is an eye-test ruling, not a facing fix: the lean column below shows these
+   cycles are square-on, so no pixel picks a side, and the authored cell always
+   wins unflipped where it exists. */
+function rulePlan(vx, vy) {
+    var r = ruleOf(vx, vy), p = S.group;
+    var o = r.fam === 'back' ? 'front' : 'back';
+    function mir(f) { return (f === 'back') === (r.side === 'right'); }
+    return [
+        { stem: p + '_' + r.fam + '_walk_' + r.side, mir: false },
+        { stem: p + '_' + r.fam + '_walk', mir: mir(r.fam) },
+        { stem: p + '_' + o + '_walk_' + r.side, mir: false },
+        { stem: p + '_' + o + '_walk', mir: mir(o) }
+    ];
+}
+function rulePick(vx, vy, have) {
+    var pl = rulePlan(vx, vy);
+    for (var i = 0; i < pl.length; i++)
+        if (have(pl[i].stem))
+            return { use: pl[i].stem, mir: pl[i].mir, wanted: pl[0].stem,
+                     plain: !/_walk_(left|right)$/.test(pl[i].stem) };
+    return { use: null, mir: false, wanted: pl[0].stem, plain: false };
+}
+
+/* ---- loading ------------------------------------------------------------ */
+
+function getJSON(url) {
+    return fetch(url).then(function (r) {
+        if (!r.ok) throw new Error(r.status + ' ' + url);
+        return r.json();
+    });
+}
+function loadImage(url) {
+    return new Promise(function (res, rej) {
+        var im = new Image();
+        im.onload = function () { res(im); };
+        im.onerror = function () { rej(new Error('img ' + url)); };
+        im.src = url;
+    });
+}
+
+/* A cell is { stem, frames:[{img,sx,sy,sw,sh,x,y,delay}], src, lean }.
+   Pool cells come as one sheet PNG + a manifest with per-frame x_off/y_off
+   (the character origin convention); card cells come as one PNG per frame
+   with a per-cell anchor inside the image. */
+function loadPoolCell(stem) {
+    return getJSON(API + '?mode=manifest&src=pool&name=' + encodeURIComponent(stem))
+        .then(function (man) {
+            return loadImage(API + '?mode=sheet&src=pool&name=' +
+                             encodeURIComponent(stem))
+                .then(function (img) {
+                    var fr = man.frames.map(function (f) {
+                        var im = man.images[f.image];
+                        return { img: img, sx: im.x, sy: im.y, sw: im.w, sh: im.h,
+                                 x: f.x_off, y: f.y_off, delay: f.delay_ms };
+                    });
+                    return { stem: stem, frames: fr, src: 'pool',
+                             ms: man.total_delay_ms };
+                });
+        });
+}
+function loadCardCell(c) {
+    if (!c.frames || !c.frames.length) return Promise.reject(new Error('no frames'));
+    var ax = c.anchor ? c.anchor[0] : c.w / 2;
+    var ay = c.anchor ? c.anchor[1] : c.h;
+    return Promise.all(c.frames.map(function (f) {
+        return loadImage(ART + encodeURIComponent(f.file))
+            .then(function (img) {
+                return { img: img, sx: 0, sy: 0, sw: img.width, sh: img.height,
+                         x: -ax, y: -ay, delay: f.delay, file: f.file };
+            });
+    })).then(function (fr) {
+        return { stem: c.stem, frames: fr, src: 'card', ms: c.ms };
+    });
+}
+
+/* alpha bbox midpoint relative to the character origin, in art px */
+var cv = document.createElement('canvas'), cx = cv.getContext('2d',
+    { willReadFrequently: true });
+function leanOf(frame) {
+    var w = frame.sw, h = frame.sh;
+    if (!w || !h) return null;
+    cv.width = w; cv.height = h;
+    cx.clearRect(0, 0, w, h);
+    cx.drawImage(frame.img, frame.sx, frame.sy, w, h, 0, 0, w, h);
+    var d, x0 = -1, x1 = -1;
+    try { d = cx.getImageData(0, 0, w, h).data; } catch (e) { return null; }
+    for (var x = 0; x < w; x++) {
+        var hit = false;
+        for (var y = 0; y < h; y += 2) {
+            if (d[((y * w) + x) * 4 + 3] > 16) { hit = true; break; }
+        }
+        if (hit) { if (x0 < 0) x0 = x; x1 = x; }
+    }
+    if (x0 < 0) return null;
+    return (x0 + x1) / 2 + frame.x;
+}
+function cellLean(cell) {
+    var m = cell.frames.map(leanOf).filter(function (v) { return v !== null; });
+    if (!m.length) return null;
+    var worst = m[0];
+    m.forEach(function (v) { if (Math.abs(v) > Math.abs(worst)) worst = v; });
+    return worst;
+}
+
+/* ---- load everything for one stem group -------------------------------- */
+
+function load() {
+    S.skin = document.getElementById('skin').value.trim().toLowerCase();
+    S.cid = document.getElementById('cid').value.trim();
+    S.filter = document.getElementById('filter').value.trim().toLowerCase();
+    S.cells = {};
+    anim = [];
+    status('loading…');
+
+    var card = getJSON(CARD + encodeURIComponent(S.cid) + '.json')
+        .catch(function () { return null; });
+    var pool = getJSON(API + '?mode=anims&src=pool&name=' +
+                       encodeURIComponent(S.skin)).catch(function () { return null; });
+
+    return Promise.all([card, pool]).then(function (r) {
+        var cd = r[0], pa = r[1];
+        S.pool = pa && pa.anims ? pa.anims.map(function (a) { return a.tail; }) : [];
+        var want = {};
+        TAILS.forEach(function (t) { want[S.skin + '_' + t] = true; });
+        (cd ? cd.cells : []).forEach(function (c) {
+            var m = c.stem.match(/^(.*)_(front|back)_walk(_left|_right)?$/);
+            if (m) want[m[0]] = true;
+        });
+        (pa && pa.anims ? pa.anims : []).forEach(function (a) { want[a.stem] = true; });
+
+        /* groups = every stem prefix that has at least one walk cell */
+        var groups = {};
+        Object.keys(want).forEach(function (stem) {
+            var pre = stem.replace(/_(front|back)_walk(_left|_right)?$/, '');
+            groups[pre] = (groups[pre] || 0) + 1;
+        });
+        var sel = document.getElementById('group');
+        sel.innerHTML = '';
+        Object.keys(groups).sort().forEach(function (g) {
+            var o = el('option'); o.value = g;
+            o.textContent = g + ' (' + groups[g] + ')';
+            sel.appendChild(o);
+        });
+        if (!sel.options.length) { status('no walk cells for "' + S.skin + '"', 1); return; }
+        /* keep the user's group choice across a reload; default to the bare
+           skin stem, which is the one the map draws */
+        var pref = sel.querySelector('option[value="' + S.group + '"]') ||
+                   sel.querySelector('option[value="' + S.skin + '"]');
+        sel.value = pref ? pref.value : sel.options[0].value;
+        S.group = sel.value;
+
+        /* Which tails the POOL really has — the anims probe is per stem, so a
+           costume group needs its own request; the base group already has it. */
+        var tails = S.group === S.skin ? Promise.resolve(S.pool)
+            : getJSON(API + '?mode=anims&src=pool&name=' +
+                      encodeURIComponent(S.group)).then(function (a) {
+                          return (a.anims || []).map(function (x) { return x.tail; });
+                      }).catch(function () { return []; });
+
+        return tails.then(function (poolTails) {
+            var jobs = TAILS.map(function (t) {
+                var stem = S.group + '_' + t;
+                var cardCell = null;
+                if (cd) cd.cells.forEach(function (c) {
+                    if (c.stem === stem) cardCell = c;
+                });
+                /* pool first: its manifest carries the per-frame offsets the
+                   engine uses, the card art is the pre-baked fallback */
+                var p = poolTails.indexOf(t) >= 0
+                    ? loadPoolCell(stem).catch(function () { return null; })
+                    : Promise.resolve(null);
+                return p.then(function (pc) {
+                    var q = cardCell
+                        ? loadCardCell(cardCell).catch(function () { return null; })
+                        : Promise.resolve(null);
+                    return q.then(function (cc) {
+                        var cell = pc || cc;
+                        if (!cell) return null;
+                        if (pc && cc) cell.src = 'card+pool';
+                        cell.lean = cellLean(cell);
+                        cell.dir = /_left$/.test(stem) ? 'left'
+                                 : /_right$/.test(stem) ? 'right' : '';
+                        cell.fam = /_front_/.test(stem) ? 'front' : 'back';
+                        S.cells[stem] = cell;
+                        return cell;
+                    });
+                });
+            });
+            return Promise.all(jobs).then(function () {
+                /* Ask the pack census about everything we could not load, before
+                   the first paint: the pool cannot tell "the game does not ship
+                   it" from "we never extracted it", and a report that got that
+                   wrong is how this whole question started. */
+                var absent = TAILS.map(function (t) { return S.group + '_' + t; })
+                                  .filter(function (s) { return !S.cells[s]; });
+                return Promise.all(absent.map(censusOf)).then(function () {
+                    status('' + Object.keys(S.cells).length + ' of 6 walk cells exist for "' +
+                           S.group + '"  ·  pool tails: ' + (S.pool.join(', ') || 'none'),
+                           !Object.keys(S.cells).length);
+                    render();
+                });
+            });
+        });
+    });
+}
+
+/* ---- drawing ------------------------------------------------------------ */
+
+/* Frames hang off the character origin (feet on the ground line) in the
+   engine's own convention: y_off is negative and the image sits above the
+   origin, x_off centres it on the feet column. Frame the canvas around that
+   and hand back where the origin and the ground line land. */
+function sizeOf(cell) {
+    var l = 0, r = 0, up = 0, dn = 0;
+    cell.frames.forEach(function (f) {
+        l = Math.max(l, -f.x); r = Math.max(r, f.x + f.sw);
+        up = Math.max(up, -f.y); dn = Math.max(dn, f.y + f.sh);
+    });
+    return { w: Math.ceil(l + r) + 8, h: Math.ceil(up + dn) + 8,
+             ox: Math.ceil(l) + 4, oy: Math.ceil(up) + 4 };
+}
+function draw(cell, ctx, g, mirror, t) {
+    ctx.clearRect(0, 0, g.w, g.h);
+    var f = cell.frames[0];
+    if (t !== undefined) {
+        var acc = 0, tot = cell.frames.reduce(function (a, b) { return a + b.delay; }, 0);
+        var tt = t % tot;
+        for (var i = 0; i < cell.frames.length; i++) {
+            if (tt < acc + cell.frames[i].delay) { f = cell.frames[i]; break; }
+            acc += cell.frames[i].delay;
+        }
+    }
+    ctx.save();
+    ctx.translate(g.ox, g.oy);             /* origin column, ground line */
+    if (mirror) ctx.scale(-1, 1);          /* about the feet column, as the engine's twins are mirrored */
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(f.img, f.sx, f.sy, f.sw, f.sh, f.x, f.y, f.sw, f.sh);
+    ctx.restore();
+}
+function makeStage(cell, mirror, big) {
+    var box = el('div', 'frame');
+    var cvn = el('canvas');
+    var g = sizeOf(cell);
+    var sc = big ? 1 : 0.45;
+    cvn.width = Math.round(g.w * sc); cvn.height = Math.round(g.h * sc);
+    cvn.style.width = cvn.width + 'px'; cvn.style.height = cvn.height + 'px';
+    var ctx = cvn.getContext('2d');
+    ctx.scale(sc, sc);
+    draw(cell, ctx, g, mirror);
+    box.appendChild(cvn);
+    var ol = el('div', 'origin');
+    ol.style.left = (g.ox * sc + 4) + 'px';
+    box.appendChild(ol);
+    var gl = el('div', 'ground');
+    gl.style.top = (g.oy * sc + 4) + 'px';
+    box.appendChild(gl);
+    var rec = { cell: cell, ctx: ctx, g: g, mirror: mirror,
+                node: cvn, big: big, t: 0, live: big };
+    anim.push(rec);
+    if (!big) {         /* tiles stay still until hovered: 24 cells x 4
+                           sections would otherwise animate 96 canvases */
+        box.addEventListener('mouseenter', function () { rec.live = true; });
+        box.addEventListener('mouseleave', function () {
+            rec.live = false; draw(cell, ctx, g, mirror);
+        });
+    }
+    return box;
+}
+var last = 0;
+function tick(now) {
+    var dt = now - last; last = now;
+    anim.forEach(function (r) {
+        if (!r.live || !document.body.contains(r.node)) return;
+        r.t += dt;
+        draw(r.cell, r.ctx, r.g, r.mirror, r.t);
+    });
+    requestAnimationFrame(tick);
+}
+requestAnimationFrame(function (n) { last = n; tick(n); });
+
+/* ---- the four sections -------------------------------------------------- */
+
+function fmtLean(v) {
+    if (v === null || v === undefined) return 'lean ?';
+    return 'lean ' + (v >= 0 ? '+' : '') + v.toFixed(1) + 'px';
+}
+function render() {
+    var host = document.getElementById('sections');
+    host.innerHTML = '';
+    anim = [];                            /* stages are rebuilt below */
+    /* the two inventory endpoints, for the stem group on show */
+    var la = document.getElementById('link-anims');
+    if (la) la.setAttribute('href', API + '?mode=anims&src=pool&name=' +
+        encodeURIComponent(S.group));
+    var lc = document.getElementById('link-card');
+    if (lc) lc.setAttribute('href', CARD + encodeURIComponent(S.cid) + '.json');
+    /* the census answer for the family's plain front cycle: it is the row that
+       says whether this skin is authored flat or sided */
+    var lk = document.getElementById('link-census');
+    if (lk) lk.setAttribute('href', API + '?mode=census&name=' +
+        encodeURIComponent(S.group + '_front_walk'));
+    var stems = TAILS.map(function (t) { return S.group + '_' + t; });
+    DIRS.forEach(function (d) {
+        var sec = el('section'); sec.id = 'sec-' + d.id;
+        var h = el('h2', null); sec.appendChild(h);
+        h.appendChild(document.createTextNode(d.title + ' '));
+        h.appendChild(el('span', 'vec', '— ' + d.vec));
+        var have = function (s) { return !!S.cells[s]; };
+        var pk = rulePick(d.vx, d.vy, have);
+        var chosen = S.picks[d.id] && S.cells[S.picks[d.id]]
+            ? S.picks[d.id] : pk.use;
+        S.picks[d.id] = chosen;
+        /* the mirror is part of the ruling, so it follows the rule; ticking the
+           box overrides it, and ticking back to what the rule says clears the
+           override. A hand-picked cell (the tile radios) is drawn as authored
+           until the box says otherwise. */
+        var mirRule = chosen && chosen === pk.use ? pk.mir : false;
+        var mir = (S.mirrors[d.id] === undefined || S.mirrors[d.id] === null)
+            ? mirRule : !!S.mirrors[d.id];
+        var pl = el('div', 'plays');
+        var r = ruleOf(d.vx, d.vy);
+        pl.innerHTML = 'viewer rule: family <b>' + r.fam + '</b>, side <b>' +
+            r.side + '</b> → plays <b>' + (chosen || 'nothing') + '</b>' +
+            (chosen && mir ? ' <b class="mir">mirrored</b>' : '') +
+            (chosen !== pk.wanted
+                ? ' <span class="miss">(' + pk.wanted + ' is not shipped → plain' +
+                  ' cycle, ' + (mirRule ? 'mirrored' : 'as authored') + ')</span>'
+                : ' <span class="sub">(the cell the engine asks for, as' +
+                  ' authored)</span>');
+        sec.appendChild(pl);
+
+        var stage = el('div', 'stage');
+        if (chosen) {
+            var cell = S.cells[chosen];
+            stage.appendChild(makeStage(cell, mir, true));
+            var col = el('div', 'col');
+            var lab = el('div', 'sub');
+            lab.innerHTML = '<code>' + chosen + '</code><br>' +
+                cell.frames.length + ' frames · ' + Math.round(cell.ms) + 'ms<br>' +
+                fmtLean(cell.lean) + '<br><span class="badge' +
+                (Math.abs(cell.lean || 0) > 12 ? ' lean-hi' : '') + '">' +
+                cell.src + '</span>';
+            col.appendChild(lab);
+            col.appendChild(srcLinks(chosen, cell, true));
+            stage.appendChild(col);
+        } else {
+            stage.appendChild(el('div', 'warn', 'no cell available for this direction'));
+        }
+        sec.appendChild(stage);
+
+        var tiles = el('div', 'tiles');
+        stems.forEach(function (stem) {
+            var cell = S.cells[stem];
+            if (!cell) return;
+            if (S.filter && stem.toLowerCase().indexOf(S.filter) < 0) return;
+            /* the tile is a div with the clickable parts inside a label: a
+               link in that label would toggle the radio when clicked */
+            var box = el('div', 'tile' + (stem === chosen ? ' sel' : ''));
+            var lb = el('label', 'tilebody');
+            var rd = el('input'); rd.type = 'radio'; rd.name = d.id;
+            rd.checked = stem === chosen;
+            rd.addEventListener('change', function () {
+                S.picks[d.id] = stem; render();
+            });
+            lb.appendChild(rd);
+            lb.appendChild(makeStage(cell, false, false));
+            var m = el('div', 'meta');
+            /* the full stem is printed, not a tooltip: the report quotes it
+               verbatim and the point of the page is reading these names */
+            m.innerHTML = '<span class="stem">' + stem + '</span><br>' +
+                '<span class="nums">' + cell.frames.length + 'f · ' +
+                Math.round(cell.ms) + 'ms · ' + fmtLean(cell.lean) + '</span><br>' +
+                '<span class="badge card">' + cell.src + '</span>';
+            lb.appendChild(m);
+            box.appendChild(lb);
+            box.appendChild(srcLinks(stem, cell, false));
+            tiles.appendChild(box);
+        });
+        sec.appendChild(tiles);
+
+        var missing = stems.filter(function (s) { return !S.cells[s]; });
+        if (missing.length) {
+            var ab = el('div', 'absent');
+            ab.appendChild(document.createTextNode('not shipped: '));
+            missing.forEach(function (s, i) {
+                if (i) ab.appendChild(document.createTextNode('   '));
+                ab.appendChild(el('code', null, s));
+                /* one click to the API's own answer for why it is missing */
+                ab.appendChild(srcLinks(s, null, false));
+                /* and the answer in words, from the census load() asked for:
+                   grey = the game does not ship it, amber = our gap */
+                var c = S.census[s];
+                ab.appendChild(el('span', 'why' + (c && c.shipped ? ' gap' : ''),
+                                   ' (' + censusPhrase(c) + ')'));
+            });
+            sec.appendChild(ab);
+        }
+        var mr = el('label', 'sub');
+        var mb = el('input'); mb.type = 'checkbox'; mb.checked = mir;
+        mb.addEventListener('change', function () {
+            /* agreeing with the rule is not an override: clear it, so a later
+               rule change is not silently pinned to today's answer */
+            S.mirrors[d.id] = (mb.checked === mirRule) ? null : mb.checked;
+            render();
+        });
+        mr.appendChild(mb);
+        mr.appendChild(document.createTextNode(' mirror the selected cell' +
+            ' (the rule says ' + (mirRule ? 'yes' : 'no') +
+            (mir === mirRule ? ')' : ', overridden)')));
+        sec.appendChild(mr);
+
+        var nt = el('input', 'note'); nt.type = 'text';
+        nt.placeholder = 'what it should be, and why (goes into the report)';
+        nt.value = S.notes[d.id] || '';
+        nt.addEventListener('input', function () { S.notes[d.id] = nt.value; paint(); });
+        sec.appendChild(nt);
+        host.appendChild(sec);
+    });
+    paint();
+}
+
+/* ---- the paste-back report --------------------------------------------- */
+
+function paint() {
+    var L = [];
+    var now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+    L.push('WALK-LAB  ' + now + '  skin=' + S.skin + '  cid=' + S.cid +
+           '  stem-group=' + S.group);
+    L.push('the four directions are the ENGINE grid steps the wander takes; in the');
+    L.push('             2:1 oblique a unit tile step draws as a 2:1 diagonal, so');
+    L.push('             none of them is straight up/down/across (notes/13 §6)');
+    L.push('viewer rule: family = (screen dy < 0 ? back : front); ' +
+           'side = (screen dx < 0 ? left : right);');
+    L.push('             order = authored side cell (drawn as authored, never');
+    L.push('             flipped) -> plain same family -> other family;');
+    L.push('             plain cycles are MIRRORED on the two steps a flat');
+    L.push('             skin has no art for: mirror = (back && right) ||');
+    L.push('             (front && left)   [the ruling, notes/13 §6]');
+    L.push('lean = alpha bbox midpoint minus the character origin, ' +
+           'worst frame, measured in this tool (~0 = square-on, |lean|>12 = profile)');
+    L.push('');
+    DIRS.forEach(function (d) {
+        var have = function (s) { return !!S.cells[s]; };
+        var pk = rulePick(d.vx, d.vy, have), r = ruleOf(d.vx, d.vy);
+        var use = S.picks[d.id], cell = S.cells[use];
+        var mirRule = use && use === pk.use ? pk.mir : false;
+        var mir = (S.mirrors[d.id] === undefined || S.mirrors[d.id] === null)
+            ? mirRule : !!S.mirrors[d.id];
+        L.push('[' + d.title + ']  drawn (' + d.vx + ',' + d.vy + ') — ' + d.vec);
+        L.push('  engine step   : tile ' + d.tile + '  the shipped MovePick asks ' +
+               d.ask);
+        L.push('  screen vector : dx=' + d.vx + ' dy=' + d.vy +
+               '  ->  family=' + r.fam + '  side=' + r.side +
+               '  ->  mirror=' + (mirRule ? 'yes (rule)' : 'no (rule)'));
+        L.push('  viewer plays  : ' + (use || '(nothing)') +
+               (mir ? ' MIRRORED' : '') +
+               (use !== pk.wanted ? '   [rule wanted ' + pk.wanted +
+                ', not shipped -> plain cycle, ' +
+                (mirRule ? 'mirrored' : 'as authored') + ']'
+                : '   [the cell the engine asks for, as authored]'));
+        L.push('  my pick       : ' + (use || '(nothing)') +
+               '   mirror=' + (mir ? 'YES' : 'no') +
+               (mir === mirRule ? ' (rule)' : ' (override)'));
+        L.push('  that cell     : ' + (cell ? (cell.frames.length + ' frames, ' +
+               Math.round(cell.ms) + 'ms, ' + fmtLean(cell.lean) +
+               ', src=' + cell.src + ', fam=' + cell.fam +
+               (cell.dir ? ', dir=' + cell.dir : '')) : '—'));
+        /* the shipped source, spelled as a URL so it can be opened as-is */
+        L.push('  source        : ' + (cell
+            ? (cell.src === 'card'
+               ? 'card ' + CARD + S.cid + '.json  art ' + ART + cell.frames[0].file
+               : API + '?mode=manifest&src=pool&name=' + use)
+            : '—'));
+        L.push('  note          : ' + (S.notes[d.id] || ''));
+        L.push('');
+    });
+    L.push('AVAILABLE WALK CELLS for "' + S.group + '" (of ' + TAILS.length + '):');
+    TAILS.forEach(function (t) {
+        var stem = S.group + '_' + t, cell = S.cells[stem];
+        L.push(cell ? '  ' + pad(stem, 46) + pad(cell.frames.length + 'f', 5) +
+                      pad(Math.round(cell.ms) + 'ms', 8) +
+                      pad(fmtLean(cell.lean), 15) + ' src=' + cell.src
+                    : '  ' + pad(stem, 46) + 'NOT SHIPPED' +
+                      /* the difference between "the game does not ship it" and
+                         "we never extracted it", straight off the packs */
+                      (S.census[stem] ? '   ' + censusPhrase(S.census[stem]) : ''));
+    });
+    L.push('');
+    L.push('pool tails reported by api/bcell.php for "' + S.skin + '": ' +
+           (S.pool && S.pool.length ? S.pool.join(', ') : 'none'));
+    document.getElementById('report').value = L.join('\n');
+}
+function pad(s, n) { s = String(s); while (s.length < n) s += ' '; return s; }
+
+/* ---- wiring ------------------------------------------------------------- */
+
+document.getElementById('load').addEventListener('click', function () {
+    S.picks = {}; S.mirrors = {}; S.notes = {}; load();
+});
+document.getElementById('group').addEventListener('change', function () {
+    S.group = this.value;                 /* picks are re-checked by rulePick */
+    load();
+});
+document.getElementById('filter').addEventListener('input', function () {
+    S.filter = this.value.trim().toLowerCase(); render();
+});
+document.getElementById('reset').addEventListener('click', function () {
+    S.picks = {}; S.mirrors = {}; render();
+});
+document.getElementById('copy').addEventListener('click', function () {
+    var ta = document.getElementById('report');
+    ta.select();
+    var done = function () { status('report copied', false); };
+    if (navigator.clipboard) navigator.clipboard.writeText(ta.value).then(done, done);
+    else { document.execCommand('copy'); done(); }
+});
+
+var q = new URLSearchParams(location.search);
+if (q.get('skin')) document.getElementById('skin').value = q.get('skin');
+if (q.get('cid')) document.getElementById('cid').value = q.get('cid');
+load();
+})();
+</script>
+</body>
+</html>

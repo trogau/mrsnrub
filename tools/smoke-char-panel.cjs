@@ -73,7 +73,7 @@ const CELL = {
              { file: 'xtestcell_1.png', delay: 200 }],
 };
 
-function boot(dynFor) {
+function boot(dynFor, cells) {
     const img = freshImg(); img.requested = []; img.autoLoad = true;
     const sandbox = {
         document: { createElement: mkEl },
@@ -81,7 +81,7 @@ function boot(dynFor) {
         requestAnimationFrame: () => 1,
         cancelAnimationFrame: () => {},
         fetch: () => Promise.resolve({ ok: true, json: () => Promise.resolve(
-            { cid: '9', name: 'Test', cells: [CELL] }) }),
+            { cid: '9', name: 'Test', cells: cells || [CELL] }) }),
         console, setTimeout,
     };
     sandbox.window = sandbox;
@@ -139,6 +139,46 @@ function check(cond, label) {
     ({ box } = await boot(() => ({ st: 1, man: MAN, url: 'SHEETURL' })));
     check(!box.querySelectorAll('.vtile canim')[0].classList.contains('cdead'),
           'live cell: no red flag');
+
+    console.log('the tile budget is shared between the groups:');
+    /* Homer's real shape: 194 walks and 247 actions against a 150-tile card.
+       A head slice let the first group to fill eat the whole card, which is
+       how the correctly-labelled walks pushed the actions off it — every
+       group a character has has to be reachable. */
+    const FAT = [];
+    const fat = { idle: 56, walk: 194, action: 247, standby: 47 };
+    Object.keys(fat).forEach(k => {
+        for (let n = 0; n < fat[k]; n++)
+            FAT.push(Object.assign({}, CELL, {
+                key: k + n, stem: k + '_' + n, kind: k,
+                dir: k === 'walk' ? (n % 2 ? 'front' : 'back') : '' }));
+    });
+    const big = await boot(undefined, FAT);
+    /* the fake DOM's querySelectorAll is a stub for syncPreview only, so the
+       card is read off box.children the way fill() laid it out */
+    const kids = big.box.children;
+    const heads = kids.filter(n => n.className === 'vgroup')
+                      .map(n => String(n.textContent));
+    check(['idle / blinks', 'walks', 'actions', 'poses']
+              .every(t => heads.some(h => h.indexOf(t) === 0)),
+          'all four groups the character has get a heading: ' + heads.join(' | '));
+    const per = {};
+    let cur = null;
+    kids.forEach(n => {
+        if (n.className === 'vgroup') { cur = String(n.textContent).split(' ')[0]; per[cur] = per[cur] || 0; }
+        else if (n.className === 'vrow' && cur)
+            per[cur] = (per[cur] || 0) + n.querySelectorAll('.vtile').length;
+    });
+    check(Object.keys(per).length === 4 &&
+          Object.keys(per).every(k => per[k] > 0),
+          'and every one of them gets tiles (none starved out): ' +
+          JSON.stringify(per));
+    const dim = kids.filter(n => n.className === 'vdim')
+                    .map(n => String(n.textContent)).join(' ');
+    check(Object.keys(per).reduce((s, k) => s + per[k], 0) <= 150 &&
+          /of 544 animated cells/.test(dim),
+          'the card stays inside the cap and says so: ' + JSON.stringify(per) +
+          ' — ' + dim);
 
     console.log('FAILURES: %d', fails);
     process.exit(fails ? 1 : 0);

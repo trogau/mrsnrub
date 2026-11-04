@@ -1107,25 +1107,43 @@ def _best_frame_index(parsed):
 
 
 def _neutral_frame_index(parsed):
-    """Canonical idle pose: the first frame of an anim whose name
-    contains 'neutral' (case-insensitive), when it has local blocks.
-    Backed by tsto2rgb: its bsv writer likewise promotes the atlas
-    containing 'neutral/0' to the main file (bsv.py, neutral_atlas_index).
+    """Canonical idle pose: the first frame of the plain 'Neutral' anim
+    (exact name, case-insensitive) when it has local blocks — tsto2rgb
+    promotes exactly the atlas containing 'neutral/0' to the main file
+    (bsv.py, neutral_atlas_index), so that anim is literally what the
+    game shows untoggled (hotdogbot's is its closed hot-dog-box; the
+    robot is a tap pose). Else the fullest anim whose name merely
+    CONTAINS 'neutral'.
+    Directional/piece idles share the name but draw only a sub-building
+    piece — eiffeltower's first neutral anim is Neutral2_South (the
+    body crops + flag), while the complete idle, splayed legs and
+    ground shadow included, is the plain Neutral anim; the old "first
+    name containing neutral" rule baked the piece and shipped a tower
+    standing on one narrow pillar.
     Returns None when no neutral anim resolves to a drawable frame."""
+    cells = parsed['cells']
+    exact = None
+    cands = []
     for nm, f0, _f1 in parsed.get('anims') or []:
         if 'neutral' in nm.lower() and f0 < len(parsed['frames']):
-            fr = parsed['frames'][f0]
-            if _frame_local_area(fr, parsed['cells']) > 0:
-                return f0
-    return None
+            a = _frame_local_area(parsed['frames'][f0], cells)
+            if a <= 0:
+                continue
+            if nm.lower() == 'neutral' and exact is None:
+                exact = (f0, a)
+            cands.append((f0, a))
+    if exact is not None:
+        return exact[0]
+    return max(cands, key=lambda c: c[1])[0] if cands else None
 
 
 def static_blocks(parsed, name):
     """The blocks for the static frame, in draw order, as
     (ci, x, y, a, b, c, d) tuples. Sets parsed['static_src']:
-      0x0103  'neutral' — the Neutral anim's first frame (the engine's
-                      own promoted default; see _neutral_frame_index),
-                      when one exists and draws.
+      0x0103  'neutral' — the plain Neutral anim's first frame (exact
+                      name wins; else the fullest *Neutral*-named
+                      frame — the engine promotes exactly 'neutral/0';
+                      see _neutral_frame_index), when one draws.
               'best'    — otherwise the fullest frame (max total
                       local-cell area; frame 0 is often an
                       effect/partial pose/empty).
@@ -2791,6 +2809,19 @@ def _behavior_map(by_name, orders, controllers, ameta, name_idx):
                 rec['idle'] = full
                 if tog:
                     rec['toggle'] = tog   # whole-loop idle + clickable states
+            elif bv.get('idle') and full:
+                # the engine named an idle the asset doesn't carry: with
+                # no such anim in the bsv the engine falls back to the
+                # promoted neutral/0 atlas (bsv.py, neutral_atlas_index),
+                # so the web map plays the asset's own whole-body Neutral
+                # loop too — atlantis' engine idle is 'Active' but its
+                # one and only loop is its 72-frame Neutral (thinned to
+                # 16), the same for the holo trees ('HoloNeutral'), the
+                # sleighs ('NeutralFastBreak') and towerofbabel. Only
+                # where no part stack wanted the slot above.
+                rec['idle'] = full
+                if tog:
+                    rec['toggle'] = tog
             elif tog:
                 rec['toggle'] = tog
         elif tog:

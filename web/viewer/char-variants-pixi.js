@@ -34,6 +34,7 @@
         }, { rootMargin: '140px' });
     var MAX_W = 150, MAX_H = 130;  // cell display cap in the sidebar
     var TILE_CAP = 150;            // tiles per card (Homer owns 600+ cells)
+    var KIND_QUOTA = 30;           // tiles a group gets before the leftovers
 
     var KIND_ORDER = ['idle', 'walk', 'action', 'standby', 'misc'];
     var KIND_LABEL = { idle: 'idle / blinks', walk: 'walks',
@@ -109,7 +110,38 @@
                 return (a.outfit || '') < (b.outfit || '') ? -1 : 1;
             return a.key < b.key ? -1 : 1;
         });
-        var shown = live.slice(0, TILE_CAP);
+        /* The tile budget is shared out rather than taken off the front of
+           the list: one character can own 194 walks and 247 actions, and a
+           single head slice lets the biggest group eat the whole card (which
+           is exactly how the walks vanished from it once they were labelled
+           correctly). Every group the character has gets its first slice, and
+           whatever budget is left then goes to the groups that still have
+           cells, in the order the card lays them out. */
+        var byKind = {}, order = [];
+        for (i = 0; i < live.length; i++) {
+            if (!byKind[live[i].kind]) { byKind[live[i].kind] = []; order.push(live[i].kind); }
+            byKind[live[i].kind].push(live[i]);
+        }                       // live is already sorted, so order is too
+        var shown = [], taken = {}, room = TILE_CAP, pass, g;
+        for (pass = 0; pass < 2; pass++)
+            for (g = 0; g < order.length && room > 0; g++) {
+                var kd = order[g], list = byKind[kd];
+                var have = taken[kd] || 0;
+                var want = pass ? list.length - have
+                                : Math.min(KIND_QUOTA, list.length) - have;
+                if (want <= 0) continue;
+                want = Math.min(want, room);
+                shown = shown.concat(list.slice(have, have + want));
+                taken[kd] = have + want;
+                room -= want;
+            }
+        shown.sort(function (a, b) {
+            var ka = KIND_ORDER.indexOf(a.kind), kb = KIND_ORDER.indexOf(b.kind);
+            if (ka !== kb) return ka - kb;
+            if ((a.outfit || '') !== (b.outfit || ''))
+                return (a.outfit || '') < (b.outfit || '') ? -1 : 1;
+            return a.key < b.key ? -1 : 1;
+        });
         var resetRow = null;
         function syncPreview() {
             var tiles = box.querySelectorAll('.vtile.canim');
@@ -148,9 +180,10 @@
             }
             row.appendChild(tile(c, opts, st, syncPreview, txt));
         }
-        if (live.length > TILE_CAP)
-            box.appendChild(el('div', 'vdim', 'showing first ' + TILE_CAP +
-                               ' of ' + live.length + ' animated cells'));
+        if (shown.length < live.length)
+            box.appendChild(el('div', 'vdim', 'showing ' + shown.length +
+                               ' of ' + live.length + ' animated cells \u2014 ' +
+                               'up to ' + KIND_QUOTA + ' per group first'));
         if (players.length && !ticker) ticker = requestAnimationFrame(tick);
     }
 

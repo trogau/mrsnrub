@@ -91,6 +91,24 @@ the hard way in earlier sessions (APK triage, format RE, pipeline, CDN work).
      no matching anim, 46 buildings with no animation wiring at all), and the
      accounted-for list of v3 assets with no strip.
 
+14. **`13-idle-wander-re.md`** — how the engine walks its characters with
+    nobody telling them to (2026-11-03): the `<MovementBehavior mode>` enum and
+    its name table at `.data.rel.ro 0x1df358` (only 46 of 412 shipped
+    characters name a mode, so plain Homer gets the built-in **RandomRelaxed**),
+    the `<RoadGridSettings>` path-cost table that is the *only* reason the
+    crowd hugs the kerbs (streets 10–19, grass 32, water 196, wall 99999), the
+    script API that proves the loop (`Character::startIdleMovement` `0x39c97b`,
+    `stopMovement` `0x3b3b3c`, `isMovementIdle` `0x3a64cc`,
+    `Movement::randomMove` `0x3b89ba`, `EndofIdleWanderScript`), the three
+    search contexts, and the honest split between what is recovered and the
+    named `CityWander.KNOBS` standing in for what no XML ships. Ported in
+    `web/js/wander.js` behind the viewer's **Idle walk** toggle; harness
+    `tools/smoke-idle-wander.cjs`. Also pins which walk cycle plays for which
+    movement delta from the shipped `<MovePick>`/`<PriorityList>` table (§6),
+    the filmstrip audit that found 3 156 walks filed under "actions" (§7), and
+    the fact that the whole walk library is drawn facing right and the engine
+    never mirrors a character (§8).
+
 ## Where it's served
 
 The `web/` tree is served at the project **base URL**:

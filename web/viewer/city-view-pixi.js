@@ -39,12 +39,12 @@
        ?v= of this script in index.html) whenever the pipeline regenerates
        them — otherwise the browser keeps the previous render (e.g. a
        building's old snowy art) whatever the pool says */
-    var ASSET_V = '?v=20261102.1';
+    var ASSET_V = '?v=20261105.1';
     // Bump whenever city/*.png art changes — the sprites, filmstrip atlases
     // and stack sheets all load through cityUrl(), and a stale cached PNG
     // against fresh city-anims.json sub-rects draws sparse water from wrong
     // shelf spots (the "water attached incorrectly" report, round 6).
-    var MANIFEST_V = '?v=20261104.2';           // city-sprites/-anims.json
+    var MANIFEST_V = '?v=20261105.1';           // city-sprites/-anims.json
     function cityUrl(p) { return dynCityUrl(p) || preUrl(p); }
 
     var stage = $('stage');
