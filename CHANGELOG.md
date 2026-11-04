@@ -1,5 +1,170 @@
 # Changelog
 
+## 2026-11-04.9
+
+- **The dragon was still slow because the fix never reached the browser: the
+  dynamic bake endpoint answered with the old clock.** With
+  `VIEWER_DYNAMIC_CITY = {anims: true}` (`web/viewer/index.html`) every
+  filmstrip's timing is taken from `bsprite.php?kind=anim&mode=meta`, which
+  `animMeta()` copies over the manifest entry — the manifest is only the
+  fallback. Two things kept that answer stale: `tools/city_render.py`'s bake
+  built its own `rp/lt/fps` and never applied the cadence rule (the shim even
+  duplicated the old fps boost inline), and `bsprite.php`'s cache identity was
+  `kind|name|cls|png` plus the **pool files only**, so a generator edit could
+  not invalidate an entry. The served meta still read `lt: 132, fps: 12` after
+  the manifest had been corrected, and re-slowed the dragon on every load —
+  which is why three reports of the same bug changed nothing on screen. Now:
+  the shim loads the gate record (`_behavior_rec()`) and calls
+  `G._thin_cadence([ent], …)` on both of its bake paths, so generator and
+  endpoint cannot disagree; `bsprite.php` adds `city_render.py`,
+  `gen_city_sprites.py` and `city-anims.json` to the cache identity, so any
+  pipeline edit busts the entry and it re-bakes lazily; and the endpoint rides
+  its own cache-buster, `BSERVE_V = '?v=20261104.1'`, instead of `ASSET_V` — a
+  server-side rule change must refetch the timing without making the whole
+  city re-download its pre-baked PNGs. Check with
+  `php web/api/bsprite.php --kind=anim --name=springfieldiadragon
+  --png=anims/springfieldiadragon__Neutral.png --mode=meta`
+  (`lt 36, lt0 132, fps 12`).
+- **Atlas-thinned filmstrips now play at the town's cadence.** The .7 cadence
+  fix (raising a thinned strip's `fps`, capped at 18) was not enough: the
+  Dragon of Springfieldia's idle still held every one of its 12 surviving
+  poses for 11 engine ticks (~0.3 s, 3.3 poses/s), because thinning leaves the
+  surviving cells at the ticks they were sampled from. A strip that kept 12 of
+  44 raw frames from a 132-tick loop therefore ran at a third of the source's
+  frame rate whatever `fps` said — with the cap, the fix was unreachable.
+  Generator: new **`_thin_clock()`** re-spaces a grid-thinned strip's loop
+  instead of speeding it up, so each surviving cell advances at the **source's
+  own per-frame hold** (`loop ticks / raw frames`), floored at
+  `THIN_MIN_TPC = 3` (the manifest's median hold) so nothing runs faster than
+  the board it sits on. The rhythm is scaled, not flattened — a pause inside a
+  tap one-shot keeps its share of the loop; the raw tick count is kept as
+  `lt0`; the rule only ever shortens a loop, so a strip whose source really
+  does hold each frame (KampKrusty's 368-tick `Active`, 7.7 ticks a frame)
+  stays as slow as it is; and re-running it is a no-op. `_thin_cadence()`
+  calls it and undoes the older `fps` boost, so every strip is back on the one
+  12 fps clock the 90 ms repaint throttle assumes; `_thin_fps()` stays for the
+  cluster pass, which has its own measured rate. 1 411 of the shipped
+  manifest's 5 352 strips re-timed: the dragon's idle runs 132 → 36 ticks
+  (1.5 s a cycle, 12 poses ≈ 8 poses/s at the shipped 2× — the town's own
+  cadence) and its tap 106 → 27 ticks (~1.1 s).
+- **The filmstrip repaint follows the strip, not the default rate**, and there
+  is a probe for "this reads slow" reports. The animator painted every strip on
+  one global `fps` throttle (90 ms floor at 12 fps), so a re-timed loop could
+  not show more than ~11 poses/s however fast its clock; it now waits on
+  **the fastest strip drawn last frame** (`animTickMs`, read off each strip's
+  own `fps`). New console probe `__CV_ANIM_hold(slug)` reports cells / loop
+  ticks / ticks per cell / seconds per pose for every strip registered for a
+  slug, next to the existing `__CV_ANIM(slug, 'tap')`. `city-anims.json`
+  refetched through `MANIFEST_V = '?v=20261104.2'`, `city-view-pixi.js?v=112`.
+  Harness: `smoke-city-view-dom` re-pins the contract (no thinned, non-layered
+  strip holds a pose past its source cadence, manifest-wide, and the dragon's
+  idle lands on the town's median hold at the shipped rate), `smoke-anim-speed`
+  pins the repaint rule, and `smoke-bsprite-api` pins that **the timing the
+  endpoint serves is the timing the player gets** (a known-thinned strip's
+  served clock equals its manifest clock, no served strip is a slideshow, and
+  the cache keys on the bake pipeline).
+
+## 2026-11-04.8
+
+- **The Krustyland crowd stopped being Krusty — `randomSkin` characters now
+  ship their real skins pool.** Every KrustylandNPC on the map was one
+  static Krusty because the generator's fuzzy name matcher had no
+  `krustylandnpc` art to find and its prefix stage landed the save name on
+  the stem `krusty` (`characters.json` shipped `2251 → krustyidleblink`).
+  The game data says otherwise: `krustyland_characters.xml` declares
+  `<Character id="2251" randomSkin="true">` with no art of its own, and
+  `krustyland_skins.xml` dresses each spawn in one of 19
+  `<Skin character="KrustylandNPC">` entries (Generic_Boy01 …
+  Generic_Woman05) — the binary's `Array::getRandomValue` xrefs are the
+  engine's per-spawn draw. Generator: new **`_char_random_skins()`** scans
+  the newest gamescripts packs' `*characters*.xml` (for
+  `randomSkin="true"`) and `*skins.xml` (for the pool), pool characters
+  now resolve **every skin on the skin's own name** and never enter
+  `find()`'s fuzzy stages, and the manifest ships
+  `characters['2251'].pool = [19 slugs]` (`slug` stays the first member so
+  old readers still draw one plausible skin). `_char_prefixes()` claims
+  all members' cells, so the card sidecar carries the whole crowd's
+  walks/actions (87 cells for 2251, 43 walk cycles). The re-run picked
+  pools for **40** randomSkin characters and matched 19 that were dots
+  before (Zombie, Gambler, EscapedConvict, GenericTroop…). Viewer:
+  **`charRecPick()`** hashes the row index + save id to pick a skin
+  stably per instance — the scene pass, the walk plan, the hit-test box
+  and the details card all draw the same skin; the idle/pre-baked phase
+  hash now includes the instance index too, so same-skin twins neither
+  blink nor stride in lockstep. The card's map-asset row names the drawn
+  skin and notes `(randomSkin pool of 19)`. The dynamic endpoint serves
+  the new stems (`bcell.php` mode=manifest/mode=anims verified for
+  `generic_*` blinks and front/back walks); the pre-baked PNGs stay the
+  endpoint-off fallback. `city-view-pixi.js?v=110`. Harness:
+  `smoke-idle-wander` pins the contract — 2251 ships ≥19 pool members,
+  each with an asset and a reachable walk cell, none named `krusty*`.
+
+## 2026-11-04.7
+
+- **The Dragon of Springfieldia's animations were a slideshow — atlas-thinned
+  loops now run the generator's cadence rule like the sparse path always
+  had.** After the flip fix gave the dragon its filmstrips back, they played
+  at ~2 poses/s while the rest of the town turns ~8–24: its 44-frame idle
+  and 46-frame tap had been **thinned to 12 and 9 cells** to fit the 16 Mpx
+  map-atlas cap (`MAN_MAP_ATLAS_PX`), and the shared 12 fps clock then held
+  each surviving pose ~12 engine ticks (~0.5 s at 2×) — 11–12 ticks/cell
+  against the manifest's 2.9 median, on the biggest full-body animation on
+  the map. The sparse packer had learned exactly this as the "top reads
+  slow" fix (poses change ~4/s, capped at 18) but the grid over-cap path
+  still stamped `fps: 12` on every strip it thinned. Fix in the generator
+  (the manifest is the source of the rate): the sparse rule extracted to
+  **`_thin_fps(lt, cells)`** and a per-slug **`_thin_cadence(rows, rec)`**
+  applied from `_behavior_map` — so every manifest write stamps it and no
+  re-bake can leave a thinned strip on the slow clock. Scoped like the
+  sparse rule and then some: only grid-thinned strips (those carrying
+  `lf`), never `layers`/`tapLayers` partners (a stacked pair must share
+  one clock), only when the rule actually raises the rate. The shipped
+  manifest was refreshed in place through the same function — **1,394
+  entries** leave 12 fps (the dragon's two strips land at the 18 cap, its
+  loop 11 s → 3.7 s at 2×); 3,958 stay at the shared 12. No viewer code
+  change; `MANIFEST_V` bumped to `?v=20261104.1` (with it,
+  `city-view-pixi.js?v=110`). Harness: `smoke-city-view-dom` pins both
+  dragon strips to `fps > 12`.
+
+## 2026-11-04.6
+
+- **Tap one-shots play again on the assets that never got one: the engine's
+  `TapTwoRandom` verbs now resolve, and a flipped instance with no baked twin
+  animates its mirrored strips.** Clicking the CircusLion (and DunkTank,
+  FlakeBlaster, PieApult, BurnsEscapePod) and the Dragon of Springfieldia did
+  nothing. Two separate causes, both in the tap plumbing:
+  - **`TapTwoRandom` was an unresolvable verb.** The BuildingTouched script
+    for those assets flips between two one-shot anims at random and names
+    neither, so the gate's `_match_anim_verb` could only miss — the manifest
+    shipped `tap: null` while the bsv3 carried both strips (CircusLion
+    `Tap01`/`Tap02`, BurnsEscapePod `Tap1`/`Tap2`). `gen_city_sprites.py`
+    gained **`_two_random_taps(verb, have)`**: on a `…TwoRandom…` verb it
+    pairs `Tap01/Tap02` (then `Tap1/Tap2`) against the strips that actually
+    ship, records `tap` + **`tapAlt`** in the behavior gate, and exempts both
+    from the longest-4 cut in the atlas pass. The viewer registers the second
+    strip (`tapsA`) and `tapBuilding` picks one per click with `Math.random()`
+    — the same dice the game rolls. Probe: `__CV_ANIM_tap(slug)`.
+  - **The Dragon is placed mirrored and ships no `…flipped` twin, so its
+    filmstrips were dropped whole.** `animKey()` returned `null` for any
+    flipped instance whose baked twin was missing, which killed not just the
+    click one-shot but the idle too — while the body pass already mirrors the
+    base PNG in place (`emitBuilding`'s `mir`) exactly as the absent twin's
+    art would show. `animKey` now falls back to the base slug for
+    `flip === 1`, and the strip blits mirror with the body: `cellOnScreen`
+    and the cell/sparse blits reflect each cell about the pin column
+    (`[x, x+w] → [2·px−x−w, 2·px−x]`) and pass `mir` to `emitSpr`. (The
+    legacy Canvas page keeps the old null-out; the Pixi viewer is the source
+    of truth for new view work.)
+  Files: `tools/gen_city_sprites.py`, `web/assets/city/city-anims.json`
+  (behavior gate, gitignored artifact — only the seven TapTwoRandom slugs
+  changed), `web/viewer/city-view-pixi.js` (cache-buster
+  `city-view-pixi.js?v=109`), `tools/smoke-city-view-dom.cjs` (three new
+  checks pinning the gate, the random pick and the mirrored no-twin path;
+  the filmstrip-cull pin now accepts the `mir` argument). Harnesses green:
+  `node tools/smoke-city-view-dom.cjs`, `smoke-anim-speed`,
+  `smoke-pier-tiles`, `smoke-road-lab`, `smoke-beach-viewer`,
+  `check-bridges`.
+
 ## 2026-11-04.5
 
 - **Walk cycles now play a mirrored plain cycle on the two steps a flat-authored

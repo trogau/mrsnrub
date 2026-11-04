@@ -1944,6 +1944,30 @@ def _fallback_tap_anim(have):
     return None
 
 
+def _two_random_taps(verb, have):
+    """'TapTwoRandom' (and its '…_Tap1Tap2' spelling) is the engine's
+    random-of-two tap: the BuildingTouched script flips between two one-shot
+    anims instead of naming one, so the verb itself is never a strip name —
+    _match_anim_verb can only miss it (2026-11-04: CircusLion, DunkTank,
+    FlakeBlaster, PieApult and BurnsEscapePod shipped their two tap strips
+    but got tap: null, so clicking played nothing). The naming convention is
+    Tap01/Tap02, or Tap1/Tap2 when the verb spells it so. Return whichever
+    pair actually ships (longest first; a lone strip is still what the game
+    has to play), [] when neither naming does — the player picks one at
+    random per click."""
+    if 'tworandom' not in (verb or '').lower():
+        return []
+    low = {n.lower(): n for n in have}
+    best = []
+    for pair in (('tap01', 'tap02'), ('tap1', 'tap2')):
+        got = [low[p] for p in pair if p in low]
+        if len(got) == 2:
+            return got
+        if len(got) > len(best):
+            best = got
+    return best
+
+
 # Engine click-state-machines. Many buildings' NeutralAnimationController
 # name is NOT a bsv3 anim — it names a <Sequence> in the packs'
 # buildingcontrollers.xml: an object-variable state machine whose branches
@@ -2679,6 +2703,11 @@ def _behavior_map(by_name, orders, controllers, ameta, name_idx):
         tap_verb = bv.get('tapVerb')
         tap = (_match_anim_verb(tap_verb, have) if tap_verb
                else _fallback_tap_anim(have))
+        tap_alt = None
+        if tap is None and tap_verb:
+            pair = _two_random_taps(tap_verb, have)
+            if pair:
+                tap, tap_alt = pair[0], (pair[1] if len(pair) > 1 else None)
         idle = _match_anim_verb(bv.get('idle') or 'Neutral', have,
                                 allow_base=True)
         ctl = controllers.get(bv.get('idle') or '')
@@ -2724,6 +2753,9 @@ def _behavior_map(by_name, orders, controllers, ameta, name_idx):
             part_lay = [idle]
             idle = None
         rec = {'idle': idle, 'tap': tap}
+        if tap_alt:
+            rec['tapAlt'] = tap_alt      # TapTwoRandom: the other one-shot,
+                                         # picked at random on click
         if part_lay:
             rec['layers'] = part_lay
         elif idle is None:
@@ -2781,6 +2813,7 @@ def _behavior_map(by_name, orders, controllers, ameta, name_idx):
                 need = [gate['in'], gate['loop'], gate['out']]
                 if all(fr.get(n, 0) > 1 for n in need if n):
                     rec['toggle'] = dict(gate)
+        _thin_cadence(rows, rec)
         out[s] = rec
     return out
 
@@ -3143,6 +3176,90 @@ def _erase_occluded(c, ax, ay, occl):
     return c
 
 
+def _thin_fps(lt, cells):
+    """Cadence rule for a loop the CLUSTER pass thinned: thinning slows a
+    loop as much as it cuts frames — at 12 fps a 22-cell/96-tick strip holds
+    each pose 0.37 s beside the base's 0.17 s (the "top reads slow" report).
+    Run the strip's own clock so poses change ~4/s, capped at 18 — past 1.5x
+    the shared 12 a city loop turns jittery. (The GRID pass does not use
+    this: it re-times the loop instead, see _thin_cadence.)"""
+    return max(ANIM_FPS, min(18, round(4.0 * (lt - 1) / max(1, cells))))
+
+
+THIN_MIN_TPC = 3        # the town's median hold, in engine ticks: the
+                        # manifest's median ticks-per-cell is 3.0, so a
+                        # strip may run brisker than this but no slower
+                        # than the rest of the board
+
+
+def _thin_clock(ent):
+    """Re-space a strip the GRID pass thinned so the cut costs it nothing
+    but poses.
+
+    _anim_clock records the surviving cells at the ticks they were sampled
+    from and keeps the raw loop's tick count, which is right for a strip
+    that dropped only duplicate frames and wrong for one that dropped a
+    quarter of its POSES to fit MAN_MAP_ATLAS_PX: the Dragon of Springfieldia
+    sampled 44 raw frames over a 132-tick loop — each frame held 3 ticks,
+    the town's median cadence — but the thin pass kept 12 of them at their
+    old ticks, so the player held every surviving pose 11 ticks (0.46 s at
+    the default rate) and the report came back "too slow" twice
+    (2026-11-04). Re-space the cells at the source's own per-frame hold —
+    loop ticks / raw frames — floored at THIN_MIN_TPC so a strip whose
+    source really does hold each frame (KampKrusty's Active samples 48 raw
+    frames over a 368-tick loop, 7.7 ticks a frame) keeps THAT hold instead
+    of being snapped to the floor, and nothing runs faster than the rest of
+    the board. The rhythm is scaled, not flattened: a pause in the middle of
+    a tap one-shot keeps its share of the loop.
+
+    Only ever SHORTENS a loop (a strip already at its source's cadence, or
+    one whose source really is slow, is left exactly as it is), and it stamps
+    the loop it replaced as 'lt0' — the raw tick count the cadence was
+    measured against — so re-running it is a no-op rather than a second
+    compression, and a harness can check the rule instead of trusting it."""
+    lf, rp = ent.get('lf'), ent.get('rp')
+    lt = ent.get('lt') or lf
+    n = len(rp) if rp else (ent.get('frames') or 0)
+    if not lf or not rp or not lt or n < 2 or ent.get('lt0'):
+        return
+    new_lt = max(n, int(round(max(THIN_MIN_TPC, lt / float(lf)) * n)))
+    if new_lt >= lt:
+        return
+    sc = (new_lt - 1) / float(lt - 1) if lt > 1 else 1.0
+    out = []
+    for r in rp:
+        v = int(round(r * sc))
+        out.append(v if not out or v > out[-1] else out[-1] + 1)
+    out[-1] = min(out[-1], new_lt - 1)          # every cell stays inside
+    for i in range(n - 2, -1, -1):              # the bumping above can
+        if out[i] >= out[i + 1]:                # have crowded a cell past
+            out[i] = out[i + 1] - 1             # the next one
+    ent['lt0'], ent['rp'], ent['lt'] = lt, [max(0, v) for v in out], new_lt
+
+
+def _thin_cadence(rows, rec):
+    """Put the grid-thinned strips of a slug back on a town cadence (the
+    ones carrying 'lf': frames cut to fit the map atlas cap; see
+    _thin_clock). Layered parts and tapLayers partners composite TOGETHER,
+    so re-timing one half of a stack against its unthinned mate would drift
+    it — those keep the engine's loop (and the oversized stacks blit their
+    baked static anyway). Called from _behavior_map, so every manifest write
+    stamps it and re-baking nothing can leave a thinned strip on the slow
+    clock. Also undoes the fps boost an older build stamped here: the loop
+    carries the cadence now, so every strip shares the one 12 fps clock and
+    the 90 ms repaint throttle keeps up with all of them."""
+    if not rows:
+        return
+    skip = {w.lower() for w in (rec.get('layers') or []) +
+                             (rec.get('tapLayers') or [])}
+    for e in rows:
+        if (e.get('lf') and not e.get('sparse') and
+                e['anim'].lower() not in skip):
+            if e.get('fps', ANIM_FPS) != ANIM_FPS:
+                e['fps'] = ANIM_FPS
+            _thin_clock(e)
+
+
 def _anim_clock(ent, keep, a, b):
     """Record on a strip entry which engine tick each cell stands for.
 
@@ -3316,6 +3433,13 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
                         if bv.get('tapVerb')
                         else _fallback_tap_anim(have_names))
             wanted = [w for w in (idle_want, tap_want) if w]
+            if not tap_want and bv.get('tapVerb'):
+                # the random-of-two taps are the tap anims too: both strips
+                # must survive the longest-4 cut or clicks have nothing to
+                # play half the time
+                wanted.extend(w for w in _two_random_taps(bv['tapVerb'],
+                                                          have_names)
+                              if w not in wanted)
             layset, statics = set(), set()
             # The engine composites the parts of a split stack TOGETHER, so
             # every part the bsv3 carries must ship. Consulting the wants only
@@ -3573,15 +3697,9 @@ def do_anims(slug=None, cap=ANIM_MAX_FRAMES, placed=False):
                             ent['lf'] = n_before   # shared-clock marker,
                             # same convention as the thinned grid path
                             # Thinning slows a loop as much as it cuts
-                            # frames: at 12 fps a 22-cell/96-tick strip
-                            # holds each pose 0.37 s beside the base's
-                            # 0.17 s (the "top reads slow" report). Run
-                            # the strip's own clock so poses change ~4/s
-                            # (the base's cadence), capped at 18 — past
-                            # 1.5x the shared 12 a city loop turns
-                            # jittery.
-                            ent['fps'] = max(ANIM_FPS, min(
-                                18, round(4.0 * (b - a) / len(comps))))
+                            # frames: run the strip's own clock (see
+                            # _thin_fps).
+                            ent['fps'] = _thin_fps(b - a + 1, len(comps))
                         _anim_clock(ent, keep, a, b)
                         entry.append(ent)
                         n_anims += 1
@@ -4258,6 +4376,58 @@ CHAR_MOTION_WORDS = ('walk', 'run', 'jog', 'dance', 'cheer', 'victory',
 CHAR_ROLE_SUFFIXES = ('idle_standby', 'idle', 'walk', 'cheer', 'dance',
                       'sleep', 'sit', 'work', 'greet', 'special')
 
+# Family-card labelling (pass 4). Lifted out of do_chars so
+# tools/char_family_relabel.py can restate the SHIPPED cards' labels with
+# this rule instead of a copy of it — the two must not be able to drift.
+FAM_DIRS = ('left', 'right', 'front', 'back')
+FAM_KIND_WORDS = (
+    ('idle', 'idle'), ('blink', 'idle'), ('standby', 'idle'),
+    ('walk', 'walk'), ('run', 'walk'), ('trot', 'walk'),
+    ('jog', 'walk'),
+    ('cheer', 'action'), ('dance', 'action'), ('victory', 'action'),
+    ('pose', 'action'), ('active', 'action'))
+FAM_TRIM_TAIL = ('idle', 'blink', 'idleblink', 'standby', 'walk',
+                 'run', 'cheer', 'dance', 'active', 'special', 'greet',
+                 'work', 'sit', 'sleep', 'victory', 'pose')
+
+
+def char_cell_kind(key, role, distinct):
+    """Which group a cell belongs to on the character card.
+
+    `role` is the word _char_split_role() took OFF the stem, and it has to
+    join the search: the key a cell is filed under is the role-stripped
+    stem, so '<name>_front_walk' arrives here as key='<name>_front' with
+    role='walk' and no kind word left in it — every one of those 3 156
+    walking cycles (and the 213 '_idle' loops in the same shape) was
+    falling through to the distinct-frames fallback and being labelled
+    'action', out of sight below the panel's tile cap. The role is the
+    engine's own label for the cell, so it outranks a word inside the key:
+    '<name>_walk_idle' is the standing loop, not a stride."""
+    for w, kind in FAM_KIND_WORDS:
+        if w in key or w in role:
+            return 'standby' if distinct <= 1 else kind
+    if distinct >= 2:
+        return 'action'
+    return 'standby' if distinct == 1 else 'misc'
+
+
+def char_cell_dir(key):
+    for d in FAM_DIRS:
+        if key.endswith(d):
+            return d
+    return ''
+
+
+def _char_slug_stem(slug):
+    """flattened idle slug -> the pool stem family it belongs to
+    ('homeridleblink' -> 'homer', 'revlovejoyalienidleblink' ->
+    'revlovejoyalien'). Longest-suffix-first, like the viewer's walkStem()
+    and bcell.php's IDLE_SUFFIXES — keep the three in step."""
+    for s in CHAR_IDLE_SUFFIXES:
+        if len(slug) > len(s) + 2 and slug.endswith(s):
+            return slug[: -len(s)]
+    return slug
+
 
 def _char_norm(s):
     return ''.join(c for c in s.lower() if c.isalnum())
@@ -4271,6 +4441,151 @@ def _char_split_role(stem):
         if low.endswith('_' + r):
             return stem[: -(len(r) + 1)], r
     return stem, ''
+
+
+# randomSkin="true" pool (2026-11-04): the city places one character that
+# ships no art of its own — KrustylandNPC (2251). Its <Character> def says
+# randomSkin="true" and names no animations of its own (its <Animations
+# character="Generic_Woman01"> is only the fallback rig), and the engine
+# dresses each spawn in one of the <Skin ... character="KrustylandNPC">
+# entries the gamescripts packs ship: Generic_Boy01 … Generic_Woman05,
+# 19 skins in krustyland_skins.xml. do_chars() used to run the save name
+# through find(), whose prefix stage lands 'krustylandnpc' on the stem
+# 'krusty' — the whole Krustyland crowd rendered as one Krusty blink
+# sprite. These names now resolve through the skins list instead, and
+# every skin becomes its own rendered asset.
+def _char_random_skins(wanted):
+    """norm save-name -> [skin display name] for randomSkin="true"
+    characters, read from the extracted gamescripts packs (newest revision
+    first; the first pack that dresses a name answers it). A randomSkin
+    name no *_skins.xml file dresses falls back to its base <Animations
+    character> rig; one no pack mentions at all stays absent from the
+    result — such a name must not fall back to find()'s fuzzy stages onto
+    somebody else's art."""
+    import xml.etree.ElementTree as ET
+    todo = set(n for n in wanted if n)
+    out = {}
+    bases = {}
+    for d in _gamescript_packs():
+        if not todo:
+            break
+        found = set()                      # randomSkin names seen in THIS pack
+        for xf in sorted(d.glob('*characters*.xml')):
+            try:
+                data = xf.read_bytes()
+            except OSError:
+                continue
+            if b'andomSkin' not in data:   # cheap prefilter before XML parse
+                continue
+            try:
+                root = ET.fromstring(data.decode('utf-8', 'replace'))
+            except ET.ParseError:
+                continue
+            for ch in root.iter('Character'):
+                if (ch.get('randomSkin') or '') != 'true':
+                    continue
+                nm = _char_norm(ch.get('name') or '')
+                if nm in todo:
+                    found.add(nm)
+                    if nm not in bases:
+                        for an in ch.iter('Animations'):
+                            if an.get('character'):
+                                bases[nm] = an.get('character')
+                                break
+        if not found:
+            continue
+        for xf in sorted(d.glob('*skins.xml')):
+            try:
+                data = xf.read_bytes()
+            except OSError:
+                continue
+            if b'character=' not in data:
+                continue
+            try:
+                root = ET.fromstring(data.decode('utf-8', 'replace'))
+            except ET.ParseError:
+                continue
+            for sk in root.iter('Skin'):
+                nm = _char_norm(sk.get('character') or '')
+                sn = (sk.get('name') or '').strip()
+                if sn and nm in found:
+                    lst = out.setdefault(nm, [])
+                    if sn not in lst:
+                        lst.append(sn)
+        for nm in found:
+            if nm in out:
+                todo.discard(nm)
+    for nm, b in bases.items():
+        if nm not in out and b:
+            out[nm] = [b]
+    return out
+
+
+def _char_prefixes(cids, chars, slugs=True):
+    """cid -> the catalog prefixes whose cells that character's card shows.
+
+    A prefix is the character's catalog name, its CHAR_ALIASES target (the
+    asset stem a save name ships under) and — with `slugs`, since 2026-11-04
+    — the stem of the idle art the map actually draws for it. The third one
+    matters because the catalog name is not always the stem: 'Rev Lovejoy
+    Alien' ships revlovejoyalien_*, and when the name and the stem disagree
+    the character's OWN cells went to the costume twin named exactly that
+    stem, or to nobody — 45 placed skins ended up with no walking cycle on
+    their card at all. The art the save places is the strongest evidence of
+    what belongs to a character. `slugs=False` is the rule as it was, kept
+    for tools/char_family_relabel.py's before/after report.
+    3-letter prefixes count only where the map really has art (a bare 'lou'
+    must not swallow 'louie…'), which is why `chars` is part of the input.
+    Mirrors the three-way guard in bcell.php's pool_source."""
+    out = {}
+    for cid, name in cids.items():
+        nm = _char_norm(name)
+        pre = {nm} if nm else set()
+        al = CHAR_ALIASES.get(nm)
+        if al:
+            pre.add(al)
+        rec = chars.get(cid) if slugs else None
+        if rec:
+            # pool characters (randomSkin crowd) claim every member's cells,
+            # not just the 'slug' fallback
+            for s0 in ([rec.get('slug')] + list(rec.get('pool') or [])):
+                if s0:
+                    sl = _char_slug_stem(_char_norm(s0))
+                    if sl:
+                        pre.add(sl)
+        pre = {p for p in pre if p and len(p) >= 3 and
+               (len(p) > 3 or cid in chars)}
+        if pre:
+            out[cid] = pre
+    return out
+
+
+def _char_owners(inv, cid_prefixes):
+    """(key -> owning prefix, keys nobody owns) over the cell inventory.
+    Longest claim wins, lowest cid breaks a tie — so a costume's cells go to
+    the costume, and the loose list is the triage report pass 4 prints."""
+    owner_of = {}                    # prefix -> owning cid (lowest id wins)
+    for cid in sorted(cid_prefixes, key=int):
+        for p in cid_prefixes[cid]:
+            owner_of.setdefault(p, cid)
+    usable = sorted(owner_of, key=lambda s: (-len(s), s))
+    owners, loose = {}, []
+    for key in inv:
+        for p in usable:
+            if key.startswith(p):
+                owners[key] = p
+                break
+        else:
+            loose.append(key)
+    return owners, loose
+
+
+def _char_card_keys(owners, my_prefixes):
+    """the cells a character's card shows: its own prefix's cells plus every
+    cell owned by a prefix that EXTENDS one of them (its outfits/actions)."""
+    my = sorted(my_prefixes, key=len, reverse=True)
+    return [k for k, p in owners.items()
+            if any(p == px or p.startswith(px) for px in my)]
 
 
 def _char_inventory():
@@ -4725,6 +5040,10 @@ def do_chars():
         return None, []
 
     cids = load_json('character_ids.json')
+    # randomSkin="true" crowd (KrustylandNPC): resolve the skins pool from
+    # the gamescripts XML BEFORE any fuzzy matching can grab the wrong
+    # identity (see _char_random_skins)
+    pools = _char_random_skins({_char_norm(n) for n in cids.values()})
     assets = {}
     chars = {}
     unmatched = set()
@@ -4863,9 +5182,31 @@ def do_chars():
 
     order = []
     pending = []
+    pool_pending = []          # (cid, name, [(skin_norm, hit), …])
     for cid in sorted(cids, key=int):
         name = cids[cid]
-        hit = find(_char_norm(name))
+        nm = _char_norm(name)
+        if nm in pools:
+            # pool character: every skin resolves on its OWN name — the
+            # save name never touches find() (that is how the Krustyland
+            # crowd ended up as Krusty)
+            members = []
+            for sk in pools[nm]:
+                skh = find(_char_norm(sk))
+                if skh is None:
+                    continue
+                members.append((_char_norm(sk), skh))
+                if skh not in cache:
+                    cache[skh] = candidates(skh, _char_norm(sk))
+                    for group in cache[skh]:
+                        for c in group:
+                            collect(c)
+            if members:
+                pool_pending.append((cid, name, members))
+                continue
+            unmatched.add(name)
+            continue
+        hit = find(nm)
         if hit is None:
             unmatched.add(name)
             continue
@@ -4897,6 +5238,29 @@ def do_chars():
         kind = inv[stem]['roles'][role][0]
         cache[hit] = (stem, role, kind, frames)
         order.append((cid, name, hit))
+
+    # Pass 2b — pool characters: finalise each resolved skin's pick the
+    # same way; members that come up empty drop out of the pool rather
+    # than blocking the character.
+    pool_final = []
+    for cid, name, members in pool_pending:
+        hits = []
+        for sk_nm, hit in members:
+            sel = cache[hit]
+            if sel is None:
+                continue
+            if len(sel) != 4:
+                got = choose(hit, sk_nm, *sel)
+                if not got or not got[2]:
+                    cache[hit] = None
+                    continue
+                stem, role, frames = got
+                cache[hit] = (stem, role, inv[stem]['roles'][role][0], frames)
+            hits.append(hit)
+        if hits:
+            pool_final.append((cid, name, hits))
+        else:
+            unmatched.add(name)
 
     # Pass 3 — render each chosen cell: hydrate frames, float union bbox
     # over the placed frames, anchor = the cell's engine origin (0, 0)
@@ -4933,45 +5297,70 @@ def do_chars():
         return im
 
     rendered = {}
-    for cid, name, hit in order:
+
+    def render_hit(hit):
+        """asset for one finalised cache pick; rendered once per stem and
+        shared (pass 4 reuses these for the family cards)"""
         stem, role, kind, frames = cache[hit]
         if stem in rendered:
-            asset = rendered[stem]
+            return rendered[stem]
+        built = []
+        for (delay, x, y, scale, src) in frames:
+            im = frame_pil(src, scale)
+            if im is not None:
+                built.append((delay, x, y, im))
+        built = _dedup_built(built)
+        if built:
+            min_x = min(b[1] for b in built)
+            min_y = min(b[2] for b in built)
+            max_x = max(b[1] + b[3].width for b in built)
+            max_y = max(b[2] + b[3].height for b in built)
+            cw = max(1, math.ceil(max_x - min_x))
+            ch = max(1, math.ceil(max_y - min_y))
+            out_frames = []
+            for i, (delay, x, y, im) in enumerate(built):
+                canvas = Image.new('RGBA', (cw, ch))
+                canvas.paste(im, (round(x - min_x), round(y - min_y)))
+                fname = (f'{stem}.png' if i == 0
+                         else f'{stem}_{i}.png')
+                canvas.save(out_dir / fname)
+                out_frames.append({'file': fname, 'delay': delay})
+            asset = {
+                'png': f'{stem}.png', 'w': cw, 'h': ch,
+                'anchor': [round(-min_x, 2), round(-min_y, 2)],
+                'role': role, 'frames': out_frames,
+            }
         else:
-            built = []
-            for (delay, x, y, scale, src) in frames:
-                im = frame_pil(src, scale)
-                if im is not None:
-                    built.append((delay, x, y, im))
-            built = _dedup_built(built)
-            if built:
-                min_x = min(b[1] for b in built)
-                min_y = min(b[2] for b in built)
-                max_x = max(b[1] + b[3].width for b in built)
-                max_y = max(b[2] + b[3].height for b in built)
-                cw = max(1, math.ceil(max_x - min_x))
-                ch = max(1, math.ceil(max_y - min_y))
-                out_frames = []
-                for i, (delay, x, y, im) in enumerate(built):
-                    canvas = Image.new('RGBA', (cw, ch))
-                    canvas.paste(im, (round(x - min_x), round(y - min_y)))
-                    fname = (f'{stem}.png' if i == 0
-                             else f'{stem}_{i}.png')
-                    canvas.save(out_dir / fname)
-                    out_frames.append({'file': fname, 'delay': delay})
-                asset = {
-                    'png': f'{stem}.png', 'w': cw, 'h': ch,
-                    'anchor': [round(-min_x, 2), round(-min_y, 2)],
-                    'role': role, 'frames': out_frames,
-                }
-            else:
-                asset = None
-            rendered[stem] = asset
+            asset = None
+        rendered[stem] = asset
+        return asset
+
+    for cid, name, hit in order:
+        asset = render_hit(hit)
         if asset is None:
             unmatched.add(name)
             continue
+        stem = cache[hit][0]
         assets[stem] = asset
         chars[cid] = {'name': name, 'slug': stem}
+
+    # Pool characters (randomSkin="true", e.g. KrustylandNPC): every
+    # resolved skin renders as its own asset and the character ships the
+    # whole list — 'slug' stays the first member so readers that ignore
+    # 'pool' still draw one plausible skin, while the viewer hashes each
+    # instance's row index onto 'pool' so the crowd shows many faces.
+    for cid, name, hits in pool_final:
+        slugs = []
+        for hit in hits:
+            asset = render_hit(hit)
+            if asset is None:
+                continue
+            assets[cache[hit][0]] = asset
+            slugs.append(cache[hit][0])
+        if not slugs:
+            unmatched.add(name)
+            continue
+        chars[cid] = {'name': name, 'slug': slugs[0], 'pool': slugs}
 
     # Pass 4 — families (2026-10-27): ship EVERY pool cell of a mapped
     # character (walks, taps/actions, outfits), not just the map idle.
@@ -4989,31 +5378,8 @@ def do_chars():
     fam_dir = out_dir / 'families'
     fam_dir.mkdir(exist_ok=True)
 
-    FAM_DIRS = ('left', 'right', 'front', 'back')
-    FAM_KIND_WORDS = (
-        ('idle', 'idle'), ('blink', 'idle'), ('standby', 'idle'),
-        ('walk', 'walk'), ('run', 'walk'), ('trot', 'walk'),
-        ('jog', 'walk'),
-        ('cheer', 'action'), ('dance', 'action'), ('victory', 'action'),
-        ('pose', 'action'), ('active', 'action'))
-    FAM_TRIM_TAIL = ('idle', 'blink', 'idleblink', 'standby', 'walk',
-                     'run', 'cheer', 'dance', 'active', 'special', 'greet',
-                     'work', 'sit', 'sleep', 'victory', 'pose')
-
-    def cell_kind(key, distinct):
-        for w, kind in FAM_KIND_WORDS:
-            if w in key:
-                return 'standby' if distinct <= 1 else kind
-        if distinct >= 2:
-            return 'action'
-        return 'standby' if distinct == 1 else 'misc'
-
-    def cell_dir(key):
-        for d in FAM_DIRS:
-            if key.endswith(d):
-                return d
-        return ''
-
+    # The kind/label rule itself is module level (char_cell_kind) so the
+    # re-labeller shares it; outfit_words needs the same word lists.
     def outfit_words(disp, key, nm):
         """Costume/action label: the cell's words minus the character's
         name and minus trailing role/direction words — e.g.
@@ -5050,32 +5416,11 @@ def do_chars():
                 break
         return rest
 
-    # ownership: prefixes the save cast can claim (name + alias target)
-    cid_prefixes = {}                # cid -> usable prefix set
-    for cid, name in cids.items():
-        nm = _char_norm(name)
-        pre = {nm} if nm else set()
-        al = CHAR_ALIASES.get(nm)
-        if al:
-            pre.add(al)
-        pre = {p for p in pre if p and len(p) >= 3 and
-               (len(p) > 3 or cid in chars)}
-        if pre:
-            cid_prefixes[cid] = pre
-    owner_of = {}                    # prefix -> owning cid (lowest id wins)
-    for cid in sorted(cid_prefixes, key=int):
-        for p in cid_prefixes[cid]:
-            owner_of.setdefault(p, cid)
-    usable = sorted(owner_of, key=lambda s: (-len(s), s))
-    owners = {}                      # inv key -> owning prefix
-    loose = []
-    for key in inv:
-        for p in usable:
-            if key.startswith(p):
-                owners[key] = p
-                break
-        else:
-            loose.append(key)
+    # ownership: prefixes the save cast can claim (name + alias target +
+    # the stem of the idle art the map draws — see _char_prefixes), and the
+    # cells each of them owns (longest claim wins; `loose` is the triage list)
+    cid_prefixes = _char_prefixes(cids, chars)
+    owners, loose = _char_owners(inv, cid_prefixes)
 
     # prefetch the bcell13 companions EVERY owned cell references (the
     # pass-1 fetch only covered the chosen map idles), thinning absurdly
@@ -5105,7 +5450,7 @@ def do_chars():
         disp = inv[key]['stem']
         role, frames = fam_frames.get(key, ('', []))
         entry = {'key': key, 'stem': disp, 'role': role,
-                 'dir': cell_dir(key)}
+                 'dir': char_cell_dir(key)}
         if key in rendered and rendered[key] is not None:
             a = rendered[key]
         elif frames:
@@ -5149,8 +5494,8 @@ def do_chars():
         else:
             entry['frames'] = []
             entry['reason'] = 'no-frames' if not frames else 'no-pixels'
-        entry['kind'] = cell_kind(
-            key, pix_distinct(frames) if frames else 0)
+        entry['kind'] = char_cell_kind(
+            key, role, pix_distinct(frames) if frames else 0)
         fam_cell[key] = entry
 
     # one sidecar per save character: own cells + the cells of every
@@ -5161,8 +5506,7 @@ def do_chars():
         if cid not in chars:
             continue
         my = sorted(cid_prefixes.get(cid, ()), key=len, reverse=True)
-        mine = [k for k, p in owners.items()
-                if any(p == px or p.startswith(px) for px in my)]
+        mine = _char_card_keys(owners, my)
         cells = []
         for k in sorted(mine):
             e = fam_cell[k]

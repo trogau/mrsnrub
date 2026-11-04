@@ -44,7 +44,7 @@
     // and stack sheets all load through cityUrl(), and a stale cached PNG
     // against fresh city-anims.json sub-rects draws sparse water from wrong
     // shelf spots (the "water attached incorrectly" report, round 6).
-    var MANIFEST_V = '?v=20261102.3';           // city-sprites/-anims.json
+    var MANIFEST_V = '?v=20261104.2';           // city-sprites/-anims.json
     function cityUrl(p) { return dynCityUrl(p) || preUrl(p); }
 
     var stage = $('stage');
@@ -1509,6 +1509,11 @@
     var animOn = true;
     var anims = null;                     // slug -> {cells:[strip…], base:0|1}
     var taps = {};                        // slug -> one-shot tap filmstrip
+    var tapsA = {};                       // slug -> the SECOND one-shot of an
+                                          // engine 'TapTwoRandom' verb: the
+                                          // BuildingTouched script picks one
+                                          // of the two at random per click
+                                          // (CircusLion's Tap01/Tap02)
     var tapsL = {};                       // slug -> [strip…] layered one-shot
                                           // (behavior tapLayers: the Active
                                           // pair of a part stack, played
@@ -1517,6 +1522,14 @@
     var behav = null;                     // slug -> {idle, tap} (v2 manifest)
     var animNow = 0;                      // ms, one clock per rendered frame
     var animLive = 0;                     // animated sprites in the last frame
+    var animTickMs = 90;                  // the fastest tick any strip drew
+                                          // last frame, in ms at 1x: the
+                                          // repaint throttle runs on it, so a
+                                          // strip the generator re-timed onto
+                                          // a 24 ticks/s clock is not sampled
+                                          // at the 12 fps the floor assumes
+                                          // (2026-11-04: a re-timed dragon
+                                          // still turned only half its cells)
     var animPending = 0;                  // anims wanted but not drawable
                                           // (atlas decoding / big pool spent):
                                           // keeps the 90 ms anim tick alive so
@@ -1619,7 +1632,7 @@
             return r.ok ? r.json() : null;
         }).then(function (j) {
             if (!j || !j.anims) return;
-            anims = {}; taps = {}; tapsL = {}; togglers = {};
+            anims = {}; taps = {}; tapsA = {}; tapsL = {}; togglers = {};
             behav = j.behavior || null;
             for (var s in j.anims) {
                 var list = j.anims[s];     // generator sorts loops longest-first
@@ -1648,6 +1661,15 @@
                 if (tap && tap.frames > 1 && tap !== loop) {
                     taps[s] = tap;
                     artKnownStrip(tap);
+                    // 'TapTwoRandom' ships a second one-shot: register it
+                    // too, tapBuilding picks one of the two at random
+                    var tapB = behav ? pickAnim(list, behav[s] &&
+                                                 behav[s].tapAlt) : null;
+                    if (tapB && tapB.frames > 1 && tapB !== tap &&
+                            tapB !== loop) {
+                        tapsA[s] = tapB;
+                        artKnownStrip(tapB);
+                    }
                 }
                 if (behav && behav[s] && behav[s].layers &&
                         behav[s].tapLayers) {
@@ -1780,11 +1802,18 @@
         applyAnimSpeed();
         markDirty();                      // re-show the new rate even on a still frame
     });
-    function animKey(b) {                 // strips follow the DRAWN sprite
-        if (!b.slug) return null;
-        if (!b.flip) return b.slug;
-        return (citySprites && citySprites[b.slug + 'flipped'])
-            ? b.slug + 'flipped' : null;
+    function animKey(b) {                 // strips follow the DRAWN sprite:
+        if (!b.slug) return null;         // a mirrored instance needs the
+        if (!b.flip) return b.slug;       // mirrored filmstrip, never the
+        if (citySprites && citySprites[b.slug + 'flipped'])
+            return b.slug + 'flipped';    // unmirrored one
+        // flipState-1 with no baked <slug>flipped twin (the Dragon of
+        // Springfieldia, 2026-11-04): the body pass already mirrors the
+        // base PNG in place (emitBuilding's mir), which is exactly what
+        // the shipped twin's art shows — so the strips ride the same
+        // stand-in, blitted mirrored about the pin column, instead of the
+        // building sitting frozen with no idle and no click one-shot.
+        return b.flip === 1 ? b.slug : null;
     }
     function animOf(b, k) {
         if (!anims || !animOn || !artMode) return null;
@@ -1923,19 +1952,25 @@
         }
         return false;
     }
-    function cellOnScreen(a, fi, px, py, k) {
+    function cellOnScreen(a, fi, px, py, k, mir) {
+        // mir: the instance draws its base strips mirrored about the pin
+        // column (animKey's no-twin flip stand-in) — the cell lands at the
+        // reflected rect, so that's the rect the cull must test
         if (a.sub) {                        // sparse strip: any rect of the cell
             var rs = a.sub[fi] || [];
             for (var j = 0; j < rs.length; j++) {
                 var r = rs[j];
-                if (px + r.ox * k + r.w * k >= -4 && px + r.ox * k <= VW + 4 &&
+                var rx = mir ? px - r.ox * k - r.w * k : px + r.ox * k;
+                if (rx + r.w * k >= -4 && rx <= VW + 4 &&
                     py + r.oy * k + r.h * k >= -4 && py + r.oy * k <= VH + 4)
                     return true;
             }
             return false;
         }
-        var ax0 = px - a.ax * k, ay0 = py - a.ay * k;
-        return !(ax0 + a.cellw * k < -4 || ax0 > VW + 4 ||
+        var aw = a.cellw * k;
+        var ax0 = mir ? px + a.ax * k - aw : px - a.ax * k;
+        var ay0 = py - a.ay * k;
+        return !(ax0 + aw < -4 || ax0 > VW + 4 ||
                  ay0 + a.cellh * k < -4 || ay0 > VH + 4);
     }
     /* keep the 90 ms anim tick alive only while an atlas this building wants is
@@ -2020,6 +2055,34 @@
         var r = tapsL[slug];
         return r ? r.map(function (a) { return a.anim; }) : null;
     };
+    window.__CV_ANIM_tap = function (slug) {        // smoke-test probe: the
+        var r = taps[slug];                         // registered one-shot(s)
+        return r ? { a: r.anim,                     // tap + the random-of-two
+                     alt: tapsA[slug] ? tapsA[slug].anim : null } : null;
+    };
+    /* the cadence AS THE PLAYER RUNS it: ticks per cell and real seconds per
+       pose at the current rate, for every strip registered for a slug. The
+       numbers a "that reads slow" report is really about — the manifest can
+       say 12 cells and the player can still be holding each one for half a
+       second (2026-11-04, the Dragon of Springfieldia) */
+    window.__CV_ANIM_hold = function (slug) {
+        var r = anims && anims[slug], a, i, n, c, list = [], out = [];
+        if (r) for (i = 0; i < r.cells.length; i++) list.push(r.cells[i]);
+        if (taps[slug]) list.push(taps[slug]);
+        if (tapsA[slug]) list.push(tapsA[slug]);
+        if (tapsL[slug]) for (i = 0; i < tapsL[slug].length; i++)
+            list.push(tapsL[slug][i]);
+        for (i = 0; i < list.length; i++) {
+            a = list[i];
+            n = tickCount(a);
+            c = (a.rp ? a.rp.length : a.frames) || 1;
+            out.push({ anim: a.anim, cells: c, ticks: n, raw: a.lt0 || n,
+                       ticksPerCell: n / c,
+                       secPerPose: n / c / (a.fps * animSpeed),
+                       loopSec: n / (a.fps * animSpeed) });
+        }
+        return out.length ? out : null;
+    };
     function tapBuilding(b) {
         if (!b || !anims || !animOn || !artMode) return false;
         var key = animKey(b);
@@ -2052,6 +2115,8 @@
         }
         var t = taps[key];
         if (!t) return false;
+        // the engine's random-of-two tap: half the clicks play the other strip
+        if (tapsA[key] && Math.random() < 0.5) t = tapsA[key];
         // a single-strip tap on a LAYERED asset (the Active verb never
         // paired): draw the body under it too, or the object blanks down
         // to one part for the length of the one-shot
@@ -2341,8 +2406,9 @@
         for (i = 0; i < ch.length; i++) {
             var c = ch[i];
             var cx = A.a * c[1] + A.b * c[2] + A.c, cy = A.d * c[1] + A.e * c[2] + A.f;
-            var as2 = (charMan && charMan.characters && charMan.characters[c[0]] &&
-                       charMan.assets[charMan.characters[c[0]].slug]) || null;
+            var pk = charMan && charMan.characters && charMan.characters[c[0]]
+                     ? charRecPick(c, i) : null;
+            var as2 = (pk && pk.as) || null;
             var mx = mgn + (as2 ? (dynReady(as2)
                                    ? as2._dyn.ex
                                    : Math.max(as2.anchor[0], as2.w - as2.anchor[0])) * kc : 0);
@@ -2351,8 +2417,7 @@
                                    : Math.max(as2.anchor[1], as2.h - as2.anchor[1])) * kc : 0);
             if (cx + mx < -mx || cx - mx > VW + mx ||   // its sheet can paint in
                 cy + my < -my || cy - my > VH + my) continue;
-            var rec = charMan && charMan.characters[c[0]];
-            if (rec && rec.slug) visChar[String(rec.slug).toLowerCase()] = 1;
+            if (pk && pk.slug) visChar[String(pk.slug).toLowerCase()] = 1;
         }
         var cat = { body: 0, season: 0, char: 0, film: 0, other: 0 };
         var off = { body: [], season: [], char: [], film: [], other: [] };
@@ -2858,15 +2923,32 @@
         return !!(n > 1 && animOn && artMode &&
                   Math.max(as.w, as.h) * k >= CHAR_ANIM_MIN_PX);
     }
+    /* randomSkin="true" crowd (KrustylandNPC, Zombies, …): the manifest
+       ships characters[id].pool — the skins the engine dresses each spawn
+       in at random. Pick one deterministically from the row INDEX (hash,
+       not Math.random: a reroll per frame would strobe, and the scene
+       pass, the walk plan and the hit-test must agree on the same skin).
+       Returns {slug, as} — the asset or null when it never rendered. */
+    function charRecPick(c, i) {
+        var rec = charMan && charMan.characters[c[0]];
+        if (!rec) return null;
+        if (!rec.pool || rec.pool.length < 2)
+            return { slug: rec.slug, as: charMan.assets[rec.slug] || null };
+        if (i === undefined || i < 0) i = 0;
+        var h = ((i + 1) * 0x01000193) >>> 0;
+        h ^= c[0]; h = Math.imul(h, 0x85ebca6b) >>> 0; h ^= h >>> 13;
+        var s = rec.pool[h % rec.pool.length];
+        return { slug: s, as: charMan.assets[s] || null };
+    }
     /* the art asset to draw for a character: the card's preview cell wins
        over the manifest pick — shared by the scene pass and the click
        hit-test so both agree on the drawn sprite rect */
-    function charArtOf(c) {
+    function charArtOf(c, i) {
         if (!artMode || !charMan) return null;
         if (charPreview && String(charPreview.cid) === String(c[0]))
             return charPreview.cell;
-        var rec = charMan.characters[c[0]];
-        return (rec && charMan.assets[rec.slug]) || null;
+        var p = charRecPick(c, i);
+        return (p && p.as) || null;
     }
     /* preview playback: replay the chosen cell continuously (one pass on
        its own delays, 1.2 s hold on the standby frame) — steadier than
@@ -2966,10 +3048,25 @@
        Mirror keep a character facing the way it visibly travels — and NOT by
        "dominant axis", which in a 2:1 projection is always the horizontal
        one and would leave every character in one cycle.
-       The PriorityList order is the shipped fallback too: the sideways
-       variant, then the plain cycle of the SAME family, then the other
-       family — a character never plays the away-facing cycle just because
-       its toward-facing one has no sideways variant.
+       The PriorityList is the ask order too: the AUTHORED side cell first and
+       drawn exactly as authored — the engine never mirrors a walk (§8), and
+       mirroring art already drawn for that side would double-flip it — then
+       the plain cycle of the SAME family, then the other family.
+       One viewer-side addition to the plain cycles, from the user's walk-lab
+       ruling (2026-11-04, notes/13 §6): a horizontal MIRROR on two of the
+       four steps. The mirrored plain cycle is "the only way it looks right" for
+       Back_Walk_Right and Front_Walk_Left, the two rows of that table whose art
+       a flat-authored crowd skin does not have; the other two steps play the
+       plain cycle as drawn. Read it as an eye-test ruling, not as a facing fix:
+       those plain cycles measure square-on (§8, and the lab's own lean
+       column), so nothing in the art says which way it travels and no wrong turn
+       is being corrected. The mirror is therefore a property of the STEP, not of
+       the cell, and only ever of a plain (_walk/_run) one:
+          mirror = (back and right) || (front and left)
+       That is a deliberate deviation from how the engine does it: the engine
+       fills those two steps by AUTHORING two cells, which is why the sided
+       skins ship both twins (§8), never by a transform. So the mirror is
+       suppressed the moment that art exists: tier 1 wins and is never flipped.
        Why the plain fallback is not a moonwalk (notes/13 §8): the crowd's
        plain cycles are drawn squarely on and are symmetric about the
        character origin (measured: 0.3-2.5 px of lean for homer/marge/bart/
@@ -2979,8 +3076,9 @@
        web/assets), and the engine asks for them by composing the name at
        runtime — the resolver at libscorpio.so 0x1207430 appends the .rodata
        "_left"/"_right" suffixes to the base name, looks each up, and only on
-       a miss falls back to the unsuffixed cell. So the turn-around is a
-       lookup, never a mirror: do not add scale.x = -1 here.
+       a miss falls back to the unsuffixed cell. The mirror is the viewer's
+       stand-in for the art the game authored by name, so: never scale.x = -1
+       an authored _left/_right cell.
        The viewer's slugs are flattened lowercase (homeridleblink) and
        bcell.php resolves a slug to a pool stem by alphanumeric-only compare,
        so homerfrontwalk finds homer_front_walk.bcell. */
@@ -3001,20 +3099,33 @@
         }
         return slug;
     }
-    /* the PriorityList order for one movement vector, as guessed pool slugs
-       (used when the endpoint's anims listing is unavailable) */
-    function walkCandidates(stem, fam, side) {
+    /* The ask order for one movement vector, as {tail, mir} pairs — the single
+       source of the rule (see the block above). Tier 1 is the AUTHORED side
+       cell, drawn exactly as authored (mir: false, always); the plain cycles
+       carry the lab's mirror, which belongs to the step: back-going-right and
+       front-going-left are the two steps a flat-authored skin has no art for.
+       The tails are spelled exactly as bcell.php's WALK_TAILS spells them, so
+       mode=anims answers can be read off this list. */
+    function walkPlan(fam, side) {
         var o = fam === 'back' ? 'front' : 'back';
-        return [stem + fam + 'walk' + side, stem + fam + 'walk',
-                stem + o + 'walk' + side, stem + o + 'walk',
-                stem + fam + 'run', stem + o + 'run'];
+        function mir(f) { return (f === 'back') === (side === 'right'); }
+        return [
+            { tail: fam + '_walk_' + side, mir: false },
+            { tail: fam + '_walk', mir: mir(fam) },
+            { tail: o + '_walk_' + side, mir: false },
+            { tail: o + '_walk', mir: mir(o) },
+            { tail: fam + '_run', mir: mir(fam) },
+            { tail: o + '_run', mir: mir(o) }
+        ];
     }
-    /* the same order as tail words, for the endpoint's anims inventory (the
-       tails come back exactly as bcell.php's WALK_TAILS spells them) */
-    function walkTails(fam, side) {
-        var o = fam === 'back' ? 'front' : 'back';
-        return [fam + '_walk_' + side, fam + '_walk',
-                o + '_walk_' + side, o + '_walk', fam + '_run', o + '_run'];
+    /* the same plan as guessed pool slugs (used when the endpoint's anims
+       inventory is unavailable): a cell's slug is its stem plus the tail with
+       the underscores dropped, which is how bcell.php matches slugs to stems.
+       The mirror rides along, so both paths draw the same thing */
+    function walkCandidates(stem, fam, side) {
+        return walkPlan(fam, side).map(function (p) {
+            return { slug: stem + p.tail.replace(/_/g, ''), mir: p.mir };
+        });
     }
     /* One small listing request per skin instead of eight guessed probes:
        the endpoint reports which of the WALK_TAILS cells really exist for
@@ -3041,10 +3152,10 @@
             })
             .catch(function () { walkInv[stem] = null; });
     }
-    function walkArtOf(c, dir) {
+    function walkArtOf(c, dir, i) {
         if (!DYNB.characters || !dir || !charMan) return null;
-        var rec = charMan.characters[c[0]];
-        var idle = rec && charMan.assets[rec.slug];
+        var pk = charRecPick(c, i);
+        var idle = pk && pk.as;
         if (!idle || !idle.png) return null;
         var stem = walkStem(String(idle.png).replace(/\.png$/i, ''));
         var key = stem + '|' + dir.fam + dir.side;
@@ -3053,25 +3164,33 @@
         var inv = walkInv[stem];
         if (inv === undefined) { walkAsk(stem); return null; }
         if (inv === WALK_PENDING) return null;      // listing on its way: idle now
+        var plan = walkPlan(dir.fam, dir.side);
         var names = null;
         if (inv) {
             names = [];
-            for (var t = 0; t < walkTails(dir.fam, dir.side).length; t++) {
-                var s = inv[walkTails(dir.fam, dir.side)[t]];
-                if (s && names.indexOf(s) < 0) names.push(s);
+            for (var t = 0; t < plan.length; t++) {
+                var s = inv[plan[t].tail];
+                /* the plan already puts the authored side cell first, so a
+                   skin that ships its own left/right art is drawn as authored
+                   and its mir is false (§8: the engine never mirrors a walk) */
+                if (s && names.indexOf(s) < 0)
+                    names.push({ slug: s, mir: plan[t].mir });
             }
             if (!names.length) { walkArts[key] = 0; walkMiss++; return null; }
         }
         var probes = walkProbes[key];
         if (!probes) {
             probes = walkProbes[key] = (names ||
-                walkCandidates(stem, dir.fam, dir.side)).map(function (s) {
+                walkCandidates(stem, dir.fam, dir.side)).map(function (p) {
                 /* the walk cell is drawn in the idle cell's box: the shipped
                    front/back walk cells are the same rig, and the hit-test
                    (which only knows the idle asset) has to agree with what is
-                   drawn */
-                return { png: s + '.png', w: idle.w, h: idle.h,
-                         anchor: idle.anchor, _walk: 1 };
+                   drawn. mir = draw this cell flipped about the character
+                   origin (walkPlan's ruling); the hit-test still uses the
+                   unmirrored idle box, which the eye does not notice at this
+                   scale — the two boxes differ by at most the frame's offset */
+                return { png: p.slug + '.png', w: idle.w, h: idle.h,
+                         anchor: idle.anchor, _walk: 1, mir: p.mir };
             });
         }
         var pending = 0;
@@ -3174,7 +3293,16 @@
         dynC.stacks = w.indexOf('stacks') > -1;
     })();
     var BSU = B + 'api/bsprite.php';
-    var AMP_V = ASSET_V.replace(/^\?/, '&');    // bsprite URLs already carry a ?
+    /* the endpoint's own cache-buster. It rides its own version rather than
+       ASSET_V because what it answers is not just bytes: a strip's timing
+       fields (fps/rp/lt/lf) come back on its mode=meta call and OVERWRITE the
+       manifest entry (animMeta), so a bake-rule edit on the server has to
+       refetch that answer without making the whole city re-download its
+       pre-baked PNGs. The bsprite cache key now covers the pipeline sources,
+       so the same edit also re-bakes the atlas behind this URL (2026-11-04,
+       the dragon's thinned loop served at its raw 132-tick clock) */
+    var BSERVE_V = '?v=20261104.1';
+    var AMP_V = BSERVE_V.replace(/^\?/, '&');    // bsprite URLs already carry a ?
     var DINV = null;                        // preflight {inv:{stem:bits}} | null
     var DINV_WAIT = true;                   // hold city art until it settles
     var dynCFail = { sprite: 0, season: 0, anim: 0, stack: 0, flag: 0 };
@@ -4273,6 +4401,7 @@
         animNow = t0;                     // one clock per frame: instances agree
         animFrameId++;                    // the atlas cache's "is it on screen" tick
         animLive = 0;
+        animTickMs = 90;                  // the frame's fastest strip, below
         animPending = 0;
         charAnimLive = 0;
         animBudget = ANIM_MAX_BLITS;
@@ -4612,18 +4741,26 @@
             var mfr = dv.man.frames;
             var di = (charPreview && charPreview.cell === as2)
                      ? charPreviewIdx(as2, mfr)
-                     /* the walk cycle gets the character's slot index in its
-                        phase hash too: two instances of one skin walking side
-                        by side must not stride in lockstep */
-                     : charFrameIdx(as2, loop ? e.c[0] + ':' + e.i : e.c[0],
+                     /* both paths hash the character's slot index: once a
+                         randomSkin crowd shares 19 skins across dozens
+                         of instances, twins must not stride — or
+                         blink — in lockstep either */
+                      : charFrameIdx(as2, e.c[0] + ':' + e.i,
                                     kc, mfr, loop);
             var df = mfr[di];
             var dim2 = df && dv.man.images[df.image];
             var dt = dim2 && subTex(dv.url, dim2.x, dim2.y, dim2.w, dim2.h);
             if (!dt) return false;
             if (charAnimating(as2, kc, mfr)) charAnimLive++;
-            emitSpr(dt, e.x + df.x_off * kc, e.y + df.y_off * kc,
-                    dim2.w * kc, dim2.h * kc);
+            /* as2.mir (from walkPlan): draw the cell flipped about the CHARACTER
+               ORIGIN rather than inside its own box — a frame hangs off the
+               origin at x_off, so its box [x_off, x_off+w] mirrors to
+               [-(x_off+w), -x_off], and emitSpr's mir flag then flips the
+               texture within that box. Same rule the walk lab's stage uses
+               (translate to the origin, then scale(-1,1)) */
+            var wmir = !!as2.mir;
+            emitSpr(dt, e.x + (wmir ? -(df.x_off + dim2.w) : df.x_off) * kc,
+                    e.y + df.y_off * kc, dim2.w * kc, dim2.h * kc, wmir);
             return true;
         }
         function emitChar(e) {
@@ -4636,9 +4773,9 @@
                    what the walk's absence must look like (never a red X). */
                 var wk = (e.dir && !(charPreview &&
                         String(charPreview.cid) === String(e.c[0])))
-                        ? walkArtOf(e.c, e.dir) : null;
+                        ? walkArtOf(e.c, e.dir, e.i) : null;
                 if (wk && emitCharDyn(e, wk, true)) return;
-                var as2 = charArtOf(e.c);
+                var as2 = charArtOf(e.c, e.i);
                 if (as2 && !(as2.w * kc < 12 && as2.h * kc < 12)) {
                     var dv = dynCell(as2);
                     if (dv && (dv.st === -1 || (dv.st === 1 && texDead(dv.url)))) {
@@ -4653,7 +4790,7 @@
                     var url = B + 'assets/characters/' +
                         (charPreview && charPreview.cell === as2
                             ? charPreviewFrame(as2)
-                            : charFrameFile(as2, e.c[0], kc));
+                            : charFrameFile(as2, e.c[0] + ':' + e.i, kc));
                     if (charAnimating(as2, kc)) charAnimLive++;
                     var t = texFor(url);
                     if (t) { emitSpr(t, e.x - as2.anchor[0] * kc,
@@ -5063,11 +5200,15 @@
         var an = animOf(b, k);            // filmstrip cells instead of the PNG?
         if (an) {
             var drew = 0, i, j, ok = 1, vis = 0, cov = 0;
+            // the no-twin flip stand-in draws its strips mirrored about the
+            // pin column, exactly as it mirrors the body PNG below: cell
+            // [x, x+w] lands at [2*px-x-w, 2*px-x] with the texture flipped
+            var m2 = mir ? 2 * px : 0;
             // a layer cell may legitimately be as big as the body it hides
             var cap = an.base ? Math.max(4096, Math.max(sp.w, sp.h) * k) : 2048;
             for (i = 0; i < an.cells.length; i++) {
                 var c0 = an.cells[i], st = c0.a;
-                if (!cellOnScreen(st, c0.fi, px, py, k)) continue;
+                if (!cellOnScreen(st, c0.fi, px, py, k, mir)) continue;
                 vis = 1;
                 if (!animAtlasFor(st, c0.tap) ||
                     Math.max(st.cellw, st.cellh) * k > cap) {
@@ -5095,25 +5236,28 @@
                 }
                 for (i = 0; i < an.cells.length; i++) {
                     var c = an.cells[i], a = c.a, fi = c.fi;
-                    if (!cellOnScreen(a, fi, px, py, k)) continue;
+                    if (!cellOnScreen(a, fi, px, py, k, mir)) continue;
                     if (!animAtlasFor(a, c.tap)) continue;   // decoding / no slot
                     if (a.sub) {                      // sparse strip: blit its rects
                         var rs = a.sub[fi] || [];
                         for (j = 0; j < rs.length; j++) {
                             var r = rs[j], rw = r.w * k, rh = r.h * k;
-                            var rx = px + r.ox * k, ry = py + r.oy * k;
+                            var rx = mir ? m2 - px - r.ox * k - rw
+                                         : px + r.ox * k;
+                            var ry = py + r.oy * k;
                             if (rx + rw < -4 || rx > VW + 4 ||
                                 ry + rh < -4 || ry > VH + 4) continue;
                             var rt = subTex(animUrlFor(a),
                                             r.sx, r.sy, r.w, r.h);
                             if (!rt) continue;
-                            emitSpr(rt, rx, ry, rw, rh);
+                            emitSpr(rt, rx, ry, rw, rh, mir);
                             drew++;
                         }
                         continue;
                     }
                     var aw = a.cellw * k, ah = a.cellh * k;
-                    var ax0 = px - a.ax * k, ay0 = py - a.ay * k;
+                    var ax0 = mir ? m2 - (px - a.ax * k) - aw : px - a.ax * k;
+                    var ay0 = py - a.ay * k;
                     if (ax0 + aw < -4 || ax0 > VW + 4 || ay0 + ah < -4 || ay0 > VH + 4)
                         continue;         // truly off-screen: skip
                     var ct = subTex(animUrlFor(a),
@@ -5121,11 +5265,20 @@
                                     Math.floor(fi / a.cols) * a.cellh,
                                     a.cellw, a.cellh);
                     if (!ct) continue;
-                    emitSpr(ct, ax0, ay0, aw, ah);
+                    emitSpr(ct, ax0, ay0, aw, ah, mir);
                     drew++;
                 }
             }
             if (drew) { animLive++; if (!an.tap) animBudget--;
+                    // the repaint throttle runs at the frame's fastest strip,
+                    // not at the 12 fps constant: a strip the generator put
+                    // back on a town cadence turns a cell every 3 ticks
+                    // (41.7 ms at the default rate) and a 45 ms repaint would
+                    // skip a third of them — the fix would be invisible
+                    for (i = 0; i < an.cells.length; i++) {
+                        var tm = 1000 / (an.cells[i].fps || 12);
+                        if (tm < animTickMs) animTickMs = tm;
+                    }
                     if (pole) emitFlagCloth(b, px, py, k, sp.anchor[0], sp.anchor[1]);
                     return true; }
             // nothing blitted (decoding / off-screen / stack rejected): keep the
@@ -5455,13 +5608,18 @@
             // decode, or has a strip that was refused a cache slot and is
             // owed one retry (animRetryT, armed once per arrival)
             //
-            // 90 ms is ~11 Hz, which is already the ceiling on the strips'
-            // 12 fps: speed the loops up and the repaint, not the art, is
-            // what would stutter. So the interval follows the rate — but only
-            // upward. The min() keeps 90 ms as the floor for slow rates, since
-            // the character idle loops and the decode retries still run on the
-            // real clock and would go choppy if we starved them of repaints.
-            animNextT = t + Math.max(16, Math.min(90, 90 / animSpeed));
+            // 90 ms is ~11 Hz, the ceiling on a strip at the shared 12 fps:
+            // speed the loops up and the repaint, not the art, is what would
+            // stutter. So the interval follows the rate — but only upward —
+            // AND the frame's fastest strip (animTickMs): the generator can
+            // stamp a faster clock on one asset (a re-timed dragon turns at
+            // 24 ticks/s at the default rate), and sampling that at 45 ms
+            // would drop every other pose. The min() keeps 90 ms as the floor
+            // for slow rates, since the character idle loops and the decode
+            // retries still run on the real clock and would go choppy if we
+            // starved them of repaints.
+            animNextT = t + Math.max(16, Math.min(90,
+                animTickMs / animSpeed));
             markDirty();
         }
         if (t - diagLastT > 500) {                 // statsbar at 2 Hz
@@ -5652,7 +5810,14 @@
             '<tr><td>name resolved</td><td>' +
             (name ? 'yes (character catalog)' : 'no') + '</td></tr>' +
             '<tr><td>map asset</td><td>' +
-            (rec ? esc(rec.slug) : 'none &mdash; drawn as a dot') + '</td></tr></table>' +
+            (rec ? (function () {
+                var pk = charRecPick(c, i);
+                return esc((pk && pk.slug) || rec.slug) +
+                    (rec.pool && rec.pool.length > 1
+                        ? ' <span class="dim">(randomSkin pool of ' +
+                          rec.pool.length + ': one skin per instance)</span>'
+                        : '');
+            })() : 'none &mdash; drawn as a dot') + '</td></tr></table>' +
             '<div class="pinnote">Selected &mdash; Esc or clicking a ground tile deselects.' +
             ' Click an animation tile below to play it on the map.</div>';
     }
@@ -5797,7 +5962,7 @@
             var art = artMode && charMan && s >= BUILD_LOD_S;
             for (var i = M.chars.length - 1; i >= 0; i--) {
                 var p = charScreen(M.chars[i]);
-                var as4 = art ? charArtOf(M.chars[i]) : null;
+                var as4 = art ? charArtOf(M.chars[i], i) : null;
                 if (as4 && !(as4.w * ka < 12 && as4.h * ka < 12)) {
                     var hx = p.x - as4.anchor[0] * ka,
                         hy = p.y - as4.anchor[1] * ka;
