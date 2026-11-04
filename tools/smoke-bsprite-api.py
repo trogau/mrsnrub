@@ -108,9 +108,9 @@ def main():
     check('shim anim pixel-identical (or documented drift)', same or near,
           f'pre {pre.size} new {new.size}')
 
-    r, p = bake('stack', 'aircraftcarrier')
+    r, p = bake('stack', 'whale')
     check('shim stack exit 0', r.returncode == 0, r.stderr[-160:])
-    kind, info = diff_png(p, CITY / 'stacks/aircraftcarrier.png')
+    kind, info = diff_png(p, CITY / 'stacks/whale.png')
     check('shim stack pixel-identical', kind == 'identical', str(info))
 
     r, p = bake('flag', 'flag_sweden')
@@ -145,12 +145,21 @@ def main():
           (TMP / 'season-1979onda-winter.png').read_bytes())
 
     # warm call: cache file mtimes must not move (no re-bake)
-    files = list(CACHE.glob('*.png'))
-    m0 = {f: f.stat().st_mtime_ns for f in files}
+    def mtimes():
+        # live-server stale-strip (the endpoint prunes entries keyed on an
+        # old pipeline) may unlink a file between glob and stat — skip it
+        out = {}
+        for f in CACHE.glob('*.png'):
+            try:
+                out[f] = f.stat().st_mtime_ns
+            except FileNotFoundError:
+                pass
+        return out
+    m0 = mtimes()
     t0 = time.time()
     php(['kind=sprite', 'name=1979onda', f'out={TMP}/p-sprite2.png'])
     warm = time.time() - t0
-    m1 = {f: f.stat().st_mtime_ns for f in CACHE.glob('*.png')}
+    m1 = mtimes()
     check('php warm call: no cache re-bake',
           all(m1.get(f) == ns for f, ns in m0.items() if f in m1))
     check('php warm call fast (<1.5s)', warm < 1.5, f'{warm:.2f}s')
@@ -167,6 +176,50 @@ def main():
           and abs(ent.get('cellw', 0) - man['cellw']) <= 2
           and abs(ent.get('cellh', 0) - man['cellh']) <= 2,
           json.dumps({k: ent.get(k) for k in ('cols', 'cellw', 'cellh', 'ax', 'ay')}))
+
+    # ---- the timing this endpoint serves IS the timing the player gets ----
+    # city-view-pixi.js animMeta() overwrites a strip's fps/rp/lt/lf with this
+    # answer, so a cadence rule stamped only into city-anims.json never
+    # reaches the map: the Dragon of Springfieldia kept replaying its raw
+    # 132-tick loop (12 poses, 5.5 s a cycle) through here while its shipped
+    # entry correctly read 36 ticks — three "too slow" reports, all invisible
+    # (2026-11-04). Pin a strip that was actually atlas-thinned, not just a
+    # small one. The cells themselves are NOT compared: the shim re-bakes its
+    # own atlas and its thin pass may land on different source frames.
+    r = php(['mode=meta', 'kind=anim', 'name=springfieldiadragon',
+             'png=anims/springfieldiadragon__Neutral.png'])
+    ent = json.loads(r.stdout)
+    man = next(e for e in json.loads((CITY / 'city-anims.json').read_text())
+               ['anims']['springfieldiadragon'] if e['anim'] == 'Neutral')
+    clock = ('frames', 'fps', 'lf', 'lt', 'lt0')
+    check('php anim meta carries the manifest clock for an atlas-thinned strip',
+          all(ent.get(k) == man.get(k) for k in clock),
+          json.dumps({k: (ent.get(k), man.get(k)) for k in clock}))
+    check('the served thinned loop is no slideshow (a pose turns every ~3 ticks)',
+          ent.get('lt', 9e9) <= 3.5 * ent.get('frames', 1) and
+          ent.get('lt0', 0) >= 2 * ent.get('lt', 1),
+          json.dumps({k: ent.get(k) for k in ('frames', 'lt', 'lt0', 'lf')}))
+    # and the cache identity must cover the pipeline itself, or a rule change
+    # is served stale forever out of bsprite-cache (the bug above)
+    php_src = (ROOT / 'web/api/bsprite.php').read_text()
+    check('the endpoint cache keys on the bake pipeline, not only the pool',
+          '$files[] = RENDER_PY;' in php_src and '$files[] = GEN_PY;' in php_src,
+          '')
+
+    # ---- the idle gate falls back to the asset's own Neutral loop ------
+    # when the engine's behavior table names an idle the bsv3 doesn't
+    # carry, the engine plays the promoted neutral/0 atlas — the map must
+    # too, or the building ships frozen (Atlantis' engine idle is
+    # 'Active', its only loop is its 16-pose Neutral; 2026-11-05).
+    am = json.loads((CITY / 'city-anims.json').read_text())
+    atl = next((e for e in am['anims'].get('atlantis') or []
+                if e['anim'] == 'Neutral'), None)
+    check('a slug whose engine idle is missing from its bsv3 gates its '
+          'Neutral loop (atlantis)',
+          (am['behavior'].get('atlantis') or {}).get('idle') == 'Neutral'
+          and atl and atl['frames'] > 1,
+          json.dumps({'gate': am['behavior'].get('atlantis'),
+                      'strip': bool(atl) and atl['frames']}))
 
     # ---- PHP endpoint: errors ---------------------------------------------
     r = php(['kind=sprite', 'name=definitely_not_a_building', f'out={TMP}/x.png'])
