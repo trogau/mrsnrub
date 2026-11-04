@@ -1,5 +1,115 @@
 # Changelog
 
+## 2026-11-04.5
+
+- **Walk cycles now play a mirrored plain cycle on the two steps a flat-authored
+  skin has no art for — the ruling from the walk-lab eye test.** Homer walked
+  every direction in one of two square-on cycles, because the game never shipped
+  his `*_walk_left` / `*_walk_right` cells (the pack census: 0 of 22 481 packs).
+  Per the ruling, the viewer still asks the shipped `PriorityList` order — the
+  authored side cell first, drawn exactly as authored, then the plain cycle of
+  the same family, then the other family — but where it has to fall back to a
+  plain cycle it now **flips it horizontally** on two of the four steps:
+  `mirror = (family back && side right) || (family front && side left)`, i.e.
+  the steps the shipped `<MovePick>` table calls `Back_Walk_Right` and
+  `Front_Walk_Left`. For Homer that is north `homer_back_walk` as drawn, east
+  `homer_back_walk` **mirrored**, south `homer_front_walk` as drawn, west
+  `homer_front_walk` **mirrored**. The mirror belongs to the *step*, never the
+  cell, so an authored `_left`/`_right` cell always wins unflipped and the sided
+  skins cannot be double-mirrored — the engine fills those two steps by authoring
+  two cells (`notes/13` §8), never with a transform, so this is a stand-in for
+  art the game authored by name and an aesthetic ruling, not a facing fix (both
+  plain cycles measure square-on). Implementation: one rule per page —
+  **`walkPlan(fam, side)`** in `web/viewer/city-view-pixi.js`, returning
+  `{tail, mir}` pairs (its `walkCandidates()` slug form and the endpoint-inventory
+  path both derive from it, and the old `walkTails()` is gone), with
+  `emitCharDyn` drawing the flip about the **character origin** rather than the
+  frame's own box — and `rulePlan()` / `rulePick()` in `web/viewer/walk-lab.html`.
+  This **replaces the "west plays the away-facing `back_walk`" deviation** put up
+  earlier today, which the eye test rejected.
+- **The walk lab's four directions are now the four steps the sim really takes,
+  named and labelled as such.** The A* is 4-neighbour in the engine's grid, and
+  in this 2:1 oblique a unit tile step draws as a 2:1 *diagonal*, so "north" is
+  up-left, not straight up; the four rows are now tile `(0,-1)`, `(+1,0)`,
+  `(0,+1)`, `(-1,0)` — the engine's own `Back_Walk_Left` / `Back_Walk_Right` /
+  `Front_Walk_Right` / `Front_Walk_Left` — and each paste-back row prints the
+  tile step and the `MovePick` the shipped XML asks for, the derived family and
+  side, and `mirror=YES|no (rule|override)`. The mirror checkbox is now an
+  **override**: it starts on whatever the rule says, and moving it back to the
+  rule's answer clears the override so a later rule change is not silently
+  pinned. The legend states the mirror rule instead of the retracted west
+  deviation. `tools/smoke-walk-lab.cjs` gained per-direction mirror, engine-step
+  and override checks, an authored-side-cell-wins-unflipped check, and a check
+  that the big-stage canvas really asks for the flipped draw (87 fixture / 152
+  `--live` checks, all passing; `--report` dumps the paste-back text).
+  `tools/smoke-idle-wander.cjs` now slices `walkPlan` and pins the mirror flags
+  cell-by-cell in all four quadrants, the four tile-step → facing mappings, and
+  the origin-flip arithmetic in the draw. Notes:
+  `notes/13-idle-wander-re.md` §6 records the ruling (and the retraction), §8
+  narrows its "no sprite mirror" verdict to the stand-in case and documents the
+  origin-flip geometry, §10 lists what the eye test still has not covered. No
+  new settings, files or endpoints. Cache-buster bumped to
+  `city-view-pixi.js?v=107` in `web/viewer/index.html`.
+
+## 2026-11-04.4
+
+- **Added a pack-level asset census, so "that sprite does not exist" is now a
+  fact from the shipped game rather than an inference from our extraction.**
+  The sprite pool the viewer and the API read (`/tmp/opencode/citypool`) is a
+  *filtered* extraction — `tools/gen_city_sprites.py` pulls the slugs the save
+  needs — so "not in the pool" has never meant "not shipped", which is exactly
+  how the discussion about Homer's walk cycles nearly ended in a wrong answer.
+  New **`tools/scan_pack_manifests.py`** asks the packs instead: every pack
+  under `cdn/` is a double container (`<Family>-r<rev>-<TAG>.zip` inside a
+  `.7z` bundle) whose entry `0` is a small `BGrm` manifest listing that pack's
+  asset paths, so `scan` (shardable with `--worker`/`--workers`, resumable per
+  bundle) walks all 511 bundles without ever touching the 45 MB art blobs, and
+  `merge --dest` folds the partials into **`data/pack_census.tsv`** — 15 768
+  unique `.bcell` names from 22 481 packs in 505 content-bearing bundles, with
+  the coverage counts in a `#` provenance header. The manifest is a
+  length-prefixed table and a naive regex corrupts it (a length byte is often
+  itself a printable character, giving names like `-lisa_walk.bcell`), so
+  records are parsed structurally and both length bytes must agree — verified
+  against a pack that carries 255 cell markers, which the parser returns as
+  exactly 255 names, none missing from the pool. Pinned by
+  **`tools/smoke-scan-pack-manifests.py`**.
+- **`bcell.php` gained `mode=census`, the endpoint that tells the two kinds of
+  missing apart.** `api/bcell.php?mode=census&name=X` answers
+  `{name, in_pool, shipped, packs, sample_pack, verdict, census}` from
+  `data/pack_census.tsv`: `not shipped by any pack` is an authoring fact,
+  `shipped but never extracted` is our gap and names a pack that ships it
+  (a real example: the `shadows_*` event art — 145 cells the CDN has and the
+  pool never pulled). Read-only, no new files, no web-server config: the same
+  script, a new mode, and its own ETag keyed on the census file's mtime.
+  The headline it settled: `homer_front_walk` ships in 235 packs,
+  `homer_front_walk_left`/`_right` in **none**, while `wiggum_front_walk_left`
+  /`_right` ship in 16 and wiggum's *plain* front cycle ships in none — a skin
+  is authored flat or sided, never both. Side twins are authored in pairs (2
+  270 of 2 275 groups ship both), and compositing the `homer_conductor` twins
+  on a shared canvas mirrors to alpha IoU 0.975 with 20.9 % of pixels still
+  differing, so even the near-mirror pairs are two drawings, not one flip.
+- **The Walk lab now says *why* a cell is missing, next to the cell.** The
+  `not shipped:` line under each direction and the report's `NOT SHIPPED` rows
+  quote the census (`absent from all 22481 pack manifests`, or, in amber when
+  the packs do have it, `shipped by N pack(s), e.g. <pack> — never extracted`),
+  each absent cell links its own `mode=census` answer, and the header links the
+  family's census row. The census is resolved before the first paint, so a
+  pasted report can never read as an undifferentiated "we don't have it".
+  `tools/smoke-walk-lab.cjs` covers it on both sides: an inline fixture for the
+  amber extraction-gap case and a live assertion that Homer's left-facing walk
+  is absent from every pack manifest (55 fixture checks, 93 with `--live`).
+
+## 2026-11-04.2
+
+- **Added `tools/index-cdn-7z.sh` to index every `.7z` archive under `cdn/`.**
+  The script runs `7z l -slt` on each archive, skips directory entries, and
+  writes one line per archived file to `cdn-index.txt` in the project root
+  (override with an optional output-path argument). Each line has the form
+  `cdn/<archive>.7z :: cdn/<archive>.7z/<path/inside/archive>`, so a line
+  carries both the containing archive and the full path of the file inside
+  it. Last run indexed 510 archives into 47,467 entries; the six archives
+  that contain nothing but an empty folder contribute no lines.
+
 ## 2026-11-04
 
 - **Walkers now play the walk cycle the shipped game would have picked.**
