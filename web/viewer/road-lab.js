@@ -3090,8 +3090,7 @@
            lower one?" looks like. */
         heights: false, hinst: 6, hpitch: 17, hmode: 'replace',
     };
-    /* the seam the SAVE states, read exactly as the Pixi viewer reads it
-       (__CV_BEACH.seamFromProps): Mountain03/LowerMountainBeach (16x16) and
+    /* the seam the SAVE states: Mountain03/LowerMountainBeach (16x16) and
        Mountain04/LowerMountainBeachShoreline (6x16) are the props the game puts
        where the ridge meets the water, and buildBuildings' box says y1 = py, so
        their south edge IS the row. 0 is the documented fallback (the harness

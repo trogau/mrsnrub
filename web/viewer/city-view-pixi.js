@@ -807,12 +807,10 @@
            for reference and off the map.
        Static frame 0 everywhere (the wave loop is not ported — same choice as
        the road art and the pier brush). */
-    var BEACHSETS_KEY = 'mrsnrub.cityview.beachsets';
     var BEACHART_KEY = 'mrsnrub.cityview.beachart';
     /* v2: the v1 params (seam/pitch steppers, the sea-fill anchor) would land
        the coast back where it was — a stale save must not override the file */
     var BEACHP_KEY = 'mrsnrub.cityview.beach.params.v2';
-    var beachSetsOn = true;                 // ships ON: the footprints ARE the question
     var beachArtOn = false;                 // the art is the loud one — opt in
     var BEACH = null, beachFailed = false;
     var BEACH_S = 64;                       // art px per town tile (manifest pxPerTile)
@@ -820,8 +818,8 @@
     var BEACH_LAND_END = 700;               // fallback: landinfo Region "Springfield" y2
     var beachP = {
         ax: 0, ay: 0, block: 16, fill: true, copies: 4,
-        heights: true, hinst: 6, bg: true, alpha: 0.34,
-        lattice: true, edgeAt: 0, useOffsets: true,
+        heights: true, hinst: 6, bg: true,
+        edgeAt: 0, useOffsets: true,
         north: true, sky: true
     };
     /* back to front — the manifest's own pair order (road-lab BEACH_KINDS).
@@ -832,11 +830,6 @@
         lower: ['buildarea', 'shore', 'border'],
         heights: ['h_beach', 'h_shore', 'h_overlay'],
         north: ['n_shore', 'n_mountains', 'n_mtnwater']
-    };
-    var BEACH_TINT = {
-        shore: 0x8bc34a, buildarea: 0xe0a64b, border: 0xce93d8,
-        h_shore: 0x4dd0e1, h_beach: 0xf48fb1, h_overlay: 0xb0bec5,
-        n_shore: 0x26a69a, n_mountains: 0x8d6e63, n_mtnwater: 0x9575cd
     };
     /* past the mountain row is off the land, and the game covers it with a
        flat wall of cloud. Read off the in-game full-map export
@@ -858,23 +851,8 @@
     /* the instance records + the art pool (child order IS painter order, so the
        pool refills from 0 every frame like the scene pool) */
     var beachInsts = [], beachArtPool = [], beachArtN = 0;
-    /* Mountain03/Mountain04's NORTH edge, read off the save: the landmark the
-       two sets should meet on. They are ridge PROPS (the Lower Mountain Beach
-       district), not beach tiles — here only as the check they are. */
-    function beachSeamFromProps() {
-        var best = null;
-        for (var i = 0; i < M.buildings.length; i++) {
-            var b = M.buildings[i], e = M.binfo[b[0]];
-            if (!e) continue;
-            if (e[1] !== 'LowerMountainBeach' && e[1] !== 'LowerMountainBeachShoreline') continue;
-            var y0 = b[7] - b[4];                           // buildBuildings' box: y0 = py - h
-            if (best === null || y0 < best) best = y0;
-        }
-        return best === null ? 0 : best;
-    }
     (function () {
         try {
-            beachSetsOn = localStorage.getItem(BEACHSETS_KEY) !== '0';
             beachArtOn = localStorage.getItem(BEACHART_KEY) === '1';
             var p = JSON.parse(localStorage.getItem(BEACHP_KEY) || 'null');
             if (p) for (var k in beachP) if (p[k] !== undefined) beachP[k] = p[k];
@@ -910,8 +888,6 @@
        nudged by the ax/ay steppers for A/B-ing against the map */
     function beachAnchorX() { return beachP.ax | 0; }
     function beachAnchorY() { return beachP.ay | 0; }
-    /* the terrain's sea edge — a reference line, drawn only if it drifts off the anchor */
-    function beachShoreX() { return terrain.seaFillX1 - terrain.ox; }
     /* the land's frame in tiles (LandBlockPosition + LandBlockSize x 16) */
     function beachLandBox() {
         var b = (BEACH && BEACH.landBlocks) || { tiles: 16, x: -3, y: -7, w: 40, h: 64 };
@@ -1136,28 +1112,21 @@
     function beachHideRest() {
         for (var i = beachArtN; i < beachArtPool.length; i++) beachArtPool[i].visible = false;
     }
-    /* the per-frame pass: footprints + seam rows in beachG (ground level, under
-       the buildings), art billboards in beachArtC, labels in beachTxtC above
-       everything. Screen-space like drawGrid/drawMarkers: project, never shear
-       a container, so Rotate/Mirror keep the labels upright */
+    /* the per-frame pass: art billboards in beachArtC with their hasBackground
+       fills under them in beachBgG, and the cloud wall past the land. Screen-space
+       like drawGrid/drawMarkers: project, never shear a container */
     function beachDraw(A, s, T) {
-        beachG.clear();
         beachBgG.clear();
         beachCloudG.clear();
         beachArtN = 0;
-        beachLab.begin();
-        if (!BEACH || (!beachSetsOn && !beachArtOn)) {
-            beachHideRest(); beachLab.end(); return;
-        }
+        if (!BEACH || !beachArtOn) { beachHideRest(); return; }
         var k = s / BEACH_S;                               // screen px per art px
         function P(x, y) { return [A.a * x + A.b * y + A.c, A.d * x + A.e * y + A.f]; }
-        function mv(x, y) { var p = P(x, y); beachG.moveTo(p[0], p[1]); }
-        function ln(x, y) { var p = P(x, y); beachG.lineTo(p[0], p[1]); }
         function box(x0, y0, x1, y1) {
             var a = P(x0, y0), b = P(x1, y0), c = P(x1, y1), d = P(x0, y1);
             return [a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]];
         }
-        var i, j, t, st, tl, x0, y0, x1, y1;
+        var i, t, st, tl, x0, y0, x1, y1;
         for (i = 0; i < beachInsts.length; i++) {
             st = beachInsts[i]; tl = st.tiles;
             if (!tl.length) continue;
@@ -1169,25 +1138,14 @@
                 if (tl[t + 1] > y1) y1 = tl[t + 1];
             }
             if (x1 + 1 < T.x0 || x0 > T.x1 || y1 + 1 < T.y0 || y0 > T.y1) continue;
-            if (beachSetsOn) {
-                /* one quad per stamp (the tile set is a solid rectangle), then
-                   the 1-tile lattice once it is big enough to read */
-                beachG.poly(box(x0, y0, x1 + 1, y1 + 1), true)
-                    .fill({ color: BEACH_TINT[st.kind], alpha: beachP.alpha });
-                if (beachP.lattice && k >= 0.5) {
-                    for (var tx = x0; tx <= x1 + 1; tx++) { mv(tx, y0); ln(tx, y1 + 1); }
-                    for (var ty = y0; ty <= y1 + 1; ty++) { mv(x0, ty); ln(x1 + 1, ty); }
-                    beachG.stroke({ width: 1, color: BEACH_TINT[st.kind], alpha: 0.5 });
-                }
-            }
-            if (beachArtOn && beachP.bg && st.bg) {
+            if (beachP.bg && st.bg) {
                 /* the engine's hasBackground fill: a flat tile-space rect
                    under the strip (beachBgG is beachArtC's bottom child) */
                 var g = st.bg;
                 beachBgG.poly(box(st.ax + g.x, st.ay + g.y, st.ax + g.x + g.w, st.ay + g.y + g.h), true)
                     .fill({ color: g.color, alpha: 1 });
             }
-            if (beachArtOn && beachSheetReady(st.anim)) {
+            if (beachSheetReady(st.anim)) {
                 var o = P(st.ax, st.ay), bs = st.blocks;
                 for (var q = 0; q < bs.length; q++) {
                     var bl = bs[q];
@@ -1214,73 +1172,13 @@
             }
         }
         beachHideRest();
-        if (beachArtOn && beachP.sky && beachP.north) beachCloudDraw(P, box, k, T);
-        /* the seam the file implies (the lower set's first row, which is also
-           where the Heights set's six strips end), Mountain03/04's north edge
-           off the save as its check, and the terrain's modelled shoreline */
-        if (beachSetsOn) {
-            var xA = beachAnchorX() - 8, xB = beachAnchorX() + 24;
-            var lo = beachSpan('lower'), hi = beachSpan('heights'), ridge = beachSeamFromProps();
-            if (lo) {
-                mv(xA, lo[0]); ln(xB, lo[0]);
-                beachG.stroke({ width: 2, color: 0xf4d03f, alpha: 0.95 });
-            }
-            if (hi) {
-                mv(xA, hi[0]); ln(xB, hi[0]);
-                beachG.stroke({ width: 1, color: 0xf4d03f, alpha: 0.6 });
-            }
-            var sh = beachShoreX();
-            if (sh !== beachAnchorX() && lo) {
-                mv(sh, hi ? hi[0] : lo[0]); ln(sh, lo[1]);
-                beachG.stroke({ width: 1, color: 0x00e5ff, alpha: 0.5 });
-            }
-            /* what is actually on the map, per piece: the repeat the FILE states,
-               so a piece that is not being stamped once (or filled, or six) is
-               visible as text rather than a wall of art */
-            function counts(set) {
-                var m = {}, order = BEACH_KINDS[set] || [], k;
-                for (i = 0; i < beachInsts.length; i++)
-                    if (beachInsts[i].set === set)
-                        m[beachInsts[i].kind] = (m[beachInsts[i].kind] || 0) + 1;
-                var s = [];
-                for (j = 0; j < order.length; j++) {
-                    k = order[j];
-                    if (!beachTile(k) || !beachEdge(k).sprite) continue;
-                    s.push(k + '×' + (m[k] || 0) + '(r=' + beachEdge(k).repeat + ')');
-                }
-                return s.join(' ');
-            }
-            if (lo) {
-                var p1 = P(beachAnchorX() - 2, lo[0]);
-                beachLab.put('seam y=' + lo[0] + ' (Mountain03/04 north edge y=' + ridge + ')',
-                    p1[0], p1[1] - 13);
-                var p3 = P(beachAnchorX() - 2, lo[0] + 6);
-                beachLab.put('lower: Beach · ' + counts('lower') + ' · y ' + lo[0] + '..' + lo[1] +
-                    ' · anchor tile x ' + beachAnchorX() +
-                    (beachP.useOffsets ? '' : ' · offsets OFF'), p3[0], p3[1]);
-            }
-            var nm = beachInsts.filter(function (r) { return r.kind === 'n_mountains'; });
-            if (nm.length) {
-                var p5 = P(nm[0].ax + 2, nm[0].ay + 2);
-                beachLab.put('north edge: Land · ' + counts('north') + ' · y ' + nm[0].ay +
-                    ' · x ' + nm[0].ax + '..' + (nm[nm.length - 1].ax + beachEdge('n_mountains').step),
-                    p5[0], p5[1]);
-            }
-            if (hi) {
-                var p4 = P(beachAnchorX() - 2, hi[0] + 6);
-                beachLab.put('north: springfieldheightsnobeach · ' + counts('heights') +
-                    ' · y ' + hi[0] + '..' + hi[1] + (beachP.bg ? ' · bg sand' : ''),
-                    p4[0], p4[1]);
-            }
-        }
-        beachLab.end();
+        /* the wall of cloud the game puts over everything off the land, drawn
+           OVER the mountain row */
+        if (beachP.sky && beachP.north) beachCloudDraw(P, box, k, T);
     }
     function applyBeachMode() {
-        if (beachG) beachG.visible = beachSetsOn || beachArtOn;
         if (beachArtC) beachArtC.visible = beachArtOn;
         if (beachCloudG) beachCloudG.visible = beachArtOn;
-        var b1 = $('btn-beachsets');
-        if (b1) b1.classList.toggle('on', beachSetsOn);
         var b2 = $('btn-beachart');
         if (b2) {
             b2.classList.toggle('on', beachArtOn && !!(BEACH && beachSheetReady(beachAnimName('shore'))));
@@ -1291,7 +1189,6 @@
         params: beachP,
         manifest: function () { return BEACH; },
         failed: function () { return beachFailed; },
-        seamFromProps: beachSeamFromProps,
         instances: function () {
             return beachInsts.map(function (r) {
                 return { ax: r.ax, ay: r.ay, set: r.set, kind: r.kind, anim: r.anim };
@@ -1328,10 +1225,9 @@
             return out;
         },
         state: function () {
-            return { sets: beachSetsOn, art: beachArtOn, insts: beachInsts.length,
-                     seam: (beachSpan('lower') || [null])[0], ridge: beachSeamFromProps(),
+            return { art: beachArtOn, insts: beachInsts.length,
                      lower: beachSpan('lower'), heights: beachSpan('heights'),
-                     anchor: beachAnchorX(), anchorY: beachAnchorY(), shore: beachShoreX(),
+                     anchor: beachAnchorX(), anchorY: beachAnchorY(),
                      offsets: beachP.useOffsets, edgeAt: beachP.edgeAt };
         },
         cloudEdge: function () { return beachCloudEdge(); },
@@ -1341,11 +1237,6 @@
     /* ---- beach tune panel: A/B steppers against the file's own placement
        (each one defaults to what landinfo.xml states) ------------------- */
     function bindBeachUI() {
-        if ($('btn-beachsets')) $('btn-beachsets').addEventListener('click', function () {
-            beachSetsOn = !beachSetsOn;
-            try { localStorage.setItem(BEACHSETS_KEY, beachSetsOn ? '1' : '0'); } catch (e) { /* private mode */ }
-            applyBeachMode(); markDirty();
-        });
         if ($('btn-beachart')) $('btn-beachart').addEventListener('click', function () {
             beachArtOn = !beachArtOn;
             try { localStorage.setItem(BEACHART_KEY, beachArtOn ? '1' : '0'); } catch (e) { /* private mode */ }
@@ -1407,16 +1298,12 @@
         function toggle(rowEl, key, name, kind, tip) {
             var b = btn(name, function () {
                 if (kind === 'cycle') beachP[key] = beachP[key] === 'replace' ? 'over' : 'replace';
-                else if (kind === 'alpha')
-                    beachP[key] = beachP[key] >= 0.7 ? 0.14 : +(beachP[key] + 0.1).toFixed(2);
                 else beachP[key] = !beachP[key];
                 paint();
             }, tip);
             b.label = kind === 'cycle'
                 ? function () { return name + ': ' + beachP[key]; }
-                : kind === 'alpha'
-                    ? function () { return name + ': ' + beachP[key]; }
-                    : function () { return name + ': ' + (beachP[key] ? 'ON' : 'off'); };
+                : function () { return name + ': ' + (beachP[key] ? 'ON' : 'off'); };
             tgls.push(b);
             rowEl.appendChild(b);
             return b;
@@ -1445,10 +1332,6 @@
             'the solid EEDDCC fill Heights beach1 asks for (hasBackground, 13.5 x 16 tiles at x -0.5): without it the Heights beach is grass with sand patches');
         toggle(row('landinfo offs'), 'useOffsets', 'offsets', false,
             'apply each LandEdge\'s own offsetx/offsety (lower offsety="-1", Heights offsety="-7") — off lands every piece on the origin row instead, to A/B the file\'s offsets against the map');
-        toggle(row('lattice'), 'lattice', 'tile lattice', false,
-            '1-tile grid inside the tinted footprints (once the zoom is readable)');
-        toggle(row('tint'), 'alpha', 'alpha', 'alpha',
-            'footprint tint opacity (cycles 0.14 .. 0.74)');
         row('go').appendChild(btn('\u2316 seam', function () {
             var lo = beachSpan('lower');
             centerOnTile(beachAnchorX() + 4, (lo ? lo[0] : beachAnchorY()) + 4);
@@ -2933,8 +2816,12 @@
     /* fr is optional: pass the dynamic manifest's frames[] to time/place
        off the endpoint's frame list (count and delays can differ from the
        pre-baked frames[] — the pipeline drops empty frames); defaults to
-       the asset's own frames. Totals cache per frame-array identity. */
-    function charFrameIdx(as, id, k, fr) {
+       the asset's own frames. Totals cache per frame-array identity.
+       loop = replay back-to-back instead of holding the standby frame: a
+       walking character's striding cycle is a continuous loop (the engine
+       keeps it playing for the whole move), unlike the idle one-play-and-hold
+       above. */
+    function charFrameIdx(as, id, k, fr, loop) {
         fr = (fr && fr.length) ? fr : as.frames;
         if (!fr || !fr.length) return 0;
         if (fr.length < 2 || !animOn || !artMode ||
@@ -2951,7 +2838,8 @@
         // like the client's time-between-anims); loops long enough to read
         // as an "active" idle wait at least another loop-length before
         // replaying, so long gags don't run back-to-back
-        var gap = 2000 + (h >>> 4) % 5000 + (as._tot > 1200 ? as._tot : 0);
+        var gap = loop ? 0
+            : 2000 + (h >>> 4) % 5000 + (as._tot > 1200 ? as._tot : 0);
         var t = ((animNow || performance.now()) + h) % (as._tot + gap);
         if (t >= as._tot) return 0;                 // standby between plays
         for (j = 0; j < fr.length; j++) {
@@ -3003,6 +2891,209 @@
         if (!fr || !fr.length || !animOn)
             return (fr && fr[0] || { file: as.png }).file;
         return fr[charPreviewIdx(as)].file;
+    }
+
+    /* ---- idle wander (js/wander.js, notes/13) ------------------------------
+       The engine walks its idle characters on its own, no job involved: stand
+       at the post, then A* to a nearby tile over the <RoadGridSettings>
+       cost grid (streets 10-19, grass 32, water 196) — the cost table, not a
+       rule, is what keeps the crowd on the pavements. Characters whose
+       <Character> definition names no <MovementBehavior mode> get the
+       engine's built-in default, RandomRelaxed; the ones that do (Sneak,
+       RandomRush, RandomHover) get that mode's feel. Speeds come from the
+       per-character <WalkSpeed>, clamped into <WalkDefaultSpeeds slow fast>.
+
+       Positions are written straight into the M.chars rows, so the scene
+       pass, the click hit-test and the details card all follow the walker;
+       switching the toggle off restores the save's layout. The walk cycles
+       are the pool's <skin>_front_walk/_back_walk cells (the manifest ships
+       idle cells only), so they stream from the same dynamic .bcell endpoint
+       as the idles — and a skin with no walk cell, or a page without the
+       endpoint, walks in its idle pose instead of failing. */
+    var WANDER_KEY = 'mrsnrub.cityview.idlewalk';
+    var wanderOn = true;
+    try { wanderOn = localStorage.getItem(WANDER_KEY) !== '0'; } catch (e) { /* private mode */ }
+    var wander = (typeof CityWander === 'undefined') ? null : new CityWander({
+        chars: M.chars, terrain: terrain, buildings: M.buildings,
+        typeNames: (typeof CityTerrain !== 'undefined' && CityTerrain.TYPE_ORDER) || null,
+        speeds: (typeof WALK_DATA !== 'undefined' && WALK_DATA) ? WALK_DATA.chars : null
+    });
+    if (wander) wander.setEnabled(wanderOn);
+    function applyWanderMode() {
+        var b = $('btn-idlewalk');
+        if (!b) return;
+        b.classList.toggle('on', wanderOn);
+        b.setAttribute('aria-pressed', wanderOn ? 'true' : 'false');
+    }
+    applyWanderMode();
+    if ($('btn-idlewalk')) $('btn-idlewalk').addEventListener('click', function () {
+        wanderOn = !wanderOn;
+        try { localStorage.setItem(WANDER_KEY, wanderOn ? '1' : '0'); }
+        catch (e) { /* private mode */ }
+        if (wander) wander.setEnabled(wanderOn);
+        applyWanderMode();
+        markDirty();
+    });
+    window.__CV_WANDER = function (on) {           // console/harness probe
+        if (!wander) return null;
+        if (on !== undefined) {
+            wanderOn = !!on;
+            wander.setEnabled(wanderOn);
+            applyWanderMode();
+            markDirty();
+        }
+        var i = wander.info();
+        i.walking = walkLive;                       // walkers on screen
+        i.walkCells = Object.keys(walkArts).length; // skin|kind combos resolved
+        i.walkMiss = walkMiss;                      // …of which have no cell
+        return i;
+    };
+
+    /* walk cells: the engine picks the cycle from the movement vector in its
+       own grid, and the shipped content carries the table —
+         <MovePick x="-1" y="0" speed="1"><PriorityList>
+           <Animation name="Front_Walk_Left"/><Animation name="Front_Walk"/>
+       (jobs.xml and ~200 other job files; the census of all 461 locomotion
+       names is notes/13 §6):
+
+         tile (-1,0) → Front_Walk_Left    tile (0,+1) → Front_Walk_Right
+         tile (+1,0) → Back_Walk_Right    tile (0,-1) → Back_Walk_Left
+
+       So the facing half is the DEPTH component and the side half the
+       sideways one, and in the 2:1 oblique the two tile axes land on the two
+       down-diagonals: walking down the screen is walking toward the camera.
+       Read off the DRAWN vector (the tile→screen affine), so Rotate and
+       Mirror keep a character facing the way it visibly travels — and NOT by
+       "dominant axis", which in a 2:1 projection is always the horizontal
+       one and would leave every character in one cycle.
+       The PriorityList order is the shipped fallback too: the sideways
+       variant, then the plain cycle of the SAME family, then the other
+       family — a character never plays the away-facing cycle just because
+       its toward-facing one has no sideways variant.
+       Why the plain fallback is not a moonwalk (notes/13 §8): the crowd's
+       plain cycles are drawn squarely on and are symmetric about the
+       character origin (measured: 0.3-2.5 px of lean for homer/marge/bart/
+       lisa/apu/...), so they read correctly either way and ship no side
+       variants at all. Cycles that ARE drawn in profile ship both sides as
+       separate cells (6 214 *_walk_left / 6 204 *_walk_right under
+       web/assets), and the engine asks for them by composing the name at
+       runtime — the resolver at libscorpio.so 0x1207430 appends the .rodata
+       "_left"/"_right" suffixes to the base name, looks each up, and only on
+       a miss falls back to the unsuffixed cell. So the turn-around is a
+       lookup, never a mirror: do not add scale.x = -1 here.
+       The viewer's slugs are flattened lowercase (homeridleblink) and
+       bcell.php resolves a slug to a pool stem by alphanumeric-only compare,
+       so homerfrontwalk finds homer_front_walk.bcell. */
+    var WALK_STEM_SUF = ['idleblinkleft', 'idleblinkright', 'idleblink',
+        'idleleft', 'idleright', 'idleactive', 'active', 'idle', 'left',
+        'right', 'pose'];
+    var walkArts = {};                    // 'stem|fam+side' -> asset | 0 (none)
+    var walkMiss = 0;                     // skins resolved as having no walk cell
+    var walkProbes = {};                  // 'stem|fam+side' -> probe assets
+    var walkInv = {};                     // stem -> {tail: pool stem} | null
+    var WALK_PENDING = {};                // inventory request in flight
+    function walkStem(slug) {
+        for (var i = 0; i < WALK_STEM_SUF.length; i++) {
+            var s = WALK_STEM_SUF[i];
+            if (slug.length > s.length + 2 &&
+                slug.slice(slug.length - s.length) === s)
+                return slug.slice(0, slug.length - s.length);
+        }
+        return slug;
+    }
+    /* the PriorityList order for one movement vector, as guessed pool slugs
+       (used when the endpoint's anims listing is unavailable) */
+    function walkCandidates(stem, fam, side) {
+        var o = fam === 'back' ? 'front' : 'back';
+        return [stem + fam + 'walk' + side, stem + fam + 'walk',
+                stem + o + 'walk' + side, stem + o + 'walk',
+                stem + fam + 'run', stem + o + 'run'];
+    }
+    /* the same order as tail words, for the endpoint's anims inventory (the
+       tails come back exactly as bcell.php's WALK_TAILS spells them) */
+    function walkTails(fam, side) {
+        var o = fam === 'back' ? 'front' : 'back';
+        return [fam + '_walk_' + side, fam + '_walk',
+                o + '_walk_' + side, o + '_walk', fam + '_run', o + '_run'];
+    }
+    /* One small listing request per skin instead of eight guessed probes:
+       the endpoint reports which of the WALK_TAILS cells really exist for
+       the stem (bcell.php mode=anims). null = unavailable (pack art, the
+       endpoint is off, or it failed) → fall back to probing names, which is
+       what the page did before the listing existed. Asked once per skin, and
+       the answer always lands before the first probe is built (walkArtOf
+       paints the idle pose while PENDING), so a probe is never built from a
+       guess that the listing would have contradicted. Walking characters move
+       every frame, so they redraw anyway — no markDirty needed. */
+    function walkAsk(stem) {
+        if (walkInv[stem] !== undefined) return;    // asked already
+        walkInv[stem] = WALK_PENDING;                // in flight: don't re-ask
+        if (dynSrc !== 'pool' || !DYNB.characters) { walkInv[stem] = null; return; }
+        fetch(B + 'api/bcell.php?src=pool&mode=anims&name=' +
+              encodeURIComponent(stem))
+            .then(function (r) { return r.json().catch(function () { return null; }); })
+            .then(function (j) {
+                if (!j || !j.anims) { walkInv[stem] = null; return; }
+                var m = {};
+                for (var i = 0; i < j.anims.length; i++)
+                    m[j.anims[i].tail] = j.anims[i].stem;
+                walkInv[stem] = m;
+            })
+            .catch(function () { walkInv[stem] = null; });
+    }
+    function walkArtOf(c, dir) {
+        if (!DYNB.characters || !dir || !charMan) return null;
+        var rec = charMan.characters[c[0]];
+        var idle = rec && charMan.assets[rec.slug];
+        if (!idle || !idle.png) return null;
+        var stem = walkStem(String(idle.png).replace(/\.png$/i, ''));
+        var key = stem + '|' + dir.fam + dir.side;
+        var hit = walkArts[key];
+        if (hit !== undefined) return hit || null;
+        var inv = walkInv[stem];
+        if (inv === undefined) { walkAsk(stem); return null; }
+        if (inv === WALK_PENDING) return null;      // listing on its way: idle now
+        var names = null;
+        if (inv) {
+            names = [];
+            for (var t = 0; t < walkTails(dir.fam, dir.side).length; t++) {
+                var s = inv[walkTails(dir.fam, dir.side)[t]];
+                if (s && names.indexOf(s) < 0) names.push(s);
+            }
+            if (!names.length) { walkArts[key] = 0; walkMiss++; return null; }
+        }
+        var probes = walkProbes[key];
+        if (!probes) {
+            probes = walkProbes[key] = (names ||
+                walkCandidates(stem, dir.fam, dir.side)).map(function (s) {
+                /* the walk cell is drawn in the idle cell's box: the shipped
+                   front/back walk cells are the same rig, and the hit-test
+                   (which only knows the idle asset) has to agree with what is
+                   drawn */
+                return { png: s + '.png', w: idle.w, h: idle.h,
+                         anchor: idle.anchor, _walk: 1 };
+            });
+        }
+        var pending = 0;
+        for (var i = 0; i < probes.length; i++) {
+            var probe = probes[i];
+            var d = dynCell(probe);
+            if (!d) return null;                    // static-art mode: no cells
+            if (d.st === -1 || (d.st === 1 && texDead(d.url))) continue;
+            if (dynReady(probe)) { walkArts[key] = probe; return probe; }
+            pending = 1;                            // decoding: idle paints now
+        }
+        if (!pending) { walkArts[key] = 0; walkMiss++; }
+        return null;
+    }
+    /* facing from the screen-vertical component (down-screen = toward the
+       camera = front), side from the screen-horizontal one — see the
+       MovePick table above. Both components matter at once: every grid step
+       lands on a 2:1 diagonal, so a step is always partly sideways AND
+       partly toward/away. */
+    function walkDirOf(s, A) {
+        var dx = A.a * s.vx + A.b * s.vy, dy = A.d * s.vx + A.e * s.vy;
+        return { fam: dy < 0 ? 'back' : 'front', side: dx < 0 ? 'left' : 'right' };
     }
 
     /* ---- dynamic .bcell endpoint (selective rollout) ---------------------
@@ -3423,7 +3514,7 @@
     var UNIT, DISC, groundC, fillC, featC, avenC, terrFlatS, buildFlatS, grassTil,
         grassFillS, seaFillS, sceneG, fragG, propG, dynErrG, walkG, gridG, markG, outG,
         txtGrid, txtMark, bridgeG, raisedG, bridgeNearG,
-        beachG, beachArtC, beachBgG, beachCloudG, beachTxtC, beachLab;
+        beachArtC, beachBgG, beachCloudG;
     var pool = [], pn = 0;
     /* bridge decals, one pool per layer: [0] far row in bridgeG (under the
        raised road art), [1] near row in bridgeNearG (over it) */
@@ -3505,15 +3596,12 @@
 
         sceneG = new PIXI.Container();      // pooled prisms/billboards/dots
 
-        /* the two fixed beach coast sets: footprints at ground level (under the
-           buildings, so a prism reads as being ON the beach), art billboards
-           just above them, labels with the readouts up top */
-        beachG = new PIXI.Graphics();
+        /* the two fixed beach coast sets: art billboards just above the ground,
+           their hasBackground fills under them, the cloud wall past the land */
         beachArtC = new PIXI.Container();
         beachBgG = new PIXI.Graphics();     // hasBackground fills, under every art sprite
         beachCloudG = new PIXI.Graphics();  // the cloud wall past the land, OVER the coast art
         beachArtC.addChild(beachBgG);
-        beachTxtC = new PIXI.Container();
 
         walkG = new PIXI.Graphics();
         dynErrG = new PIXI.Graphics();    // red wireframes over chars whose
@@ -3532,8 +3620,7 @@
         app.stage.addChild(groundC);
         app.stage.addChild(fragG);
         app.stage.addChild(propG);
-        app.stage.addChild(beachG);         // coast footprints + seam rows
-        app.stage.addChild(beachArtC);      // coast art, over the footprints
+        app.stage.addChild(beachArtC);      // coast art, over the ground
         app.stage.addChild(beachCloudG);    // cloud wall over the back of the mountain row
         app.stage.addChild(bridgeG);
         app.stage.addChild(raisedG);
@@ -3546,10 +3633,6 @@
         app.stage.addChild(mc);
         app.stage.addChild(tc);
         app.stage.addChild(outG);
-        app.stage.addChild(beachTxtC);      // beach readouts, above everything
-        beachLab = txtPool(beachTxtC, { fontFamily: 'monospace', fontSize: 11,
-                                        fill: '#f4d03f', stroke: '#0a0e16',
-                                        strokeThickness: 3 });
     }
     function txtPool(container, style) {
         var arr = [], n = 0;
@@ -4165,7 +4248,7 @@
     /* ============================ render ===================================== */
     var DIAG = {
         mode: 'Pixi', ms: 0, fps: 0, maxMs: 0, anims: 0, charAnims: 0,
-        pool: 0, ver: '2026-11-03.2'
+        pool: 0, ver: '2026-11-04'
     };
     window.__CV_DIAG = DIAG;
     window.__CV_VER = DIAG.ver;                    // console sanity check
@@ -4183,6 +4266,7 @@
         };
     };
     var peopleDots = 0;
+    var walkLive = 0;                     // walking characters on screen this frame
 
     function render() {
         var t0 = performance.now();
@@ -4248,7 +4332,7 @@
         /* --- ground-level overlays (under the buildings) ------------------- */
         drawFrags(T);
         drawProposed(T);
-        beachDraw(A, s, T);                 // fixed coast sets (tints + art)
+        beachDraw(A, s, T);                 // fixed coast sets (art)
 
         /* --- scene pool ---------------------------------------------------- */
         pn = 0;
@@ -4444,6 +4528,7 @@
         var k = s / ART.S;
         var nq = 0, chq = null, buck = null;
         peopleDots = 0;
+        walkLive = 0;
         dynErrLive = 0;
         if (dynErrG) dynErrG.clear();
         if (!objHidden.people) {
@@ -4458,7 +4543,14 @@
                 if (x < -4 || x > VW + 4 || y < -4 || y > VH + 4) continue;
                 var u = CAM.oriented(cxw, cyw);
                 if (!chq) chq = [];
-                chq.push({ d: u[0] + u[1], u: u[0], v: u[1], c: c, x: x, y: y });
+                /* the walk state rides along so emitChar can pick the stride
+                   cell: null when the character is standing (idle art), else
+                   the screen-space direction of movement */
+                var ws = wanderOn && wander ? wander.get(i) : null;
+                if (ws) walkLive++;
+                chq.push({ d: u[0] + u[1], u: u[0], v: u[1], c: c, i: i,
+                           x: x, y: y,
+                           dir: ws ? walkDirOf(ws, A) : null });
             }
             if (chq) {
                 chq.sort(function (p, q) { return p.d - q.d || p.u - q.u; });
@@ -4507,8 +4599,45 @@
         var kc = k;
         var rpx = Math.max(1.6, CityObjects.PEOPLE_R * Math.min(2.2, s / 40));
         var dotHex = rgbHex(M.charcol);
+        /* one character sprite from the dynamic .bcell sheet; false = the
+           caller falls through (pre-baked PNG / dot). loop = replay the cell
+           back to back (a walking striding cycle) instead of the idle's
+           play-once-then-hold. */
+        function emitCharDyn(e, as2, loop) {
+            if (!as2 || (as2.w * kc < 12 && as2.h * kc < 12)) return false;
+            var dv = dynCell(as2);
+            if (!dv || dv.st === -1 || (dv.st === 1 && texDead(dv.url)))
+                return false;
+            if (!dynReady(as2)) return false;
+            var mfr = dv.man.frames;
+            var di = (charPreview && charPreview.cell === as2)
+                     ? charPreviewIdx(as2, mfr)
+                     /* the walk cycle gets the character's slot index in its
+                        phase hash too: two instances of one skin walking side
+                        by side must not stride in lockstep */
+                     : charFrameIdx(as2, loop ? e.c[0] + ':' + e.i : e.c[0],
+                                    kc, mfr, loop);
+            var df = mfr[di];
+            var dim2 = df && dv.man.images[df.image];
+            var dt = dim2 && subTex(dv.url, dim2.x, dim2.y, dim2.w, dim2.h);
+            if (!dt) return false;
+            if (charAnimating(as2, kc, mfr)) charAnimLive++;
+            emitSpr(dt, e.x + df.x_off * kc, e.y + df.y_off * kc,
+                    dim2.w * kc, dim2.h * kc);
+            return true;
+        }
         function emitChar(e) {
             if (artC && !lod) {
+                /* Walking: the pool's <skin>_front_walk / _back_walk stride
+                   cell, chosen by the movement vector AS DRAWN so Rotate and
+                   Mirror stay honest. The card's preview cell always wins.
+                   No walk cell for this skin, still decoding, or the endpoint
+                   switched off → fall through to the idle sprite, which is
+                   what the walk's absence must look like (never a red X). */
+                var wk = (e.dir && !(charPreview &&
+                        String(charPreview.cid) === String(e.c[0])))
+                        ? walkArtOf(e.c, e.dir) : null;
+                if (wk && emitCharDyn(e, wk, true)) return;
                 var as2 = charArtOf(e.c);
                 if (as2 && !(as2.w * kc < 12 && as2.h * kc < 12)) {
                     var dv = dynCell(as2);
@@ -4520,23 +4649,7 @@
                         dynErrBox(e.x, e.y, as2, kc);
                         return;
                     }
-                    if (dv && dynReady(as2)) {
-                        var mfr = dv.man.frames;
-                        var di = (charPreview && charPreview.cell === as2)
-                                 ? charPreviewIdx(as2, mfr)
-                                 : charFrameIdx(as2, e.c[0], kc, mfr);
-                        var df = mfr[di];
-                        var dim2 = df && dv.man.images[df.image];
-                        var dt = dim2 && subTex(dv.url, dim2.x, dim2.y,
-                                                dim2.w, dim2.h);
-                        if (dt) {
-                            if (charAnimating(as2, kc, mfr)) charAnimLive++;
-                            emitSpr(dt, e.x + df.x_off * kc,
-                                    e.y + df.y_off * kc,
-                                    dim2.w * kc, dim2.h * kc);
-                            return;
-                        }
-                    }
+                    if (emitCharDyn(e, as2, false)) return;
                     var url = B + 'assets/characters/' +
                         (charPreview && charPreview.cell === as2
                             ? charPreviewFrame(as2)
@@ -5290,6 +5403,7 @@
     var lastT = 0;
     var camSaveDue = 0;                          // throttle: persist ~2.5x/sec
     var lastSavedCam = null;
+    var wanderNextT = 0;                // repaint throttle while the crowd walks
     window.addEventListener('pagehide', function () {
         if (started) saveCam();                  // flush on refresh/close
     });
@@ -5310,6 +5424,17 @@
         animClock += (animClockT ? an - animClockT : 0) * animSpeed;
         animClockT = an;
         if (cam.vx || cam.vy) { CAM.tick(cam, dt); markDirty(); }
+        /* idle wander (js/wander.js): the sim is cheap (one pass over the
+           crowd; an A* run only when a dwell expires, capped at
+           KNOBS.maxSearch per tick), so it runs every frame — but the CROWD
+           repaints on a throttle. Redrawing all 870 characters at 60 Hz for a
+           1.3 tile/s walk is invisible work; 16 Hz reads as smooth walking and
+           only when a walker is actually on screen (walkLive) */
+        if (wanderOn && wander && wander.tick(dt) &&
+            walkLive && t >= wanderNextT) {
+            wanderNextT = t + 60;
+            markDirty();
+        }
         if (t >= camSaveDue) {                   // persist any camera move
             camSaveDue = t + 400;
             if (!lastSavedCam || lastSavedCam.x !== cam.x ||
@@ -5350,6 +5475,7 @@
                 '/' + DIAG.maxMs.toFixed(1) + 'ms' +
                 ' · a' + DIAG.anims + ' · p' + DIAG.pool +
                 (animSpeed === ANIM_SPEED_DEFAULT ? '' : ' \u00b7 ' + animSpeedLabel()) +
+                (wanderOn && walkLive ? ' \u00b7 \u21c8' + walkLive : '') +
                 ' \u00b7 v' + DIAG.ver;
             diagFrames = 0; diagMsAcc = 0; DIAG.maxMs = 0;
         }
@@ -5498,10 +5624,31 @@
         var count = 0;
         for (var k = 0; k < M.chars.length; k++) if (M.chars[k][0] === c[0]) count++;
         var rec = charMan && charMan.characters[c[0]];
+        /* the idle wander moves the row in place, so the card says where the
+           save put the character as well as where it is standing now */
+        var home = wanderOn && wander ? wander.home[i] : null;
+        var away = home && (home[0] !== c[1] || home[1] !== c[2]);
+        var wr = null;
+        if (wanderOn && wander) {
+            var wd = (typeof WALK_DATA !== 'undefined' && WALK_DATA.chars)
+                     ? WALK_DATA.chars[c[0]] : null;
+            var st = wander.st[i];
+            wr = '<tr><td>idle wander</td><td>' +
+                esc((wd && wd.mode) ||
+                    (typeof WALK_DATA !== 'undefined' && WALK_DATA.defaults
+                        ? WALK_DATA.defaults.mode : 'RandomRelaxed')) +
+                ' · ' + (st ? (st.speed || 0).toFixed(2) + ' tiles/s' : '') +
+                ' · ' + (st ? (st.skip ? 'off the land'
+                             : st.path ? 'walking' : 'standing') : 'not simmed') +
+                (home ? ' · post ' + home[0] + ', ' + home[1] : '') + '</td></tr>';
+        }
         return '<h3>' + esc(name || 'char #' + c[0]) + '</h3>' +
             '<div class="tagrow"><span class="tag">character <b>#' + c[0] + '</b></span>' +
             '<span class="tag"><b>' + count + '</b>&times; in save</span></div>' +
-            '<table><tr><td>position</td><td>' + c[1] + ', ' + c[2] + '</td></tr>' +
+            '<table><tr><td>position</td><td>' + c[1] + ', ' + c[2] +
+            (away ? ' <span class="dim">(save ' + home[0] + ', ' + home[1] +
+                    ')</span>' : '') + '</td></tr>' +
+            (wr || '') +
             '<tr><td>name resolved</td><td>' +
             (name ? 'yes (character catalog)' : 'no') + '</td></tr>' +
             '<tr><td>map asset</td><td>' +

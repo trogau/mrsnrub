@@ -7,15 +7,14 @@
 //     (tilebox / coverRows / opaqueX), and the two-set coast claim.
 //  2. VIEWER integration — the Pixi page fetches the manifest, registers both
 //     sheets, hooks the layer into makeScene + render + setOrient + boot, and
-//     ships the three viewbar toggles and the tune panel.
+//     ships the two viewbar toggles and the tune panel.
 //  3. BEHAVIOUR — the beach block is sliced out of the viewer VERBATIM (no
 //     copy of the rule lives here) and run against the shipped MAP_DATA and
-//     terrain.js: the seam read off the Mountain03/04 props, the two sets'
-//     instance anchors, the tiles their art paints, gap-free coverage at the
-//     coverRows pitch, the same-columns "they meet, they don't stack" claim,
-//     and the real draw pass against stubs — booted twice, with the art toggle
-//     persisted off and on (the v30 lesson: an invisible pass sails through
-//     every derive-only check).
+//     terrain.js: the two sets' instance anchors, the tiles their art paints,
+//     gap-free coverage at the coverRows pitch, the same-columns "they meet,
+//     they don't stack" claim, and the real draw pass against stubs — booted
+//     twice, with the art toggle persisted off and on (the v30 lesson: an
+//     invisible pass sails through every derive-only check).
 //  4. PAGE + CSS — buttons carry data-tip (never title), #beachtune is styled,
 //     the cache busters are bumped.
 //
@@ -79,15 +78,14 @@ check('viewer registers BOTH sheets with the texture cache',
     /for \(var k in j\.assets\)[\s\S]{0,200}ALOAD\.artKnown\+\+; ALOAD\.strips\+\+;[\s\S]{0,80}texFor\(B \+ j\.assets\[k\]\.sheet\)/.test(pv));
 check('viewer rebuilds once the sheets decode (settle poll)',
     /function settle\(\)[\s\S]{0,300}setTimeout\(settle, 100\)[\s\S]{0,200}beachBuild\(\);\s*\n\s*markDirty\(\);/.test(pv));
-check('the layer is a ground-level Graphics + an art container + labels',
-    /beachG = new PIXI\.Graphics\(\);/.test(pv) &&
+check('the layer is an art container with its bg fill and the cloud wall',
     /beachArtC = new PIXI\.Container\(\);/.test(pv) &&
-    /beachLab = txtPool\(beachTxtC/.test(pv));
+    /beachBgG = new PIXI\.Graphics\(\);/.test(pv) &&
+    /beachCloudG = new PIXI\.Graphics\(\);/.test(pv));
 check('the containers are in the stage order the comment promises',
-    pv.indexOf('app.stage.addChild(beachG);') > pv.indexOf('app.stage.addChild(propG);') &&
-    pv.indexOf('app.stage.addChild(beachArtC);') > pv.indexOf('app.stage.addChild(beachG);') &&
-    pv.indexOf('app.stage.addChild(beachArtC);') < pv.indexOf('app.stage.addChild(bridgeG);') &&
-    pv.indexOf('app.stage.addChild(beachTxtC);') > pv.indexOf('app.stage.addChild(outG);'));
+    pv.indexOf('app.stage.addChild(beachArtC);') > pv.indexOf('app.stage.addChild(propG);') &&
+    pv.indexOf('app.stage.addChild(beachCloudG);') > pv.indexOf('app.stage.addChild(beachArtC);') &&
+    pv.indexOf('app.stage.addChild(beachArtC);') < pv.indexOf('app.stage.addChild(bridgeG);'));
 check('the draw pass runs every frame with the frame affine',
     /beachDraw\(A, s, T\);/.test(pv));
 check('an ORIENT press and the boot path both wire it up',
@@ -100,9 +98,6 @@ check('the block rect is the documented road-lab formula',
     /dx: blk\[1\] - \(blk\[3\] < 0 \? c\[3\] \* mx : 0\), dy: blk\[2\],\s*\n\s*w: c\[3\] \* mx, h: c\[4\] \* my/.test(pv));
 check('the tile rule is the centre-in-opaque-box rule',
     /Math\.ceil\(b\[0\] - 0\.5 \+ ax\)[\s\S]{0,120}Math\.floor\(b\[2\] - 0\.5 \+ ax\)/.test(pv));
-check('Mountain03/04 are read off the save as the seam CHECK, not hard-coded',
-    /e\[1\] !== 'LowerMountainBeach' && e\[1\] !== 'LowerMountainBeachShoreline'/.test(pv) &&
-    /var y0 = b\[7\] - b\[4\];/.test(pv));
 check('placement is the file\'s: offsets x block, step = width + padding, origin tile 0',
     /offY: beachP\.useOffsets \? num\(e\.offsety, 0\) \* blk : 0/.test(pv) &&
     /step: Math\.max\(1, num\(e\.width, 16\) \+ num\(e\.padding, 0\)\)/.test(pv) &&
@@ -134,11 +129,12 @@ check('window.__CV_BEACH exposes the probe',
 check('the controls are all guarded (a missing button cannot black out the page)',
     pv.split('\n').filter(function (l) {
         return /btn-beach/.test(l) && /addEventListener/.test(l);
-    }).length === 3 &&
+    }).length === 2 &&
     pv.split('\n').every(function (l) {
         return !(/btn-beach/.test(l) && /addEventListener/.test(l)) || /if \(\$\(/.test(l);
     }) &&
-    /if \(\$\('btn-beachsets'\)\)/.test(pv) && /if \(\$\('btn-beachtune'\)\)/.test(pv));
+    /if \(\$\('btn-beachart'\)\)/.test(pv) && /if \(\$\('btn-beachtune'\)\)/.test(pv) &&
+    !/btn-beachsets/.test(pv));
 
 /* ---- 3. behaviour: slice the block out and run it ------------------------- */
 global.window = {};
@@ -171,7 +167,7 @@ function syncp(v) {
    the toggle persists it, so the closure reads it at boot */
 function boot(artOn, size, noTex) {
     const stored = { 'mrsnrub.cityview.beachart': artOn ? '1' : '0' };
-    const urls = [], PX = [], ops = [], labels = [];
+    const urls = [], PX = [];
     let dirtyN = 0;
     function FakeSprite() {
         this.anchor = { set: function () {} };
@@ -186,13 +182,6 @@ function boot(artOn, size, noTex) {
     const BG = { clear: function () { bgops.length = 0; } };
     BG.poly = function (pts) { bgops.push(['poly', pts]); return BG; };
     BG.fill = function (o) { bgops.push(['fill', o]); return BG; };
-    const G = { ops: ops };
-    G.clear = function () { ops.push('clear'); };
-    G.moveTo = function (x, y) { ops.push(['moveTo', x, y]); };
-    G.lineTo = function (x, y) { ops.push(['lineTo', x, y]); };
-    G.poly = function (pts) { ops.push(['poly', pts]); return G; };
-    G.fill = function (o) { ops.push(['fill', o]); return G; };
-    G.stroke = function (o) { ops.push(['stroke', o]); return G; };
     const stubs = {
         M: M, terrain: terrain, CAM: CAM, B: '../',
         UNIT: { unit: 1 },
@@ -220,11 +209,9 @@ function boot(artOn, size, noTex) {
         __isDirty: function () { return dirtyN; },
         console: console,
         PIXI: { Sprite: FakeSprite, Matrix: FakeMatrix },
-        beachG: G,
-        beachLab: { begin: function () {}, end: function () {}, put: function (t, x, y) { labels.push([t, x, y]); } },
         $: function () { return null; },        // no DOM: applyBeachMode must cope
         cam: { zoom: 1, x: 0, y: 0 }, VW: (size && size.VW) || 1200, VH: (size && size.VH) || 800,
-        __urls: urls, __PX: PX, __ops: ops, __labels: labels, __bgops: bgops,
+        __urls: urls, __PX: PX, __bgops: bgops,
         __VW: (size && size.VW) || 1200, __VH: (size && size.VH) || 800
     };
     const names = Object.keys(stubs);
@@ -232,14 +219,13 @@ function boot(artOn, size, noTex) {
        undeclared assignment (a dropped `var`) is a ReferenceError on the page,
        and the page would die exactly the way the road-lab tab once did */
     const body = "'use strict';\n" + slice + '\nvar __probe = window.__CV_BEACH;\nreturn { p: beachP, artOn: function () { return beachArtOn; },' +
-        ' setsOn: function () { return beachSetsOn; },' +
         ' beach: function () { return BEACH; }, stamps: beachStampsOf,' +
         ' span: beachSpan, edge: beachEdge, landEnd: beachLandEnd,' +
         ' tiles: beachTilesOf,' +
-        ' blocks: beachBlocks, seamProps: beachSeamFromProps,' +
-        ' anchorX: beachAnchorX, shoreX: beachShoreX,' +
-        ' build: beachBuild, draw: beachDraw, urls: __urls, sprites: __PX, ops: __ops,' +
-        ' labels: __labels, bgops: __bgops, dirty: __isDirty,' +
+        ' blocks: beachBlocks,' +
+        ' anchorX: beachAnchorX,' +
+        ' build: beachBuild, draw: beachDraw, urls: __urls, sprites: __PX,' +
+        ' bgops: __bgops, dirty: __isDirty,' +
         ' setCloudG: function (g) { beachCloudG = g; },' +
         ' probe: function () { return __probe; }, VW: __VW, VH: __VH };';
     return new Function(names.join(','), body).apply(null, names.map(n => stubs[n]));
@@ -257,15 +243,10 @@ check('all three sheets went to the texture cache (registration + the settle pol
 check('the probe exists and reports the layer',
     R.probe() && typeof R.probe().rects === 'function' && R.probe().state().insts > 0,
     JSON.stringify(R.probe() && R.probe().state()));
-check('the art toggle ships off, the footprints ship on',
-    R.artOn() === false && R.setsOn() === true && RA.artOn() === true,
-    R.artOn() + '/' + R.setsOn());
+check('the art toggle ships off, and persists on',
+    R.artOn() === false && RA.artOn() === true,
+    R.artOn() + '/' + RA.artOn());
 
-/* the seam check, off the save: Mountain03/LowerMountainBeach (16x16 at tile
-   0,0) and Mountain04/LowerMountainBeachShoreline (6x16 at -6,0) occupy rows
-   -16..0, so their NORTH edge is -16 */
-check('the ridge-at-the-water props are in the save; their north edge is row -16',
-    R.seamProps() === -16, 'ridge=' + R.seamProps());
 check('the default params are the file\'s (origin 0,0, 16-tile blocks, offsets on)',
     R.p.ax === 0 && R.p.ay === 0 && R.p.block === 16 && R.p.useOffsets === true &&
     R.p.hinst === 6 && R.p.fill === true && R.p.bg === true && R.p.edgeAt === 0,
@@ -315,7 +296,7 @@ check('the two sets MEET on Mountain03\'s north edge (= GridTypeMap\'s beach spl
     (function () {
         const s = R.probe().state();
         const split = R.beach().gridtype.ranges.filter(r => r.type === 'beach' && r.y1 != null)[0].y1;
-        return s.lower[0] === -16 && s.heights[1] === -16 && s.ridge === -16 && split === -16;
+        return s.lower[0] === -16 && s.heights[1] === -16 && split === -16;
     })(), JSON.stringify(R.probe().state()));
 check('the Heights beach1 strips share the shore strips\' rows',
     st('heights', 'h_beach').map(x => x.ay).join() === hi.map(x => x.ay).join());
@@ -343,7 +324,7 @@ check('block 1 reproduces the old misreading (offsets as plain tiles)',
    and they must, or the shore art's foam sits on grass */
 check('the anchor is tile x 0 (the props\' frame) and the sea meets it there',
     R.anchorX() === 0 && low[0].ax === 0 && hi[0].ax === 0 &&
-    R.shoreX() === terrain.seaFillX1 - terrain.ox && R.shoreX() === 0,
+    terrain.seaFillX1 - terrain.ox === 0,
     JSON.stringify(R.probe().state()));
 check('the sea runs the whole coast the beach strips cover (y -112..704)',
     terrain.seaFillY0 - terrain.oy <= -112 && terrain.seaFillY1 - terrain.oy >= 704,
@@ -563,47 +544,20 @@ check('the blit is affine-consistent: inverting a rect gives tile_basis(art px)'
         return true;
     })(), bad);
 
-/* the real draw pass, twice: tints-only, then with the art toggle persisted on */
+/* the real draw pass, twice: art toggle off, then persisted on */
 function drawPass(Rr, T, s, centre) {
-    Rr.ops.length = 0; Rr.labels.length = 0;
     const before = Rr.sprites.length;
     const w = centre ? CAM.tileToWorld(centre.tx, centre.ty) : { x: 0, y: 0 };
     const A = CAM.tileAffine({ zoom: 1, x: w.x, y: w.y }, Rr.VW, Rr.VH);
     Rr.build();
     Rr.draw(A, s || 64, T);
-    return { polys: Rr.ops.filter(o => o[0] === 'poly').length,
-             fills: Rr.ops.filter(o => o[0] === 'fill'),
-             strokes: Rr.ops.filter(o => o[0] === 'stroke').length,
-             labels: Rr.labels.slice(),
-             sprites: Rr.sprites.slice(before) };
+    return { sprites: Rr.sprites.slice(before) };
 }
 /* the coast, not the town: the band straddles tile x 0 from y -112 south, so
    the camera frames the seam there */
 const COAST = { x0: -14, x1: 22, y0: -120, y1: 400 };
 const ONCOAST = { tx: 0, ty: -16 };
 const pass = drawPass(R, COAST, 64, ONCOAST);
-check('the draw pass emits tint quads for the strips on screen',
-    pass.polys > 20, pass.polys);
-check('every tint colour comes from the tint table',
-    pass.fills.every(o => [0x8bc34a, 0xe0a64b, 0xce93d8, 0x4dd0e1, 0xf48fb1, 0xb0bec5,
-                           0x26a69a, 0x8d6e63, 0x9575cd]
-        .indexOf(o[1].color) >= 0 && o[1].alpha > 0 && o[1].alpha <= 1));
-check('the seam, Heights-start and sea-model lines are stroked',
-    pass.strokes >= 3, pass.strokes);
-check('the seam and set labels say what they are',
-    pass.labels.length >= 3 &&
-    pass.labels.some(l => /^seam y=-16 \(Mountain03\/04 north edge y=-16\)/.test(l[0])) &&
-    pass.labels.some(l => /h_shore\u00d76\(r=6\)/.test(l[0]) && / y -112\.\.-16/.test(l[0])) &&
-    pass.labels.some(l => /shore\u00d745\(r=-1\)/.test(l[0]) && / y -16\.\.704/.test(l[0])) &&
-    /* the repeat="1" overlay must READ as one stamp on the map, or the
-       massive-overlay regression would be silent again */
-    pass.labels.some(l => /h_overlay\u00d71\(r=1\)/.test(l[0])) &&
-    !pass.labels.some(l => /border\u00d7/.test(l[0])),
-    pass.labels.map(l => l[0]).join(' / '));
-check('all projected coordinates are finite',
-    R.ops.every(o => o === 'clear' || o[0] === 'fill' || o[0] === 'stroke' ||
-        (o[0] === 'poly' ? o[1].every(fin) : fin(o[1]) && fin(o[2]))) &&
-    pass.labels.every(l => fin(l[1]) && fin(l[2])));
 check('with the art toggle off the pass emits no art sprites',
     pass.sprites.length === 0, pass.sprites.length);
 const passA = drawPass(RA, COAST, 64, ONCOAST);
@@ -656,8 +610,8 @@ check('the art pool is reused, not grown, across frames',
         return RB.sprites.length === n && again.sprites.length === 0;
     })(), RB.sprites.length);
 check('culling: a window over the town emits nothing',
-    (function () { const p = drawPass(R, { x0: 200, x1: 260, y0: 100, y1: 160 }); return p.polys === 0 && p.sprites.length === 0; })(),
-    JSON.stringify(drawPass(R, { x0: 200, x1: 260, y0: 100, y1: 160 }).polys));
+    (function () { const p = drawPass(R, { x0: 200, x1: 260, y0: 100, y1: 160 }); return p.sprites.length === 0; })(),
+    JSON.stringify(drawPass(R, { x0: 200, x1: 260, y0: 100, y1: 160 }).sprites.length));
 /* a sheet that has not decoded (or was evicted) must draw NOTHING: a stretched
    placeholder texture is a solid rectangle over the coast — the same class of
    failure the Road Lab's black canvases were */
@@ -665,7 +619,7 @@ const RN = boot(true, { VW: 1e9, VH: 1e9 }, true);
 check('an undecoded sheet draws no art at all (no placeholder rectangles)',
     (function () {
         const p = drawPass(RN, { x0: -1e6, x1: 1e6, y0: -1e6, y1: 1e6 }, 64);
-        return p.sprites.length === 0 && p.polys > 20;   // tints still fine
+        return p.sprites.length === 0;
     })(), RN.sprites.length + ' sprites');
 check('the probe stays usable after a set() (params stay live)',
     (function () { const d = R.dirty(); R.probe().set('ax', 0); return R.p.ax === 0 && R.dirty() > d; })());
@@ -760,7 +714,7 @@ check('the cloud wall edge: y -128 (16 behind the row at -112), x 592 (the land\
     })(), JSON.stringify(R.probe().cloudEdge()));
 check('the wall is its own Graphics, stacked right ABOVE the coast art',
     /app\.stage\.addChild\(beachArtC\);[^\n]*\n\s*app\.stage\.addChild\(beachCloudG\);/.test(pv) &&
-    /beachHideRest\(\);\s*\n\s*if \(beachArtOn && beachP\.sky && beachP\.north\) beachCloudDraw/.test(pv) &&
+    /beachHideRest\(\);[\s\S]{0,200}?if \(beachP\.sky && beachP\.north\) beachCloudDraw/.test(pv) &&
     /var BEACH_CLOUD = 0xefffff;/.test(pv));
 const RS = boot(true, { VW: 1e9, VH: 1e9 });
 /* the draw pass with a stub that records the wall's own Graphics */
@@ -804,18 +758,18 @@ check('cloud wall off, or the mountain row off: no wall',
 
 /* ---- 4. the page + the sheet --------------------------------------------- */
 const html = read('web/viewer/index.html');
-check('page ships the three beach toggles',
-    /id="btn-beachsets"/.test(html) && /id="btn-beachart"/.test(html) && /id="btn-beachtune"/.test(html));
+check('page ships the two beach toggles (the sets overlay is gone)',
+    !/id="btn-beachsets"/.test(html) && /id="btn-beachart"/.test(html) && /id="btn-beachtune"/.test(html));
 check('the beach buttons use data-tip, never title (project rule)',
     !/<button[^>]*id="btn-beach[^"]*"[^>]*\stitle=/.test(html) &&
-    /id="btn-beachsets"[^>]*data-tip="the TWO fixed beach coast sets/.test(html));
+    /id="btn-beachart"[^>]*data-tip="the two beach sets/.test(html));
 check('tips name both LandEdge filenames and the repeat values',
     /filename=&quot;Beach&quot;/.test(html) &&
     /filename=&quot;springfieldheightsnobeach&quot;/.test(html) &&
     /repeat=&quot;6&quot;/.test(html) && /repeat=&quot;-1&quot;/.test(html));
 check('page ships the tune panel div', /id="beachtune" class="legend"/.test(html));
 const cb = (html.match(/city-view-pixi\.js\?v=(\d+)/) || [])[1] * 1;
-check('viewer cache-buster bumped for the LandEdge-block placement (>= 72)', cb >= 72, cb);
+check('viewer cache-buster bumped for the Beach sets removal (>= 102)', cb >= 102, cb);
 const css = read('web/css/city-view.css');
 check('the tune panel is styled (and shares the arttune widgets)',
     /#beachtune \{/.test(css) && /#arttune \.tbtn, #beachtune \.tbtn \{/.test(css));

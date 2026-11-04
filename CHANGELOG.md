@@ -1,5 +1,209 @@
 # Changelog
 
+## 2026-11-04
+
+- **Walkers now play the walk cycle the shipped game would have picked.**
+  Characters moving screen-left (or screen-right) were playing a cycle that
+  made them look like they were walking backwards. The old viewer code picked
+  the cell by the *dominant axis* of the movement vector, which cannot work in
+  the 2:1 oblique — every grid step is twice as far across as up/down, so the
+  whole town fell into the two sideways buckets and a character striding away
+  up-left got the toward-camera cycle. The rule is no longer a guess either:
+  the job XML carries the engine's own table
+  (`<MoveGroup><MovePick x y><PriorityList><Animation name=…>`), and its four
+  grid steps map to facing = sign(screen dy) (down-screen is toward the camera
+  = `Front_`) and side = sign(screen dx), with the `PriorityList`'s own
+  fallback order — side variant, then the plain cycle of the *same* family,
+  then the other. Reproduced exactly through the project's own projection,
+  documented in `notes/13-idle-wander-re.md` §6, and pinned by
+  `tools/smoke-idle-wander.cjs`, which parses the shipped XML and fails if the
+  viewer's rule and the table ever disagree.
+- **`bcell.php` can now answer "which cycles does this skin really ship".**
+  New read-only endpoint mode, `api/bcell.php?src=pool&mode=anims&name=X`,
+  returning `{name, src, cells, anims: [{tail, stem}]}` for the eight
+  locomotion tails (`front_walk`, `back_walk`, their `_left`/`_right` variants,
+  `front_run`/`back_run`) — exact alphanumeric match, so a costume never
+  inherits its base skin's cells. The viewer asks it once per skin instead of
+  probing eight guessed names and eating 404s; with the endpoint off it falls
+  back to guessing, as before. No web-server config changes: it is the same
+  script, pool-only, with its own cache key.
+- **The character card's filmstrips are no longer hiding the walks.** Clicking
+  a character and inspecting its animations showed almost no walking cycles:
+  they were all on disk, filed under "actions". `gen_city_sprites.py`'s pass 4
+  files a cell under its role-*stripped* stem, and the classifier was handed
+  only that key — so `homer_front_walk` was judged as `homer_front` + role
+  `walk` with no kind word left, and fell through to "≥ 2 frames ⇒ action".
+  3 156 walking cycles and 213 idle loops were mislabelled, and because the
+  card sorts idle → walk → action and caps a card at 150 tiles, they were
+  unreachable on a busy card. `char_cell_kind(key, role, distinct)` now
+  searches the kind words in the role as well (the role outranks the key:
+  `<name>_walk_idle` is the standing loop), and the new
+  **`tools/char_family_relabel.py kinds`** restates the labels of the 809
+  shipped `web/assets/characters/families/<cid>.json` with that imported rule
+  — metadata only, no frame re-render; verified afterwards field by field over
+  13 200 cells that nothing outside `kind` changed (cast-wide walks 1 451 →
+  4 607).
+- **A card's tile budget is now shared between its groups.** With the walks
+  correctly labelled they took the whole 150-tile cap and pushed the actions
+  off Homer's card instead, so `char-variants-pixi.js` gives every group the
+  character has `KIND_QUOTA` (30) tiles before the leftovers go to the biggest
+  groups, and the footer says "showing 150 of 544 animated cells — up to 30 per
+  group first". Covered by three new checks in `tools/smoke-char-panel.cjs`.
+- **Pass 4 also claims the stem of the idle art the map draws.** The
+  filmstrip audit found 680 plain walks, 214 side walks, 266 idles and 191
+  blinks that appear on no card: cells go to the longest catalog name their
+  stem starts with, and a catalog name is not always the art's stem
+  (`CapitalCityGoofball` ships `pita_*`, `Xmas2014_Santa` ships `santa_*`), so
+  a character's own cells went to whichever costume twin was named exactly the
+  stem, or to nobody. `_char_prefixes()` now adds the map idle's stem to a
+  character's prefixes, and **`tools/char_family_relabel.py ownership`**
+  dry-runs the rule on the pool with the generator's own functions: placed
+  skins missing their own walking cycles go 84 → 0, loose cells 2 026 → 1 704.
+  Recomputing all 809 cards under the new rule confirms it only ever adds: no
+  card loses a cell, 94 gain one. The newly claimed cells still need a `chars`
+  batch run to render their PNGs; the map is unaffected either way, since it
+  names cells straight through `bcell.php`.
+
+## 2026-11-04.3
+
+- **A page that answers "which sprite plays which way" by eye.** New
+  **`web/viewer/walk-lab.html`**, linked from the City View header as *Walk
+  lab*. It shows four sections — **walking north / east / south / west** —
+  each with every walk cell the shipped game really has for one skin, which
+  one the viewer's rule picks today, the side cell that rule wanted but did
+  not get (`[rule wanted homer_front_walk_left, not shipped]`), the frame
+  count, cycle time and the sprite's measured **lean** (alpha-bbox midpoint
+  minus the character origin: about 0 px = drawn square-on, over ~12 px =
+  drawn in profile), a mirror toggle, and a free-text note. Every pick and
+  note collapses into a copy-paste report at the foot of the page, so the
+  answer comes back as text instead of a description. Art is read from the
+  two sources the viewer really uses — `api/bcell.php` `mode=manifest` +
+  `mode=sheet` for pool cells (the engine's own per-frame offsets) and the
+  pre-baked PNGs under `assets/characters/` for card-only cells — so a cell
+  that does not exist says `NOT SHIPPED` rather than 404-ing, and a stem
+  group dropdown steps from the bare `homer` cycle out to his 25 costumed and
+  job stems, which is where the left/right art actually lives. Every cell is
+  inspectable rather than taken on trust: the bar links the group's pool
+  inventory (`mode=anims`) and the character card, and each cell links its own
+  packed `sheet.png`, its `manifest.json` (delays and per-frame offsets), its
+  frames as individual PNGs (`mode=frame&n=`) and bcell.php's own `&debug=1`
+  report — including the cells that are missing, whose link shows the API
+  answer and the `pool/<stem>.bcell` path it looked in. Covered by
+  **`tools/smoke-walk-lab.cjs`**: 46 checks against inline fixtures (so it
+  runs without the generated assets) and 78 with `--live`, which replays the
+  real `families/3.json`, the real `.bcell` pool through `bcell.php`, and the
+  real PNG dimensions.
+
+## 2026-11-04.2
+
+- **Nobody moonwalks, and now we know why: left/right is a filename, not a
+  mirror.** The earlier walk-facing note concluded that all shipped walk art
+  faces right and the engine never mirrors it, which would have meant every
+  citizen walking backwards — it does not, so the conclusion was wrong. Two
+  measurements fixed it. First, the crowd's plain `<skin>_front_walk` /
+  `_back_walk` cycles are drawn *squarely on* and are symmetric about the
+  character origin: over eleven crowd skins the silhouette bbox midpoint sits
+  0.3–2.5 px off centre (`sideshowbob` 8.5 px), and those skins ship **zero**
+  side cells — there is no facing to mirror. The cycles that really are drawn
+  in profile (the zombies, costumed and job variants) ship **both sides as
+  separate cells** — 6 214 `*walk*left*.bcell` and 6 204 `*walk*right*.bcell`
+  under `web/assets`, across 274 skins — and a costumed stem ships *only* the
+  pair, never the unsuffixed cell. Second, the engine builds those names at
+  runtime: the resolver at `libscorpio.so` `0x1207430`–`0x12076d0` appends the
+  `.rodata` `_left` (`0x356804`) / `_right` (`0x3cbde4`) suffixes to the base
+  animation name, looks each candidate up in the character's animation set,
+  toggles its preferred side on a miss, and only then falls back to the
+  unsuffixed cell (`idle_left`/`idle_right` are used the same way at
+  `0xe72948`/`0xe72960`). Sheet for both classes, with the origin column
+  marked: `mapdump/registration/m4-walk-facing-neutral-vs-directional.png`.
+  Rewritten in `notes/13-idle-wander-re.md` §8, which
+  also retracts the thumbnail-eyeball method that produced the wrong answer
+  and records the measurement that works instead. No behaviour change: the
+  viewer already asked for the side cell first and the plain cycle second, so
+  the fix is documentation plus a comment in `city-view-pixi.js` warning that
+  a sprite mirror must not be added here (cache-buster to `?v=105`).
+
+## 2026-11-03.12
+
+- **The town's characters now walk around on their own, the way the engine
+  does it.** In the shipped game an idle character is not parked: it stands at
+  its post, picks a tile nearby, pathfinds to it and walks it — with no job and
+  no script involved, driven by an engine-side wander loop. Reverse-engineered
+  in `notes/13-idle-wander-re.md` (the `<MovementBehavior mode>` enum and its
+  name table at `0x1df358`, `Character::startIdleMovement` `0x39c97b` /
+  `stopMovement` `0x3b3b3c` / `isMovementIdle` `0x3a64cc` /
+  `Movement::randomMove` `0x3b89ba`, `EndofIdleWanderScript`, the three
+  search contexts), and ported behind a new **Idle walk** button in the
+  viewer's top bar, **on by default** and persisted
+  (`mrsnrub.cityview.idlewalk`). What landed:
+  **`web/js/wander.js`** (`CityWander`, a plain script like the other `web/js`
+  modules — no DOM, no network, `require`-able for the harness) — the
+  `<RoadGridSettings>` path-cost table copied verbatim from
+  `settings.xml:1119` (streets 10–19, grass 32, water 196, wall 99999), so the
+  crowd hugs the kerbs because the cost table says streets are cheap, not
+  because a rule says "use the road"; a memoised cost grid over
+  `terrain.typesAt()` with the placed `M.buildings` footprints as walls; a
+  4-neighbour A* on packed numeric keys over one binary heap; and a
+  per-character IDLE/WALK machine on a seeded stream, so a reload of the same
+  save walks the same way. **Every character whose `<Character>` definition
+  names no mode gets the engine's built-in default, RandomRelaxed** — which is
+  most of them (46 of 412 shipped characters name one, so plain Homer, Marge
+  and Bart are on the default path); the named ones (Sneak, RandomRush,
+  RandomHover, RushAndRest) get that mode's feel, and the job/cutscene modes
+  fall back to the default since there are no jobs or cameras to honour here.
+  Speed is each character's own `<WalkSpeed>` clamped into
+  `<WalkDefaultSpeeds slow="0.9" fast="2.0">`; the dwell and target-ring
+  numbers no XML ships are named knobs (`CityWander.KNOBS`), each commented
+  with what it stands in for. **`tools/gen_walk_data.py`** →
+  **`web/js/walk-data.js`** bakes the per-save-id `{speed, mode}` table from
+  every gamescripts pack (newest pack wins; 981 of 1023 characters carry data)
+  so the viewer needs no new endpoint. **Walking animation**: a walking
+  character plays the pool's `<skin>_front_walk` / `_back_walk` (and the
+  `_left`/`_right` variants) stride cells instead of its idle cell — the
+  pre-baked manifest ships idle cells only, so those stream from the existing
+  dynamic `.bcell` endpoint (`api/bcell.php?src=pool`), replayed back to back
+  (a striding loop has no standby hold, unlike the idle's play-and-hold) and
+  chosen from the movement vector **as drawn**, so Rotate and Mirror keep a
+  character facing the way it visibly travels. A skin with no walk cell, a cell
+  still decoding, or a page with the endpoint off walks in its idle pose —
+  never a red X, which stays reserved for an idle cell the endpoint refused.
+  Positions are written into the `M.chars` rows in place, so the scene pass,
+  the click hit-test, the selection outline and the details card all follow the
+  walker (the card now shows the save's position next to the current one, plus
+  the character's mode, tiles/s and state); switching the toggle off restores
+  the save's layout exactly. The sim ticks every frame (p50 0.023 ms on the
+  real save, ~460 of 871 mid-stride, A* runs capped per tick so a crowd
+  settling at once cannot spike a frame) and the crowd repaints on a 60 ms
+  throttle only while a walker is on screen; the statsbar gains `⇧N`. Probe:
+  `__CV_WANDER()` / `__CV_WANDER(false)`. The deprecated Canvas page is
+  untouched (`city-view-pixi.js?v=103`). New harness
+  `tools/smoke-idle-wander.cjs` covers the page (ships ON, `data-tip` not
+  `title`, script order), the wiring, the behaviour on the real save (moves
+  locally inside the target ring, never in the sea, never through a building
+  lot, at rest on tile centres, deterministic, exact restore, cheap ticks) and
+  the evidence (cost table and speed clamp equal the shipped XML,
+  RandomRelaxed reaches the cast, walk cells resolve through the endpoint's
+  slug matching).
+
+## 2026-11-03.11
+
+- **The Pixi viewer's `Beach sets` button and its footprint overlay are gone.**
+  The button toggled the debug layer that stamped every `<LandEdge>` instance
+  of the two fixed beach coast sets as a tinted per-tile footprint, with the
+  seam/sea-model reference rows and the on-map readout labels (`seam y=…`,
+  `lower: Beach · shore×45(r=-1) …`). What landed: the button, its persisted
+  toggle (`mrsnrub.cityview.beachsets`), the `beachG` ground Graphics, the
+  `beachTxtC`/`beachLab` label pool, the tint table, the footprint-only tune
+  controls (`lattice`, tint `alpha`), and the save-derived seam check
+  (`beachSeamFromProps`/`beachShoreX`, plus their `__CV_BEACH` probe fields).
+  `Beach art` and the Beach tune panel are unchanged — the art still blits the
+  file's own placement, it just no longer paints over footprint tints — and
+  `Beach art`'s tooltip absorbed the LandEdge filenames/repeats the removed
+  button used to carry. (`city-view-pixi.js?v=102`.) The harness
+  `tools/smoke-beach-viewer.cjs` now asserts the sets layer stays gone
+  (no `btn-beachsets`, guarded controls = 2) and drops the tint/seam/label
+  draw checks; the art, cloud-wall and manifest checks are untouched.
+
 ## 2026-11-03.10
 
 - **Clicking an audio tile stopped showing the player pane: `explorer.js` was
