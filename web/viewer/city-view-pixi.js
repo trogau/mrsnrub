@@ -1362,6 +1362,26 @@
                                   // back out), so rebuild the ground now
         markDirty();
     });
+    // tap-sound mute toggle (see playTap): on plays a clicked entity's random
+    // line, off is silent. Persisted like the other view toggles.
+    function applySoundBtn() {
+        var b = $('btn-sound');
+        if (b) { b.classList.toggle('on', soundOn); }
+    }
+    (function loadSound() {
+        var v = null;
+        try { v = localStorage.getItem(SND_KEY); } catch (e) { /* private mode */ }
+        soundOn = (v === null || v !== '0');                 // default ON
+        if (window.AudioMixer) { try { window.AudioMixer.setMuted(!soundOn); } catch (e) {} }
+        applySoundBtn();
+    })();
+    if ($('btn-sound')) $('btn-sound').addEventListener('click', function () {
+        soundOn = !soundOn;
+        try { localStorage.setItem(SND_KEY, soundOn ? '1' : '0'); } catch (e) { /* private mode */ }
+        if (window.AudioMixer) { try { window.AudioMixer.setMuted(!soundOn); } catch (e) {} }
+        if (!soundOn && tapPlayer) { try { tapPlayer.dispose(); } catch (e) {} }
+        applySoundBtn();
+    });
     /* sheet cell -> tile-space placement (js/terrain.js _sheetTile): the
        127x66 box's inscribed diamond maps onto the UNIT tile square, which
        in tile space is rotation +45deg and scale (sqrt2/127, sqrt2/66).
@@ -1437,6 +1457,11 @@
     var citySprites = null;                 // city-sprites.json sprites map
     var cityFlags = null;                   // city-flags.json flags map (cloths)
     var charMan = null;                     // characters.json {assets, characters}
+    var tapSounds = null;                   // tap-sounds.json {entities:{'c:<id>|b:<id>':[paths]}}
+    var tapPlayer = null;                   // the AudioMixer Player for the last tap, so
+                                            // only one character/building talks at a time
+    var soundOn = true;                      // the Sound toolbar toggle
+    var SND_KEY = 'cv.sound';               // localStorage key for it
     (function loadManifests() {
         fetch(B + 'assets/city/city-sprites.json' + MANIFEST_V).then(function (r) {
             return r.ok ? r.json() : null;
@@ -1477,6 +1502,11 @@
             }
             aBootSettled();
         }).catch(function () { aBootSettled(); /* dots only */ });
+        fetch(B + 'assets/characters/tap-sounds.json').then(function (r) {
+            return r.ok ? r.json() : null;
+        }).then(function (j) {
+            if (j && j.entities) tapSounds = j.entities;   // else: click stays silent
+        }).catch(function () { /* no tap sounds, click still selects */ });
     })();
     function applyArtMode() {
         var b = $('btn-art');
@@ -2124,6 +2154,28 @@
                    base: (anims[key] && anims[key].base) ? 1 : 0 };
         markDirty();
         return true;
+    }
+    /* Click-to-play: the game says something when you poke a character or a
+       building — it plays one of that entity's random *_tap* voice/sfx lines.
+       The entity -> lines map is reconstructed at build time by
+       tools/gen_tap_sounds.py (there is no such table in the game data) and
+       served as assets/characters/tap-sounds.json. Paths are relative to
+       assets/, so the URL matches the Asset Explorer's (B + 'assets/' + path).
+       One voice at a time: the previous line is disposed before the next
+       starts. The click is a user gesture, so resume() clears autoplay. */
+    function playTap(entityKey) {
+        if (!soundOn || !tapSounds || !window.AudioMixer) return;
+        var paths = tapSounds[entityKey];
+        if (!paths || !paths.length) return;         // entity has no tap line
+        var p = paths[(Math.random() * paths.length) | 0];
+        try { window.AudioMixer.resume(); } catch (e) { /* autoplay policy */ }
+        if (tapPlayer) { try { tapPlayer.dispose(); } catch (e) { /* ignore */ } }
+        tapPlayer = window.AudioMixer.makePlayer(B + 'assets/' + p);
+        if (!tapPlayer) return;
+        tapPlayer.setVolume(0.85);
+        tapPlayer.prepare(function () {
+            if (tapPlayer) tapPlayer.play(true);
+        });
     }
     function blockAtTile(tx, ty) {
         for (var k = buildings.length - 1; k >= 0; k--) {   // front-to-back
@@ -5994,11 +6046,18 @@
         var r = stage.getBoundingClientRect();
         var hit = hitTest(e.clientX - r.left, e.clientY - r.top);
         // BuildingTouched: play the tap anim once — on the block itself,
-        // or on any tile of the lot under it
-        if (hit && hit.kind === 'b') tapBuilding(hit.b);
-        else if (hit && hit.kind === 't') {
+        // or on any tile of the lot under it — and say the entity's line
+        if (hit && hit.kind === 'b') {
+            tapBuilding(hit.b);
+            playTap('b:' + M.buildings[hit.i][0]);
+        } else if (hit && hit.kind === 't') {
             var bb = blockAtTile(hit.x, hit.y);
-            if (bb) tapBuilding(bb);
+            if (bb) {
+                tapBuilding(bb);
+                playTap('b:' + M.buildings[bb.mi][0]);
+            }
+        } else if (hit && hit.kind === 'c') {
+            playTap('c:' + M.chars[hit.i][0]);
         }
         // ground fills the whole plane — clicking the SAME tile again deselects
         if (hit && selected && hit.kind === 't' && selected.kind === 't' &&

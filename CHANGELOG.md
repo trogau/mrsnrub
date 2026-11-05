@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-11-05.3
+
+- **Clicking a character or a building in the Pixi City viewer now plays one
+  of its random tap sounds, the way the game does.** The game ships a per-entity
+  "tap" voice/sfx line (`<stem>_tap[_N]`) but no table tying an entity to its
+  line, and the audio stems match neither the display name nor the animation
+  slug for most of the roster (`Wiggum` → `chief_wiggum`, `Frink` → `prof_frink`,
+  `SpringfieldGeneralHospital` → `springfieldgeneral`), so the map is rebuilt at
+  build time by the new `tools/gen_tap_sounds.py`: it reads the AAC tap corpus
+  out of `web/api/assets.sqlite` and attributes every `*_tap*` file to the
+  character or building it belongs to (exact stem → longest token-run → whole-core
+  prefix/suffix of one *name* → the DLC bundle name when it corroborates the core),
+  writing `web/assets/characters/tap-sounds.json` (`{entities:{'c:<id>|b:<id>':
+  [assets paths]}}`). It currently lights up 283 characters and 315 buildings; the
+  residual unattributed files (event/ambient/prop loops) are left silent and
+  reported with `--report`, and `tools/tap_sounds_overrides.json` curates the
+  irregular stems the signals can't reach (Tatum, Moleman, SideshowMel,
+  SuperintendentChalmers). The viewer loads `../js/audio.js` (the shared
+  `AudioMixer`), fetches the sidecar at boot, and on a real pick (not a pan-drag
+  or a legend row) plays `Math.random()` of the clicked entity's lines —
+  re-clicking re-rolls, one voice at a time — through the new **Sound** toolbar
+  toggle (persisted, and it mutes the mixer when off). `tools/smoke-tap-sounds.cjs`
+  checks the sidecar is well formed, every path exists and is a browser-playable
+  `.m4a`/`.wav`, the core roster and sample buildings resolve, and the shared-pack
+  attribution guards hold. Bumps the viewer cache-buster to `?v=114`.
+
 ## 2026-11-05.2
 
 - **Buildings whose engine idle is missing from their art now play their

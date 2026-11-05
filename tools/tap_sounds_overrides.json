@@ -1,0 +1,25 @@
+{
+  "_comment": [
+    "Curated corrections for tools/gen_tap_sounds.py. The generator reconstructs",
+    "the entity -> tap-sound map from the extracted audio corpus; the game ships",
+    "no such table and a lot of audio stems match neither the display name nor the",
+    "animation slug. These entries are the residuals the automatic signals cannot",
+    "reach: a character whose voice file uses a nickname stem that is not any of",
+    "its own name/slug/family-stem keys and whose event bundle is not the",
+    "character's name.",
+    "",
+    "'cores'  keyed by the derived core stem (see gen_tap_sounds.core_stem).",
+    "'bases'  keyed by the exact tap file base name (wins over a core rule).",
+    "Each value is either \"<kind>:<id>\" or {\"entity\":\"<kind>:<id>\"}; use",
+    "{\"exclude\":true} to keep a stem silent (e.g. a pure ambient/prop loop).",
+    "Run with --report=PATH and grow this file from the unattributed report."
+  ],
+  "cores": {
+    "chalmers": "c:2400",
+    "tatum": "c:61",
+    "moleman": "c:25",
+    "mel": "c:49"
+  },
+  "bases": {},
+  "exclude": []
+}
