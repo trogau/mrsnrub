@@ -5928,7 +5928,49 @@
                     charPreview = cell ? { cid: ch[0], cell: cell } : null;
                     markDirty();
                 },
-                dynFor: DYNB.characters ? dynCell : null
+                dynFor: DYNB.characters ? (function () {
+                    /* Walk tiles bake with the authored cell's name tail
+                       dropped or shifted: krustyback.png comes from
+                       krusty_back_walk.bcell, sideshowbobbackrun.png from
+                       sideshowbob_back_run.bcell, and nedjoggerfail.png from
+                       the bare ned_jogger_fail.bcell — so the card's png slug
+                       alone misses many authored cells (the endpoint answers
+                       'no such cell' and the tile flags red). Probe the stem
+                       through a candidate list instead — <stem>_walk,
+                       <stem>_run, then the bare stem — and keep the png slug
+                       as the last resort; the first candidate with a manifest
+                       wins and stays pinned for the cell. Slugs are fetched
+                       at most once (shared dynCells cache), so the misses
+                       only cost a probe the first time a card opens. The
+                       back/front cells are drawn as authored, no mirror, so
+                       the tile stays honest. */
+                    var pick = {};
+                    return function (c) {
+                        if (!c || (c.kind !== 'walk' && c.role !== 'walk')
+                            || !c.stem) return dynCell(c);
+                        var k = c.key || (c.stem + '|' + c.png);
+                        var p = pick[k];
+                        if (!p) {
+                            var seen = {};
+                            p = pick[k] = { i: 0, cands: [
+                                c.stem + '_walk', c.stem + '_run', c.stem,
+                                String(c.png || '').replace(/\.png$/i, '')
+                            ].filter(function (s) {
+                                if (!s || seen[s]) return false;
+                                seen[s] = 1; return true;
+                            }).map(function (s) { return { png: s + '.png' }; }) };
+                        }
+                        var d = null;
+                        while (p.i < p.cands.length) {
+                            d = dynCell(p.cands[p.i]);
+                            if (!d) return null;
+                            if (d.st === 1) return d;
+                            if (d.st === -1) { p.i++; continue; }
+                            return d;                      // probe in flight
+                        }
+                        return d;                          // all candidates dead
+                    };
+                })() : null
             });
             if (fv) details.appendChild(fv);
         }

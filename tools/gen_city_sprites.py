@@ -4768,6 +4768,14 @@ def do_char_companions():
          bcell10 twin, so the pool's bcell13 twin — the cell the endpoint
          actually reads — had its companions never fetched.
 
+       3. Every cell of every placed character's family sidecar
+          (families/<cid>.json): the character card probes each tile through
+          the endpoint, and the map's idle-wander walk plan probes each
+          skin's <stem>_back_walk/_front_walk cells — for the bcell13
+          families (Krusty, Marge, Abe…) those answers were 422 'missing
+          companion', so the card tiles flagged red and the character
+          slid around the map in his idle pose with no walk cycle at all.
+
     Companions already in the pool are skipped; the rest are pulled per
     family pack (idempotent).
 
@@ -4861,6 +4869,60 @@ def do_char_companions():
             continue
         queue(stem, blob, magic)
 
+    # (3) every cell of every placed character's family sidecar the card can
+    # probe, plus the walk-plan cells: a walk cell bakes as '<stem>back.png'
+    # (the '_walk' tail dropped), so the card's png slug can never name its
+    # pool cell, and bcell13 walks answer 422 'missing companion' for the
+    # map's <stem>_back_walk/_front_walk probes until their frames' .rgb
+    # companions are harvested too.
+    fdir = ROOT / 'web' / 'assets' / 'characters' / 'families'
+    if fdir.is_dir():
+        for fp in sorted(fdir.glob('*.json')):
+            try:
+                fam = _json.loads(fp.read_text())
+            except (OSError, ValueError):
+                continue
+            for cell in fam.get('cells') or []:
+                if not cell.get('frames'):
+                    continue
+                cands = []
+                png = cell.get('png') or ''
+                if png:
+                    cands.append(png[:-len('.png')]
+                                 if png.lower().endswith('.png') else png)
+                stem = (cell.get('stem') or '').strip()
+                if stem and stem not in cands:
+                    # skin/variant cells bake without a pre-baked png and only
+                    # carry their stem (krusty_stonecutter_*): the card probes
+                    # the stem itself, so queue it
+                    cands.append(stem)
+                if cell.get('kind') == 'walk' and stem:
+                    # the walk plan probes '<stem>_walk' (and the run twins)
+                    cands += [stem + '_walk', stem + '_run']
+                for cand in cands:
+                    # the endpoint's pool_source falls back to the bare
+                    # name's idle-suffix twins for ANY miss (krusty ->
+                    # krusty_idle / krusty_idle_blink, marge_protest ->
+                    # marge_protest_idle): queue those cells too, whatever
+                    # the card's kind says
+                    tries = [cand] + [cand + '_' + sfx
+                                      for sfx in CHAR_IDLE_SUFFIXES]
+                    for t in tries:
+                        st = t if (POOL / (t + '.bcell')).exists() \
+                            else by_key.get(_char_norm(t))
+                        if st is None or st.lower() in handled:
+                            continue
+                        try:
+                            with (POOL / (st + '.bcell')).open('rb') as fh:
+                                magic = fh.read(7)
+                                if magic not in (b'bcell11', b'bcell13'):
+                                    continue
+                                fh.seek(0)
+                                blob = fh.read()
+                        except OSError:
+                            continue
+                        queue(st, blob, magic)
+
     total = sum(len(v) for v in need.values())
     fetched = _fetch_companions(need)
 
@@ -4914,11 +4976,13 @@ def do_char_companions():
                 finally:
                     shutil.rmtree(work, ignore_errors=True)
 
-    left = sum(1 for v in need.values() for n in v
-               if not (POOL / n).exists())
+    missing = sorted({n for v in need.values() for n in v
+                      if not (POOL / n).exists()})
     print(f'char-companions: {len(handled)} external-companion cells, '
           f'{total} companions needed, {fetched} fetched into {POOL}'
-          + (f' ({left} still missing)' if left else ''))
+          + (f' ({len(missing)} still missing)' if missing else ''))
+    if missing:
+        print('char-companions: unresolved: ' + ', '.join(missing))
 
 
 def _dedup_built(built):

@@ -1,5 +1,54 @@
 # Changelog
 
+## 2026-11-05.4
+
+- **Krusty (and every other character) now animates: the missing bcell13
+  companion harvest, the card's walk probes, and the endpoint's big-cell
+  crashes are fixed.** Three layers conspired to leave Krusty's card tiles
+  red and the map character frozen in its idle pose:
+  - *Harvest (`tools/gen_city_sprites.py` `char-companions`):* the harvest
+    set now also covers every cell a character-card can probe — family
+    sidecar cells that bake without a pre-baked png (skin cells like
+    `krusty_stonecutter_*` carry only a `stem`), the walk plan's
+    `<stem>_walk` / `<stem>_run` twins, and the endpoint's idle-suffix
+    fallback for ANY name (`marge_protest` → `marge_protest_idle`), which
+    was previously only queued for standby cells. The run now also prints
+    the names of unresolved companions instead of just a count. Krusty's
+    base idle/walk/victory/mystery-box cells and the previously-red
+    `marge_protest` / `moe_smuggle_panda` / `milhouse_fly_kite` idles are
+    all in the pool now; the only residual are 13
+    `snake_alien_attacked_left` frames that the local packs simply do not
+    ship (the stub declares 21 frames, the bundles carry 16 — an upstream
+    data defect, so that one cell keeps answering 422).
+  - *Card (`web/viewer/city-view-pixi.js`, cache-buster `?v=116`):* walk
+    tiles probe the authored cell through a candidate list —
+    `<stem>_walk` → `<stem>_run` → the bare `<stem>` → the png slug —
+    instead of always appending `_walk`. The bake drops or shifts the
+    authored name's tail in several ways (`krustyback.png` ←
+    `krusty_back_walk.bcell`, `sideshowbobbackrun.png` ←
+    `sideshowbob_back_run.bcell`, `nedjoggerfail.png` ← the bare
+    `ned_jogger_fail.bcell`), and the old single guess 404'd (red tile) on
+    every run-style and bare-stem walk. Slugs are fetched once via the
+    shared `dynCells` cache and the winning candidate is pinned per cell.
+  - *Endpoint (`web/api/bcell.php`):* large cells answered **HTTP 500**
+    under PHP-FPM — the manifest decoded every companion's pixels
+    (`expand4444` built a one-string-per-pixel array that exhausted the
+    memory limit) and the sheet writer held the whole pixel set + sheet
+    buffer + PNG stream at once. The manifest now reads only `.rgb`
+    headers; pixel decoding is lazy (one frame at a time); the sheet is
+    stamped and deflated **band by band** through a `php://temp` stream
+    (peak ≈ one band + one frame — a 77-image cell that fatalled at 128 M
+    now renders under 32 M); and `pool_stems()` re-stats the pool
+    directory instead of caching the listing for the life of the FPM
+    worker (cells harvested after a worker started used to 404 forever).
+    `NAME_RE` also now allows the literal spaces in the `baby bear_*`
+    family's cell and companion names. A stale-cache sweep removed the
+    sheet PNGs generated during the fix window.
+    `tools/smoke-char-panel.cjs` and `tools/smoke-city-view-dom.cjs` pass;
+    a full-roster re-probe of the 171 red tiles from the audit now
+    resolves every live cell except Snake's truncated
+    `snake_alien_attacked_left`.
+
 ## 2026-11-05.3
 
 - **Clicking a character or a building in the Pixi City viewer now plays one

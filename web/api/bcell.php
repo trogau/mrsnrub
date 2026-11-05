@@ -48,7 +48,9 @@ const CDN_DIR = __DIR__ . '/../../cdn';
 const CACHE_DIR = __DIR__ . '/bcell-cache';
 const MAX_SHEET_W = 8192;       // wrap the row-pack at this width
 const MAX_BLOB = 64 * 1024 * 1024;
-const NAME_RE = '/^[A-Za-z0-9._\-]+$/';
+/* Cell names may contain single spaces (the 'baby bear_*' family ships them
+   literally in the packs), but never slashes or '..' (see safe_name). */
+const NAME_RE = '/^[A-Za-z0-9 ._-]+$/';
 const PACK_RE = '/^[A-Za-z0-9._\-]+(?:\/[A-Za-z0-9._\-]+)*$/';
 
 /* ------------------------------------------------------------------ input */
@@ -108,10 +110,16 @@ const IDLE_SUFFIXES = ['idleblink', 'idleblinkleft', 'idleblinkright',
 /* Every pool stem, sorted (so deterministic), globbed once per request. */
 function pool_stems(string $dir): array {
     static $stems = null;
-    if ($stems === null) {
+    static $stamp = null;
+    /* fpm workers live across harvests: re-stat the directory so cells
+       extracted after a worker's first request become visible (a purely
+       static cache served 'no such cell' for cells that were right there) */
+    $m = @filemtime($dir);
+    if ($stems === null || $stamp !== $m) {
         $stems = [];
         foreach (glob($dir . '/*.bcell') ?: [] as $p) $stems[] = basename($p, '.bcell');
         sort($stems);
+        $stamp = $m;
     }
     return $stems;
 }
@@ -340,10 +348,34 @@ function expand4444(string $px, bool $premul): string {
             }
         }
     }
-    return implode('', array_map(
-        static fn(string $r, string $g, string $b, string $a): string => $r . $g . $b . $a,
-        str_split($R), str_split($G), str_split($B), str_split($A)
-    ));
+    unset($b0, $b1);                       // free the 2×n halves before the
+                                           // interleave peaks
+    $n = strlen($R);
+    // Interleave in bounded chunks: str_split/array_map over the WHOLE
+    // frame built one 4-byte string per pixel — a multi-million-entry
+    // array that fatalled the FPM worker (HTTP 500) on large cells while
+    // the CLI (higher memory_limit) decoded them fine.
+    $out = '';
+    $CH = 1 << 14;                                  // pixels per chunk
+    for ($o = 0; $o < $n; $o += $CH) {
+        $len = min($CH, $n - $o);
+        $out .= implode('', array_map(
+            static fn(string $r, string $g, string $b, string $a): string
+                => $r . $g . $b . $a,
+            str_split(substr($R, $o, $len)), str_split(substr($G, $o, $len)),
+            str_split(substr($B, $o, $len)), str_split(substr($A, $o, $len))
+        ));
+    }
+    return $out;
+}
+
+/* .rgb blob -> [w, h] — the header only. Manifest mode needs each image's
+   dimensions but never its pixels, so it must not pay for a full decode. */
+function rgb_size(string $blob, string $src): array {
+    if (strlen($blob) < 8) fail("$src: short .rgb", 422);
+    $w = u16($blob, 4); $h = u16($blob, 6);
+    if ($w * $h === 0) fail("$src: empty .rgb", 422);
+    return [$w, $h];
 }
 
 /* .rgb blob -> [w, h, rgba] (all three verified header variants). */
@@ -459,18 +491,28 @@ function parse_bcell11(string $blob, string $src): array {
 
 /* Normalize a parsed cell to: images[] (unique decoded frames, sheet slots
    assigned row-first) + frames[] (one per record, with timing/offsets).
-   Returns [$model, $raw] where $raw[k] = [w, h, rgba] aligns with
-   model.images[k] — the decoded pixels travel with the model so callers
-   never decode the same frame twice. */
-function build_model(string $name, string $cellBlob, callable $read): array {
+   Returns [$model, $raw] where $raw[k] = [src, w, h, get] aligns with
+   model.images[k]; 'get' is a lazy decoder — manifest mode never calls
+   it, frame mode calls it once (the requested frame only), and
+   render_sheet() calls it one image at a time so peak memory stays a
+   single frame. */
+function build_model(string $name, string $cellBlob, callable $read,
+                     bool $pixels = true): array {
     $magic = substr($cellBlob, 0, 7);
-    $raw = [];   // per image key: [w, h, rgba]
+    /* $raw[k] = [src, w, h, get] — 'get' is a zero-arg closure returning the
+       decoded RGBA, so pixels are decoded ONE image at a time by whoever
+       needs them (sheet stamp loop / frame). Eagerly decoding every
+       companion held 100+ MB for large cells and fatalled FPM's
+       memory_limit; manifest mode never calls get at all. */
+    $raw = [];
     $frames = [];
     if ($magic === 'bcell10') {
         [$records, $blocks] = parse_bcell10($cellBlob, $name);
         foreach ($blocks as $bi => [$w, $h, $px]) {
             $raw[] = ['src' => "block:$bi", 'w' => $w, 'h' => $h,
-                      'rgba' => expand4444($px, true)];
+                      'get' => $pixels
+                          ? static fn(): string => expand4444($px, true)
+                          : null];
         }
         foreach ($records as $i => [$delay, $x, $y, $bi]) {
             if ($bi === null) continue;
@@ -489,8 +531,18 @@ function build_model(string $name, string $cellBlob, callable $read): array {
             if (!isset($byName[$img])) {
                 $blob = $read(safe_name($img));
                 if ($blob === null) fail("missing companion $img (cell $name)", 422);
-                [$w, $h, $rgba] = rgb_decode($blob, $img);
-                $raw[] = ['src' => $img, 'w' => $w, 'h' => $h, 'rgba' => $rgba];
+                [$w, $h] = rgb_size($blob, $img);   // header: size + sanity
+                unset($blob);
+                $fn = null;
+                if ($pixels) {
+                    $rd = $read; $nm = $img;
+                    $fn = static function () use ($rd, $nm): string {
+                        $b = $rd(safe_name($nm));
+                        if ($b === null) fail("missing companion $nm", 422);
+                        return rgb_decode($b, $nm)[2];
+                    };
+                }
+                $raw[] = ['src' => $img, 'w' => $w, 'h' => $h, 'get' => $fn];
                 $byName[$img] = count($raw) - 1;
             }
             $frames[] = ['i' => $i, 'image' => $byName[$img],
@@ -526,23 +578,80 @@ function build_model(string $name, string $cellBlob, callable $read): array {
         ], $raw, array_keys($raw)),
         'frames' => $frames,
         'total_delay_ms' => array_sum(array_column($frames, 'delay_ms')),
-    ], array_map(static fn(array $im): array => [$im['w'], $im['h'], $im['rgba']], $raw)];
+    ], $raw];
 }
 
-function render_sheet(array $raw, array $model): string {
+/* Decode one image's RGBA through its lazy 'get' (build_model), releasing
+   the closure so a huge cell never holds more than one frame's pixels. */
+function raw_rgba(array &$raw, int $k): string {
+    $get = $raw[$k]['get'] ?? null;
+    $raw[$k]['get'] = null;
+    if ($get === null) fail('pixels not loaded for image ' . $k, 500);
+    return $get();
+}
+
+/* Sheet PNG, written BAND BY BAND. The row-pack in build_model fills
+   contiguous horizontal bands (all images sharing a y share one row of the
+   pack), so we stamp one band, deflate its rows into the IDAT stream and
+   release it before building the next: peak memory is one band (~one row
+   of the pack) + one decoded frame, instead of the whole sheet buffer
+   (100+ MB for a 77-image cell, which fatalled FPM's memory_limit). */
+function render_sheet_png(array $model, array &$raw, array $text = []): string {
     $sw = $model['sheet']['w']; $sh = $model['sheet']['h'];
     $blank = str_repeat("\0", $sw * 4);
-    $rows = array_fill(0, $sh, $blank);
-    foreach ($model['images'] as $k => $slot) {
-        [$ox, $oy] = [$slot['x'], $slot['y']];
-        [$w, $h, $rgba] = $raw[$k];
-        for ($y = 0; $y < $h; $y++) {
-            $row = &$rows[$oy + $y];
-            $row = substr_replace($row, substr($rgba, $y * $w * 4, $w * 4), $ox * 4, $w * 4);
-            unset($row);
+    $bands = [];
+    foreach ($model['images'] as $k => $im) {
+        $bands[$im['y']][] = [$k, $im['x']];
+    }
+    ksort($bands);
+    $ctx = deflate_init(ZLIB_ENCODING_DEFLATE, ['level' => 6]);
+    $z = fopen('php://temp/maxmemory:4194304', 'w+b');   // IDAT bytes spill
+    $clen = 0;                                            // to disk, not RAM
+    $emit = static function (string $s) use ($z, &$clen): void {
+        if ($s !== '') { $clen += strlen($s); fwrite($z, $s); }
+    };
+    $written = 0;
+    foreach ($bands as $by => $slotList) {
+        $rowH = max(array_map(static fn($s) => $raw[$s[0]]['h'], $slotList));
+        $rows = array_fill(0, $rowH, $blank);
+        foreach ($slotList as [$k, $ox]) {
+            $w = $raw[$k]['w']; $h = $raw[$k]['h'];
+            $rgba = raw_rgba($raw, $k);        // one frame's pixels at a time
+            for ($y = 0; $y < $h; $y++) {
+                $row = &$rows[$y];
+                $row = substr_replace($row, substr($rgba, $y * $w * 4, $w * 4), $ox * 4, $w * 4);
+                unset($row);
+            }
+            unset($rgba);
+        }
+        foreach ($rows as $y => $row) {
+            $emit(deflate_add($ctx, "\0" . $row, ZLIB_NO_FLUSH));
+            unset($rows[$y]);
+        }
+        $written += $rowH;
+    }
+    if ($written < $sh) {                      // pad a truncated last band
+        for ($y = $written; $y < $sh; $y++) {
+            $emit(deflate_add($ctx, "\0" . $blank, ZLIB_NO_FLUSH));
         }
     }
-    return implode('', $rows);
+    $emit(deflate_add($ctx, '', ZLIB_FINISH));
+    $head = "\x89PNG\r\n\x1a\n"
+          . png_chunk('IHDR', pack('N2C5', $sw, $sh, 8, 6, 0, 0, 0));
+    foreach ($text as $kw => $txt) {
+        $head .= png_chunk('tEXt', $kw . "\0" . $txt);
+    }
+    $tail = png_chunk('IEND', '');
+    rewind($z);
+    $final = fopen('php://temp/maxmemory:4194304', 'w+b');
+    fwrite($final, $head . pack('N', $clen) . 'IDAT');
+    stream_copy_to_stream($z, $final);
+    fwrite($final, $tail);
+    fclose($z);
+    rewind($final);
+    $body = stream_get_contents($final);
+    fclose($final);
+    return $body;
 }
 
 /* -------------------------------------------------------------- PNG out */
@@ -553,17 +662,32 @@ function png_chunk(string $tag, string $data): string {
 }
 
 /* Filter-0 RGBA PNG writer — same construction as the verified pure-Python
-   one in tools/extract_assets.py; tEXt pairs are appended as extra chunks. */
-function png_encode(int $w, int $h, string $rgba, array $text = []): string {
-    $raw = '';
+   one in tools/extract_assets.py; tEXt pairs are appended as extra chunks.
+   $pixels is either one RGBA string or render_sheet()'s row array; rows are
+   deflate-streamed one at a time (and nulled as consumed) so a huge sheet
+   never exists twice in memory at once. */
+function png_encode(int $w, int $h, $pixels, array $text = []): string {
     $stride = $w * 4;
-    for ($y = 0; $y < $h; $y++) $raw .= "\0" . substr($rgba, $y * $stride, $stride);
+    $ctx = deflate_init(ZLIB_ENCODING_DEFLATE, ['level' => 6]);
+    $parts = [];
+    if (is_array($pixels)) {
+        foreach ($pixels as $y => $row) {
+            $parts[] = deflate_add($ctx, "\0" . $row, ZLIB_NO_FLUSH);
+            $pixels[$y] = null;
+        }
+        $parts[] = deflate_add($ctx, '', ZLIB_FINISH);
+        $comp = implode('', $parts);
+    } else {
+        $raw = '';
+        for ($y = 0; $y < $h; $y++) $raw .= "\0" . substr($pixels, $y * $stride, $stride);
+        $comp = gzcompress($raw, 6);
+    }
     $out = "\x89PNG\r\n\x1a\n"
          . png_chunk('IHDR', pack('N2C5', $w, $h, 8, 6, 0, 0, 0));
     foreach ($text as $kw => $txt) {
         $out .= png_chunk('tEXt', $kw . "\0" . $txt);
     }
-    return $out . png_chunk('IDAT', gzcompress($raw, 6)) . png_chunk('IEND', '');
+    return $out . png_chunk('IDAT', $comp) . png_chunk('IEND', '');
 }
 
 /* ------------------------------------------------------------ cache/serving */
@@ -860,7 +984,10 @@ function main(array $args, bool $cli): void {
     }
     $GLOBALS['diag']['cache']['hit'] = false;
 
-    [$model, $raw] = build_model($stem, $cell, $read);
+    /* the manifest only needs each image's dimensions, not its pixels —
+       decoding every companion here fatalled large cells under FPM's
+       memory_limit (500) while working under the CLI's roomier default */
+    [$model, $raw] = build_model($stem, $cell, $read, $mode !== 'manifest');
     $GLOBALS['diag']['model'] = $model;
     dbg_info('cell', $model['type'] . ', ' . count($model['frames']) . ' frames, '
              . count($model['images']) . ' unique images, sheet '
@@ -877,21 +1004,19 @@ function main(array $args, bool $cli): void {
     if ($mode === 'frame') {
         $f = $model['frames'][$n ?? -1] ?? null;
         if ($f === null) fail('no such frame n', 404);
-        [$w, $h, $rgba] = $raw[$f['image']];
-        $body = png_encode($w, $h, $rgba);
+        $k = $f['image'];
+        $body = png_encode($raw[$k]['w'], $raw[$k]['h'], raw_rgba($raw, $k));
         dbg_mark('png encode');
         cache_put($cacheFile, $body, $cacheable);
         send($body, 'image/png', '"' . $key . '"', $cli, $outPath);
         return;
     }
-    /* sheet: one PNG + embedded manifest (single request for the browser) */
-    $pixels = render_sheet($raw, $model);
-    dbg_mark('sheet pack');
-    $body = png_encode($model['sheet']['w'], $model['sheet']['h'], $pixels,
-                       ['bcell-manifest' => json_encode($model, JSON_UNESCAPED_SLASHES)]);
-    unset($pixels);
+    /* sheet: one PNG + embedded manifest (single request for the browser),
+       stamped + deflated band by band (see render_sheet_png) */
+    $body = render_sheet_png($model, $raw,
+                             ['bcell-manifest' => json_encode($model, JSON_UNESCAPED_SLASHES)]);
+    dbg_mark('sheet pack + png encode');
     dbg_info('png bytes', number_format(strlen($body)));
-    dbg_mark('png encode');
     cache_put($cacheFile, $body, $cacheable);
     send($body, 'image/png', '"' . $key . '"', $cli, $outPath);
 }
