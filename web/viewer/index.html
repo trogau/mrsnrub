@@ -16,8 +16,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Springfield &mdash; City View (PixiJS)</title>
 <link rel="icon" type="image/png" href="../assets/images/icon.png">
-<link rel="stylesheet" href="../css/city-view.css?v=15">
-<link rel="stylesheet" href="../css/asset-variants.css?v=15">
+<link rel="stylesheet" href="../css/city-view.css?v=16">
+<link rel="stylesheet" href="../css/asset-variants.css?v=16">
 </head>
 <body>
 <header>
@@ -61,6 +61,7 @@
   <button class="vbtn" id="btn-grid" data-tip="debug overlay: tile lattice (majors every 10, numbered) + cyan diamond on the tile under the cursor — read sprite anchor offsets off against the tile the clickable entity occupies">Tile grid</button>
   <button class="vbtn" id="btn-tune" data-tip="sprite pin tuning panel: toggle anchor-vs-origin pin, nudge the ground point (ax/ay), scale (S), and step through the big-anchor-offset buildings — persists across reloads">Tune</button>
   <button class="vbtn" id="btn-wire" data-tip="debug overlay: full 12-edge wireframe on every building block — the ground edges (incl. the hidden west/north ones) draw cyan so sprites can be checked against the true footprint">Wire</button>
+  <button class="vbtn" id="btn-debug" data-tip="one-click diagnostics, copied to the clipboard and opened in a panel (window.__CV_DEBUG() is the same from the console): the GPU's texture limit, the endpoint config, which branch every character took in the last frame (bcell sheet cell, held while its sheet loads, shipped PNG, wireframe, dot), every bcell cell that is not ready and why, and a census of the sprites on screen — each one named by URL and sampled on the CPU for coverage and brightness, which is what tells bad bytes from a bad upload">Debug</button>
   <span class="hint">drag to pan &middot; wheel to zoom &middot; double-click to step zoom
     (double-click a yellow mark to centre it) &middot;
     click a block, dot or ground tile to inspect it &middot;
@@ -109,8 +110,9 @@
    characters: true draws character sprites as one sprite-sheet + manifest
    fetched from the API instead of the pre-baked assets/characters PNGs,
    for A/B comparison; false (or delete) keeps static art everywhere.
-   src: 'pool' (citypool extraction) or 'pack' (CDN zips). Cells still
-   fall back to pre-baked PNGs while loading or on any error. */
+   src: 'pool' (citypool extraction) or 'pack' (CDN zips). A cell whose sheet
+   is still loading is drawn as NOTHING (and asks assets/ for nothing); the
+   pre-baked PNGs remain the art for this path being switched off. */
 window.VIEWER_DYNAMIC_BCELL = { characters: true, src: 'pool' };
 /* City art (bsv3 bakes) through web/api/bsprite.php — one flag per
    family; false keeps the pre-baked PNGs under assets/city. The
@@ -119,10 +121,22 @@ window.VIEWER_DYNAMIC_BCELL = { characters: true, src: 'pool' };
    ?dyn=sprites,anims subset. */
 window.VIEWER_DYNAMIC_CITY = { sprites: true, seasons: true,
                                anims: true, stacks: true };
+/* The right-side panel streams from those two endpoints: the building card's
+   city art from bsprite.php, the character card's ROSTER (mode=family) and
+   every cell sheet (mode=sheet) from bcell.php — a healthy card asks
+   nothing under assets/ at all (a cell whose sheet is still on its way stays
+   empty rather than pulling its pre-baked frames). The MAP follows the same
+   rule: a character whose sheet is still decoding is not drawn at all, so
+   characters:false above is the only thing that puts shipped PNGs back on
+   the map. Escape hatches for A/B: ?packimg=1 (or
+   window.VIEWER_PANEL_PACK_IMGS = true) paints the manifest-pack copy
+   thumbnails — the dlc/ _transimage, _menu and _holo sidecars no endpoint
+   can bake — that otherwise stay listed but unpainted; ?dyn=0 / the flags
+   above fall the building rows back to the files. */
 </script>
-<script src="asset-variants-pixi.js?v=9"></script>
-<script src="char-variants-pixi.js?v=6"></script>
+<script src="asset-variants-pixi.js?v=10"></script>
+<script src="char-variants-pixi.js?v=7"></script>
 <script src="../js/audio.js?v=1"></script>
-<script src="city-view-pixi.js?v=116"></script>
+<script src="city-view-pixi.js?v=123"></script>
 </body>
 </html>

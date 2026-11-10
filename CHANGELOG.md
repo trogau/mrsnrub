@@ -1,5 +1,358 @@
 # Changelog
 
+## 2026-11-06.4
+
+- **The Debug report can now ask the graphics card what it was given, and it
+  reads back every frame of a character cell instead of the one on screen.** The
+  honest report (build v121) came back clean while a black rectangle sat on
+  screen: `julio_back_walk … cpu {cov:0.54,lum:81}`, `10 paired cells checked ·
+  0 stale pairs`, `suspicious: 0`. Three things follow, and all three are now
+  instruments rather than guesses (`web/viewer/city-view-pixi.js`, cache-buster
+  `?v=123`):
+  - *CPU vs GPU, side by side.* An `<img>` can only ever testify about the
+    **file**. The only way to tell bad bytes from a bad **upload** from inside
+    the page is to make WebGL give the pixels back, so the census now calls
+    `renderer.extract.pixels` (which ends in `gl.readPixels`) and prints
+    `cpu {…} gpu {…}` per row. The verdict is the asymmetry: an opaque
+    near-black patch the source does not have can only have arrived with the
+    upload, so it is flagged `*** GPU BLACK (bytes fine: upload fault)`, and a
+    texture the GPU holds nothing for is `*** GPU EMPTY`. Readbacks are bounded
+    by a per-texture cap and a per-report budget, each named in the row
+    (`skipped 3000x1200 (too big)`, `skipped (report budget)`) so a limit never
+    reads as a clean row. This also puts a name to what the first two censuses
+    mistook for an `<img>`: `He` is Pixi's `ImageSource` (`uploadMethodId:
+    "image"`) — the upload wrapper.
+  - *Every frame, not the lucky one.* A walk or blink cell spends most of its
+    life in frames other than the one on screen when the button is pressed,
+    which is how a black frame has survived four reports. `[cell frames]` reads
+    back **all** of each ready cell's frames on both sides and catches the two
+    faults a live frame hides: a rect that falls **off the decoded page**
+    (WebGL clamps it, and ANGLE may sample black) and a frame **naming an image
+    the manifest does not have** — visible in the last report as
+    `3 frames · 2 images`.
+  - *The whole stage, not the layers someone remembered.* The first censuses
+    walked four hand-picked containers — `sceneG`, `propG`, `beachArtC`,
+    `raisedG` — while the stage holds sixteen named layers. A rectangle drawn by
+    the ground fills, the bridges, the LOD atlases, the sea, or an overlay was
+    therefore **absent from a report that said "sprites on screen"**, and
+    `suspicious: 0` meant "nothing wrong in four layers". `dbgCensus` now walks
+    `app.stage` itself, labels every group with its layer (`scene`, `raised`,
+    `ground`, `bridge`, `markers`, …), prints `across N named layers` in the
+    header, and lists what it skipped as visible: `not on screen (hidden layer):
+    beach, bridge-near`. The order of the two tests in the child loop matters and
+    is pinned by a check — hidden *containers* have to reach `scan` so they can
+    be named, and only *sprites* may be dropped. In the stub, a black sprite
+    parked in the bridge layer goes from invisible to:
+    ```
+    x 1 bridge 30x300 … cpu {"cov":1,"lum":3}  gpu {"cov":1,"lum":3}  ../assets/bridges/deck.png  *** OPAQUE NEAR-BLACK
+    ```
+  - *Tests (`tools/smoke-idle-wander.cjs`):* five more checks (the GPU sample
+    and its asymmetry rule, the readback bounds, the per-frame sweep, the
+    whole-stage walk with its layer table, and the hidden-layer naming with the
+    test order it depends on). The
+    headless stub now ships a `readPixels` stand-in whose bytes are independent
+    of the element's, so the CPU-clean/GPU-black case is a real test rather than
+    a wish — and it catches it, along with the off-page and missing-image
+    frames:
+    ```
+    x 1 scene 56x128 … cpu {"cov":0.14,"lum":137}  gpu {"cov":1,"lum":3}  …talkingkrustydollidleleft  *** GPU BLACK (bytes fine: upload fault)
+     talkingkrustydollidleleft  3 frames · page 108x128 · *** 3 suspect frames
+       *** f0 img0 0,0 54x128  cpu {"cov":0.14,"lum":137}  gpu {"cov":1,"lum":3}  GPU black while the bytes are fine
+       *** f2 names image 2, the manifest has 2
+    ```
+
+  - *The bake is cleared, offline, for every frame.* Before asking for another
+    browser paste, the same two questions were asked of the whole served pool
+    without a browser: `tools/audit-bcell-frames.py` reads each cached sheet's
+    own embedded manifest and samples every image rect on the CPU, the way
+    `[cell frames]` does in the page. Over **1,927 sheets and 18,340 image
+    rects**: zero `bytes-black`, zero `off-page`, zero `frame-image-missing` —
+    so no baked frame anywhere in the pool is an opaque black square, and none
+    asks for a rect the page does not have. (The only flags were 9 sheets
+    serving with no `bcell-manifest` tEXt at all, which is a serving wart, not a
+    broken bake; it exits non-zero only for the three faults that could paint a
+    square.) That leaves the upload as the remaining suspect, which is what the
+    `cpu`/`gpu` split above is built to catch.
+  - *What it rules out, as much as what it catches.* The report was requested
+    "a few seconds after the black rectangle has appeared", and a **hard reload
+    does not clear the square** — which retires the last two cache-flavoured
+    explanations on the table: the stale manifest/sheet pair (four reports,
+    `0 stale pairs`) and anything the HTTP cache could be holding. The README now
+    says so where it used to claim the opposite, and the remaining suspects are
+    the upload (caught by `cpu` vs `gpu` above) and the bake of a specific frame
+    (caught by `[cell frames]`).
+
+## 2026-11-06.3
+
+- **The Debug census was blind, and now it measures the thing it claims to
+  measure.** The second paste back from the button was the tell: every row
+  reported the decoded element's *tag* as `He` or `ie`, and the sample read
+  `Failed to execute 'drawImage' … not of type (…HTMLImageElement…)`. Those are
+  minified Pixi class names — `tex.source.source` is **not** the `<img>`.
+  `PIXI.Texture.from(HTMLImageElement)` (how every texture in this viewer is
+  made, in `texFor`) re-keys the element into Pixi's own registry and hands
+  back a wrapper that exposes a `width` but is neither drawable nor the decoded
+  page. So:
+  - *Nothing the census ever printed about pixels was real.* Coverage,
+    brightness, `*** OPAQUE NEAR-BLACK` and `suspicious: 0` came from a
+    `drawImage` that threw on every row — the clean-looking report was the most
+    misleading part of it, and it nearly sent the black squares off as a
+    browser-cache problem.
+  - *The fix (`web/viewer/city-view-pixi.js`, cache-buster `?v=121`):* the
+    element the viewer decodes is now stamped onto the textures it produces
+    (`r.tex.__el = im` in `texFor`, inherited by the sheet cells in `subTex`),
+    and the census samples and measures **that**. `dbgElDims` refuses anything
+    without a real `tagName`, so a wrapper can be reported but never measured;
+    `pixi WxH` (Pixi's claim) prints beside `IMG WxH` (what was fetched) because
+    the gap between the two is itself diagnostic; and textures with no element
+    are counted `with no <img> to trust (unmeasured)` instead of passing
+    silently. The pair check now compares the manifest against the decoded
+    element, not the wrapper.
+  - *The textures made outside `texFor` are no longer invisible to it.* The one
+    group a report could not read was `x 60 raised 2x2 … no element <untracked>`
+    — the road/ice sheet cells on the raised layer, plus the ground, dirt, LOD
+    and unit textures, all built by a bare `PIXI.Texture.from`. A `texFrom(el,
+    name)` helper now wraps every one of those eleven sites, so each carries the
+    element it was made from and a name to be reported under. (White tint on
+    that group was never evidence of anything: tint multiplies, so bytes that
+    sample black stay black under any tint.)
+  - *The census now verdicts the blit, and cannot hide what it hunts.* Groups
+    are keyed by texture **and tint and effective alpha**, since a sprite on
+    screen is the product of all three: a row whose pixels are healthy but whose
+    near-black tint multiplies them into nothing is flagged `*** TINT KILLS ART`
+    and prints `blit lum N` (pixels × tint × alpha), the brightness that actually
+    reaches the display. The check is limited to real art sheets so the
+    deliberately dark flat fills — the manhole discs are `0x14141a` — do not cry
+    wolf in every report. And verdicts are now computed for *every* group before
+    any row is printed: the row cap stays, but a flagged group below the cap is
+    printed anyway and the tail says `N more groups (none flagged)`, so a
+    one-sprite black square can no longer land in the cut. A layer hidden whole
+    (LOD hides `raisedG`/`featC`) is no longer counted as if it were on screen.
+  - *What the honest report (build v120) then said:* the black squares were not
+    in the sampled set. Julio's walk cell read back as `IMG 306x222 … rect 230,0
+    76x222 {cov:0.54,lum:81}` — the correct page, the correct sub-rect, real
+    pixels — and the pair check came back `10 paired cells checked · 0 stale
+    pairs`. So the "browser cached a sheet whose halves disagree" story is
+    retired along with the measurement it rested on. The remaining candidates are
+    the group above (60 sprites that could not be sampled), and a character
+    drawn as a **dot**: two of the six on screen had both dot sub-counters at 0,
+    which is the branch where no asset record was found at all — the same
+    content gap as `save rows with no catalog entry: 119`, not a rendering one.
+  - *A dot now says which kind of dot it is.* The people pass already split dots
+    into *below the readability floor* and *asset with no png*, and the leftover
+    case — **the catalogue has no record of that character at all** — had no line
+    at all, so it could only be guessed at from a config-line total of 119. Those
+    characters are now counted and **named** (up to eight, `Canyon Ranch
+    Joe#185203`), and the tally is only made when the art lookup actually ran:
+    under LOD, or with art switched off, every character is a dot by design and
+    the line says so instead of inventing a content gap.
+  - *A walking tile's stem is no longer probed with a locomotion tail it
+    already has.* The report's own `[recent endpoint answers]` showed six dead
+    cells like `talkingkrustydoll_back_walk_left_walk`: the card's walk prober
+    appends `_walk`/`_run` to the stem, and for a stem that already ends in
+    `back_walk_left` the result is a cell no bake can ever answer. Only a stem
+    *ending* in a tail is exempt now — `drhotdog_walk_the_dog_active_1`, where
+    "walk" is mid-name in an activity stem, still gets the guess. The next
+    report confirmed it in the browser: `0 rejected`, `dead 0`.
+  - *Tests (`tools/smoke-idle-wander.cjs`):* eight new checks — every texture
+    made by the viewer carries its element and a source wrapper is rejected
+    rather than measured; a texture with no element is reported as unmeasured
+    rather than clean; the double-tail probe cannot come back; verdicts survive
+    the row cap; the tint/blit rule exists and is scoped to art; a hidden layer
+    is skipped; the no-record dot tally cannot fire when no lookup ran; and the
+    `texFrom` sites cannot regress to bare
+    `PIXI.Texture.from`. The headless stub (`/tmp/opencode/dbg-preview.cjs`) now
+    rejects a non-element in `drawImage` exactly as Chrome does, so a blind
+    census fails the tests instead of passing them, and it carries a
+    tint-killed sprite, a hidden layer and a flagged group parked past the cap.
+
+## 2026-11-06.2
+
+- **The Debug report's sprite census can now actually see, and it compares each
+  cell's two halves.** The first paste back from the new button had `sample
+  TypeError` on **every** row and a `decoded` column that was not the sheet's
+  page size, so `suspicious: 0` was vacuous — it proved nothing about the black
+  squares. Three fixes in `web/viewer/city-view-pixi.js` (cache-buster
+  `?v=119`):
+  - *The readback:* the census shares one 2D context (`dbgCtx`) created lazily.
+    At the browser's canvas-context budget `getContext` returns **null** rather
+    than throwing, so every row died in the same line. A missing context is now
+    named (`no 2d ctx (N canvases alive)`) and every catch prints `e.message`
+    instead of the exception's class, which is what turned a single null into
+    sixty identical `TypeError`s.
+  - *The dimensions:* each row now prints the `<img>` the browser really
+    fetched — its tag, `naturalWidth × naturalHeight` and which URL it holds
+    (`dbgElDims`) — plus the sub-rect it is blitting. The old column read
+    `Texture.source.width`, which is not the page's size and was quietly lying.
+  - *A new `[pair check]` block:* a `.bcell` character is **two** requests —
+    `mode=manifest` and `mode=sheet` — and `bcell.php` answers both with
+    `Cache-Control: public, max-age=31536000, immutable` off URLs that do not
+    change when the bake does. The ~200 KB sheets are what the browser evicts
+    and the few-KB manifests are what survive, so the page can be holding
+    manifest generation *N* beside sheet generation *N+1*; each half is
+    individually valid, and the rects then fall outside the page it is really
+    slicing — which is how a character becomes an opaque black square that only
+    a **hard** reload clears. The check compares every ready cell's
+    `manifest.sheet.w/h` with the decoded sheet and prints
+    `PAIR <name>: manifest page A vs sheet B — N image rect(s) outside it` with
+    the reload hint.
+  - *What it seemed to catch, and did not:* with Julio selected the new column
+    printed his walk sheet as **220x403** while `bcell.php` serves that cell as
+    **306x222** — rects off the page, the exact shape of a black square. That
+    reading turned out to be an artefact: the column was measuring a Pixi source
+    wrapper, not the decoded sheet (see `2026-11-06.3`), so neither the mismatch
+    nor the pair check's later `0 stale pairs` is evidence of anything yet. The
+    endpoint was independently verified consistent for that cell: the CLI's
+    manifest and PNG agree (306x222, and `230+76` fits inside it) and the sheet's
+    embedded tEXt matches its own bytes.
+  - *Tests (`tools/smoke-idle-wander.cjs`):* two new checks pin the null-context
+    guard and the decoded-element readback, and the pair check itself (the
+    manifest-vs-sheet compare and its hint), so the report cannot regress into
+    reporting a size it did not measure.
+
+## 2026-11-06
+
+- **A Debug button in the viewer's top bar prints everything needed to diagnose
+  the map, in one pasteable block.** Reporting a rendering problem meant typing
+  about six console one-liners (`__CV_DYNB.cfg`, the cells filter, `__CV_DIAG`,
+  `__ASSETS`, a WebGL probe…) and reading each one. The new button
+  (`web/viewer/index.html`, after Wire) runs them all and copies the result;
+  the same text is available as `window.__CV_DEBUG()`. What it reports:
+  - *Environment:* viewer/Pixi versions, URL, UA, viewport + render resolution,
+    and the GPU's `MAX_TEXTURE_SIZE` with the vendor string — with an explicit
+    warning line when the limit is under 8192, because an over-wide sheet
+    uploads **incomplete** and WebGL samples an incomplete texture as opaque
+    black (the `privateisland05` filmstrip failure, 2026-10-30, which the
+    character-sheet path has no guard for).
+  - *Config:* the live `VIEWER_DYNAMIC_BCELL` / `VIEWER_DYNAMIC_CITY` flags,
+    the `bsprite.php` preflight state, per-category failure counts, and whether
+    `charMan` loaded (without it the map can only draw dots) plus how many
+    character assets have no `png` at all — the case the endpoint can never be
+    asked about.
+  - *The people pass, per frame:* how many characters were on screen and which
+    branch each took — `.bcell` sheet cell, walk cell, **held** because its
+    sheet is still decoding (the 2026-11-05 rule: nothing drawn, nothing asked
+    of `assets/`), red wireframe, shipped `assets/characters` PNG, or dot.
+    Counters (`charBr`) are reset with every frame, so they describe the frame
+    on screen rather than the session.
+  - *Cells:* ready / loading / dead counts, every dead cell with the endpoint's
+    own error text, and a fully-described ready sample (sheet size, frame and
+    image counts, the first rect and its pixel sample).
+  - *What is actually on screen:* a census of the visible pooled sprites
+    grouped by texture — URL (or the sheet slice), layer, drawn size, upload
+    state, decoded size, and a 24×24 **CPU readback of the sprite's own frame
+    rect**: coverage and mean brightness. That last pair is the part nothing
+    else on the page can see, and it separates *the served bytes are black*
+    from *the bytes are fine and the upload is not*; groups that are opaque and
+    near-black are flagged `*** OPAQUE NEAR-BLACK`, dead textures
+    `*** DEAD TEXTURE`.
+  - *And the small stuff:* the selected building or character (slug, asset
+    geometry, its cell's state), the art loader's counters, the filmstrip
+    cache's stats, `__CV_DIAG`, the camera, and the last 40 named endpoint
+    answers (the `[dynbcell]` / `[dyn-city]` lines, kept in a ring so they
+    survive a console clear).
+  - *Supporting files:* the report builder, `__CV_DEBUG`, lives in
+    `web/viewer/city-view-pixi.js` (cache-buster `?v=118`); its paste-back panel
+    (`#dbgbox`, a readonly `textarea` so copying works with no JS and the
+    monospace columns line up) is styled in `web/css/city-view.css`
+    (`?v=16`, `tools/smoke-beach-viewer.cjs` pin moved with it). Textures now
+    carry their URL (`__u`) where they are made in `texFor`/`subTex` so the
+    census can name them, and `dynDead`/`cityWarn1` push to a small ring.
+  - *Tests (`tools/smoke-idle-wander.cjs`):* eight new checks pin the button's
+    markup (`data-tip`, never `title`), its position with the debug overlays,
+    the tooltip's promises, and — the point of the exercise — that **every
+    branch of the people pass counts itself** and the tallies reset per frame,
+    so the report cannot quietly stop reporting the held ones. The census's
+    pixel readback and the `MAX_TEXTURE_SIZE` warning line are pinned too.
+
+## 2026-11-05.6
+
+- **A character whose sprite sheet is still loading is now simply not drawn, so
+  the map asks the art tree for nothing.** Following up on the panel change: the
+  reported request for `assets/characters/mirrordiscostuidleblink.png` was not
+  the card — it was the map's `emitChar()` blitting the shipped PNG whenever a
+  cell's sheet had not decoded yet, which made every endpoint-served character
+  cost one request into the 206k-file tree on top of the two API calls that
+  actually serve it (`bcell.php?mode=manifest` then `mode=sheet`). Disco Stu's
+  case was clean: the endpoint answers that slug (it flattens to the pooled stem
+  `mirrordiscostu_idle_blink`), so the PNG was pure pending-window filler.
+  - *Map (`web/viewer/city-view-pixi.js`, cache-buster `?v=117`):* while the
+    dynamic path owns a cell, `emitChar()` holds instead of filling — a cell
+    whose manifest has not answered or whose sheet has not decoded draws
+    nothing (not even the dot). The shipped file is now reached only when the
+    dynamic path is off (`window.VIEWER_DYNAMIC_BCELL.characters = false`, the
+    documented A/B hatch — the only way to put the pre-baked PNGs back on the
+    map) or when a manifest is ready but names an image its own sheet does not
+    carry. A cell the endpoint *rejects* keeps drawing the red wireframe, which
+    was already the rule and is why no fallback was needed for failures.
+  - *Page (`web/viewer/index.html`):* the two config comments now state the rule
+    (loading ⇒ nothing drawn, shipped art ⇔ path switched off) instead of the
+    old "falls back while loading or on any error".
+  - *Tests (`tools/smoke-idle-wander.cjs`):* five new wiring checks pin the
+    order inside `emitChar` — wireframe-and-stop for a rejected cell, hold
+    before the shipped-file request site for a pending one, the hold living
+    inside the dynamic branch so switching the endpoint off still draws the
+    file, the map keeping exactly one character-art request site, and the
+    DEPRECATED Canvas page's own static path staying untouched.
+
+## 2026-11-05.5
+
+- **The right-side panel now asks the art tree for nothing: the character
+  card's roster has an endpoint, pending tiles fetch nothing, and the pack
+  copies no endpoint can bake stop being painted.** An audit of a normal
+  session's network log showed the panel was wired to the endpoints but still
+  pulling ~150 static PNGs the moment a character was opened, plus one per
+  frame while a sheet baked, and 4,659 of the building card's 10,195 variant
+  rows (46%, 740 slugs wholly) were `dlc/**` pack art that no endpoint can
+  ever serve. Nothing under `assets/` was deleted — the pre-baked files remain
+  the fallback for every genuine failure (endpoint dead, breaker tripped, boot
+  preflight unanswered, pool miss, `grasstile`).
+  - *Endpoint (`web/api/bcell.php`):* new `mode=family&cid=N` answers one cast
+    member's roster — the JSON `tools/gen_city_sprites.py`'s `chars` pass 4
+    writes as `web/assets/characters/families/<cid>.json` — so the card has ONE
+    origin, the endpoint, and needs no path into the art tree. The body is
+    passed through **verbatim** (byte-identical to the generated file, so the
+    two can never drift, and `cells[].frames[].file` still names the PNG a dead
+    cell falls back to). Nothing is re-derived, so like `mode=census` there is
+    no disk cache: the ETag carries the card's mtime + size. `?cid=` is the
+    natural spelling, `?name=` also works (CLI); the id is checked against a
+    new `CID_RE` and the new `FAMILY_DIR` constant is the one-line hook for
+    moving the cards out of the web root later.
+  - *Character card (`web/viewer/char-variants-pixi.js`, cache-buster
+    `?v=7`):* the roster comes from `api/bcell.php?mode=family&cid=`, and a
+    tile whose sheet has not arrived yet stays **empty** — it fetches nothing
+    at all, instead of eagerly pulling its own frame PNG as a poster. Cells
+    resolve through one `dynNow()` gate (`off` / `hidden` / `wait` / `dead` /
+    `ready`), so the pre-baked frames are reachable only when the dynamic path
+    is switched off or the endpoint has said no to that cell (red tile, as
+    before). Off-screen tiles still fetch nothing until the sidebar scrolls
+    them near the viewport.
+  - *Building card (`web/viewer/asset-variants-pixi.js`, cache-buster
+    `?v=10`):* a manifest-pack copy (`_transimage` / `_menu` / `_holo` sidecars
+    under `dlc/`) keeps its caption and its Asset Explorer deep link but renders
+    **no image and sends no request** — not even the byte-size HEAD — since
+    `bsprite.php` bakes from the citypool, which holds none of that art, and the
+    map never draws it. The header now reads
+    `Sprite variants — N (M pack copies, not served)`. Escape hatch for A/B:
+    `?packimg=1` or `window.VIEWER_PANEL_PACK_IMGS = true`.
+  - *CSS (`web/css/asset-variants.css`, cache-buster `?v=16`):* `.vpic.vpack::after`
+    labels an unpainted pack copy `no endpoint`; `.vcv.vpend` is the dim
+    checkerboard that means "that cell's sheet is on its way" (distinct from the
+    red `.cdead` outline, which is the endpoint's own "no").
+  - *Tests:* `tools/smoke-char-panel.cjs` asserts the roster URL and the whole
+    pending contract (no `assets/characters` fetch while the manifest is in
+    flight or a sheet decodes, no draw, no red flag), plus shipped art on
+    `dynFor` absent, dead cell, and a 404 sheet; `tools/smoke-asset-panel.cjs`
+    covers the unpainted pack copy (no `<img>`, no fetch, deep link, label) and
+    the `?packimg=` A/B in both directions; `tools/smoke-bcell-api.py` checks
+    `mode=family` byte-for-byte against three real sidecars, its fields and
+    frames, the `?name=` spelling, and traversal/unknown/missing cid.
+  - *Docs (`web/viewer/README.md`):* the Files table gains `char-variants-pixi.js`
+    and a corrected `asset-variants-pixi.js` row (it is no longer a plain copy of
+    `../js/asset-variants.js`), and a new "Where the right-side panel's art comes
+    from" section states which file serves which row, what still legitimately
+    falls back, and the two A/B switches.
+
 ## 2026-11-05.4
 
 - **Krusty (and every other character) now animates: the missing bcell13

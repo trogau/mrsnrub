@@ -89,6 +89,191 @@ check('the walk cell wins over the idle cell, and only for the walking character
 check('a walk cell that is missing or still decoding paints the idle pose (no red X)',
     /function emitCharDyn[\s\S]*?if \(!dv \|\| dv\.st === -1[\s\S]*?return false/.test(pv) &&
     !/dynErrBox\(e\.x, e\.y, wk/.test(pv));
+/* The pending rule (2026-11-05): the map used to blit the pre-baked
+   assets/characters/<png> whenever a cell's sheet had not decoded yet, so every
+   character cost one request to 206k shipped frames for art the endpoint DOES
+   serve (the family card had already been given this rule for its tiles). A
+   character whose sheet is on its way is now simply not drawn. The shipped file
+   survives for what an endpoint cannot serve: the path switched off for A/B
+   (dynCell answers null), or a manifest that is ready but names an image its
+   sheet does not carry — so the request site must stay, just unreachable while
+   pending, and it must stay the file's ONLY request site on the map. */
+{
+    const at = pv.indexOf('function emitChar(e)');
+    const body = at > -1 ? pv.slice(at, at + 4000) : '';
+    const iWire = body.indexOf('dynErrBox(e.x, e.y, as2, kc)');
+    const iHold = body.indexOf('if (!dynReady(as2)) return;');
+    const iFile = body.indexOf("var url = B + 'assets/characters/'");
+    check('a cell the endpoint rejected gets the wireframe and stops there',
+        iWire > -1 && iHold > iWire, 'wire=' + iWire + ' hold=' + iHold);
+    check('a cell whose sheet is still decoding draws nothing (no shipped-PNG fill)',
+        iHold > -1 && iFile > iHold, 'hold=' + iHold + ' file=' + iFile);
+    check('the hold is inside the dynamic branch, so switching the endpoint off ' +
+          'still draws the shipped art',
+        /if \(dv\) \{[\s\S]*?if \(!dynReady\(as2\)\) return;\s*\}/.test(body) &&
+        iFile > -1);
+    check('the map has exactly one character-art request site left',
+        (pv.match(/B \+ 'assets\/characters\/' \+/g) || []).length === 1,
+        String((pv.match(/B \+ 'assets\/characters\/' \+/g) || []).length));
+    check('and the DEPRECATED Canvas page keeps its own static path untouched',
+        /imgFor\('assets\/characters\/' \+ charFrameFile\(/.test(legacy));
+}
+/* The Debug button (2026-11-06): the pending rule made "where is my character"
+   a question with five possible answers (sheet cell, walk cell, held because
+   the sheet is still decoding, the endpoint's no, the shipped PNG, a dot), and
+   answering them meant typing six console one-liners. So the page ships one
+   button that prints them all — and the tallies it prints are the SAME branches
+   the checks above pin, which is why they are asserted here: a refactor that
+   quietly drops one of them would leave the report lying about what drew. */
+{
+    const dbg = (html.match(/<button[^>]*id="btn-debug"[^>]*>[\s\S]*?<\/button>/) || [])[0];
+    check('the Debug button ships in the top bar, with data-tip and never title',
+        !!dbg && /data-tip="/.test(dbg) && !/title="/.test(dbg),
+        (dbg || '').slice(0, 60));
+    check('it sits with the debug overlays (after Wire)',
+        html.indexOf('id="btn-wire"') < html.indexOf('id="btn-debug"'));
+    check('its tooltip promises the three things the console probes gave: the GPU' +
+          ' limit, the per-branch tally, the sprite census',
+        /GPU's texture limit/.test(dbg || '') &&
+        /branch every character took/.test(dbg || '') &&
+        /census of the sprites/.test(dbg || ''));
+    check('one click yields one paste: __CV_DEBUG returns the text, the button' +
+          ' copies it and opens it in a panel',
+        /window\.__CV_DEBUG = function \(\)/.test(pv) &&
+        /dbgShowPanel\(text\)/.test(pv) &&
+        /navigator\.clipboard\.writeText/.test(pv));
+    const at = pv.indexOf('function emitChar(e)');
+    const body = at > -1 ? pv.slice(at, at + 4200) : '';
+    check('every branch of the people pass counts itself (the report cannot' +
+          ' silently stop reporting the held ones)',
+        /charBr\.seen\+\+;/.test(body) &&
+        /charBr\.wire\+\+;\s*dynErrBox\(e\.x, e\.y, as2, kc\)/.test(body) &&
+        /charBr\.png\+\+; emitSpr\(t,/.test(body) &&
+        /peopleDots\+\+;\s*charBr\.dot\+\+;/.test(body) &&
+        /if \(loop\) charBr\.walk\+\+; else charBr\.sheet\+\+;/.test(pv));
+    check('the tallies are reset with the frame, so they describe the frame on' +
+          ' screen and not the whole session',
+        /charBr\.seen = charBr\.sheet = charBr\.walk = charBr\.wire = charBr\.png =/.test(pv) &&
+        /charBr\.seen - charBr\.sheet - charBr\.walk -\s*charBr\.wire - charBr\.png - charBr\.dot/.test(pv));
+    check('the sprite census reads each texture\'s own pixels back on the CPU' +
+          ' (bad bytes vs a bad upload, which nothing else on the page can tell)',
+        /willReadFrequently/.test(pv) && /getImageData\(0, 0, 24, 24\)/.test(pv) &&
+        /OPAQUE NEAR-BLACK/.test(pv) && /cov: Math\.round\(100 \* vis \/ n\)/.test(pv));
+    check('and the GPU limit is printed with the black-upload warning, since an' +
+          ' over-limit sheet uploads incomplete and samples black',
+        /MAX_TEXTURE_SIZE/.test(pv) && /uploads INCOMPLETE and samples OPAQUE BLACK/.test(pv));
+    check('the census reads each texture through the IMAGE the browser decoded, and' +
+          ' names a missing 2d context instead of printing a bare TypeError on every' +
+          " row (both flaws came back from the user's own paste)",
+        /function dbgCtx\(\)/.test(pv) && /no 2d ctx \(/.test(pv) &&
+        /el\.naturalWidth \|\| el\.width/.test(pv) &&
+        /\(t\.el \|\| 'no element'\)/.test(pv) &&
+        /'  rect ' \+ \(t\.frm \|\| '-'\)/.test(pv) &&
+        /e && e\.message/.test(pv));
+    check('and it compares every ready cell\'s manifest page against the sheet the' +
+          ' browser actually decoded: two requests, two cache entries, and a sheet' +
+          ' that re-baked under a cached manifest puts its rects off the page — a' +
+          ' character drawn as an opaque black square until a HARD reload',
+        /\[pair check\]/.test(pv) && /manifest page /.test(pv) &&
+        /image rect\(s\) outside it/.test(pv) && /hard reload/.test(pv) &&
+        /dd\.w !== cc\.man\.sheet\.w/.test(pv));
+    check('the census can only measure a real <img>: the element the viewer' +
+          ' decoded is stamped onto every texture it makes, and a Pixi source' +
+          ' wrapper (which has a width but is not drawable) is rejected rather' +
+          ' than reported',
+        /r\.tex\.__el = im; r\.el = im;/.test(pv) && /t\.__el = r\.tex\.__el/.test(pv) &&
+        /tex\.__el \|\| \(tex\.source && tex\.source\.source\)/.test(pv) &&
+        /typeof el\.tagName !== 'string'/.test(pv));
+    check('a texture with no element is reported as such, not as a clean row' +
+          ' (the first census sampled the wrapper, every sample threw, and' +
+          ' "suspicious: 0" read as a clean bill of health it never earned)',
+        /'no <img>'/.test(pv) && /NOT-DRAWABLE/.test(pv) &&
+        /with no <img> to trust \(unmeasured\)/.test(pv));
+    check('a walking tile whose stem already ENDS in a locomotion tail is not' +
+          ' probed with the tail appended again (six dead cells per character,' +
+          ' all unanswerable)',
+        /s === c\.stem \+ '_walk' \|\| s === c\.stem \+ '_run'/.test(pv) &&
+        /\/_\(walk\|run\)\(_\(left\|right\)\)\?\$\/i\.test\(c\.stem\)/.test(pv));
+    check('the report prints its own cache-buster, so a paste says which build' +
+          ' it came from (a report from the very build being debugged is' +
+          ' otherwise indistinguishable from a stale one)',
+        /script\[src\*="city-view-pixi"\]/.test(pv) && /' · build v' \+ vb/.test(pv) &&
+        /document\.querySelector &&/.test(pv));
+    check('the census samples EVERY group before printing and never cuts a' +
+          ' flagged one out of its own report (rows are capped, verdicts are' +
+          ' not, so a one-sprite black square cannot hide in the tail)',
+        /rows\.filter\(function \(r, i\) \{ return i < CAP \|\| r\.sus; \}\)/.test(pv) &&
+        /more groups \(none flagged\)/.test(pv));
+    check('the census verdicts the blit, not just the bytes: tint multiplies,' +
+          ' so light art under a near-black tint is flagged (and only on real' +
+          ' art, so the deliberately dark UNIT fills do not cry wolf)',
+        /\*\*\* TINT KILLS ART/.test(pv) && /blit lum /.test(pv) &&
+        /indexOf\('<unit white>'\) < 0 && g\.u\.indexOf\('<disc>'\) < 0/.test(pv) &&
+        /g\.alpha > 0\.5/.test(pv));
+    check('a hidden layer is not counted as on screen but IS named (LOD hides' +
+          ' whole containers, and a report that silently drops a layer is how a' +
+          ' black rectangle stayed unreported: the census has to say what it' +
+          ' did not walk)',
+        /c\.visible === false/.test(pv) && /hidden\.push\(nm\)/.test(pv) &&
+        /not on screen \(hidden layer\)/.test(pv) &&
+        /* the ordering that used to swallow it: a hidden container must reach
+           scan() so it can be named, so sprites are the only thing the child
+           loop drops, and it drops them AFTER recursing */
+        /if \(!s\.texture\) \{ scan\(s, label, depth \+ 1\); continue; \}\s*\n\s*if \(s\.visible === false\) continue;/.test(pv));
+    check('the census walks the whole stage, not the four containers it used to' +
+          ' hand-pick: a rectangle drawn by the ground fills, the bridges, the' +
+          ' LOD atlases or an overlay layer used to be absent from a report that' +
+          ' said "sprites on screen", and every layer it can name is labelled',
+        /scan\(app\.stage, '\?', 0\)/.test(pv) &&
+        !/scan\(sceneG, 'scene'\);/.test(pv) &&
+        /\[\[sceneG, 'scene'\], \[propG, 'prop'\], \[beachArtC, 'beach'\]/.test(pv) &&
+        /\[grassFillS, 'grass'\]/.test(pv) && /\[markG, 'markers'\]/.test(pv) &&
+        /across ' \+ cen\.layers \+ ' named layers/.test(pv) &&
+        /if \(depth > 8\) return;/.test(pv));
+    check('every texture the viewer makes outside texFor still carries its' +
+          ' element and a name, so the sixty road-sheet cells on the raised' +
+          ' layer are sampleable instead of printing "no element"',
+        /function texFrom\(el, name\)/.test(pv) &&
+        /roadHiTex = texFrom\(roadSheetImg/.test(pv) &&
+        /terrFlatCache = \{ img: fi\.img,\s*\n?\s*tex: texFrom\(fi\.img/.test(pv) &&
+        /UNIT = texFrom\(u/.test(pv));
+    check('a dot is told apart from a catalogue gap: the no-record tally only' +
+          ' counts frames where the art lookup actually ran (under LOD or with' +
+          ' art off everything is a dot by design), and a real one prints the' +
+          ' characters' + "' names rather than a bare count",
+        /sawArt && !as2/.test(pv) &&
+        /charBr\.dotWho && charBr\.dotWho\.length < 8/.test(pv) &&
+        /charBr\.looked \|\| !charBr\.dot/.test(pv));
+    check('the report asks the GPU what it was GIVEN, not just what the file' +
+          ' holds: renderer.extract.pixels (gl.readPixels) is compared against' +
+          ' the CPU sample, and an opaque black patch the source does not have' +
+          ' is an upload fault, which is the remaining suspect on this GPU',
+        /app\.renderer && app\.renderer\.extract/.test(pv) &&
+        /ex\.pixels\(\{ target: tex \}\)/.test(pv) &&
+        /\*\*\* GPU BLACK \(bytes fine: upload fault\)/.test(pv) &&
+        /if \(gpuBad && !cpuBad\)/.test(pv) &&
+        /\*\*\* GPU EMPTY/.test(pv));
+    check('a readback is bounded: a per-texture cap and a per-report budget keep' +
+          ' the Debug button from allocating hundreds of megabytes on a big' +
+          ' frame, and both say so in the row instead of failing silently',
+        /so\.width \* so\.height > dbgGpuCap/.test(pv) &&
+        /\(too big\)/.test(pv) && /dbgGpuBudget <= 0/.test(pv) &&
+        /skipped \(report budget\)/.test(pv) &&
+        /dbgGpuMemo\.length = 0;/.test(pv));
+    check('every frame of every ready cell is read back, not just the frame on' +
+          ' screen when the button was pressed — an animating cell lives in its' +
+          ' other frames most of the time, which is how a black frame survives' +
+          ' the census — including rects that fall off the decoded page and' +
+          ' frames naming an image the manifest does not have',
+        /\[cell frames\]/.test(pv) &&
+        /nf = Math\.min\(frs\.length, 24\)/.test(pv) &&
+        /rect off the decoded page/.test(pv) &&
+        /names image /.test(pv) && /frames read back on both sides/.test(pv));
+    const css = read('web/css/city-view.css');
+    check('the paste-back panel is styled (a textarea: copies with no JS, columns line up)',
+        /#dbgbox\.show \{ display: flex/.test(css) && /#dbgbox textarea \{/.test(css) &&
+        /white-space: pre/.test(css));
+}
 check('the card\'s preview cell still wins over the walk cell',
     /e\.dir && !\(charPreview &&/.test(pv));
 check('a walking cycle replays back to back; an idle keeps its play-and-hold',

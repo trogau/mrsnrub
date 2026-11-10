@@ -137,12 +137,22 @@
         var r = texs[url];
         if (r === undefined) {
             ALOAD.pend++; ALOAD.req++; aPaintSoon();  // streams through the asset pill
-            r = texs[url] = { st: 0, tex: null, subs: {} };
+            r = texs[url] = { st: 0, tex: null, subs: {}, el: null };
             var im = new Image();
             if (ALOAD.seen[url]) animReloads++;     // evicted, now asked for again
             im.onload = function () {
                 var dead = 0;
-                try { r.tex = PIXI.Texture.from(im); r.st = 1; }
+                try {
+                    r.tex = PIXI.Texture.from(im); r.tex.__u = url;
+                    /* the element itself, kept for the Debug census: Pixi 8's
+                       Texture.from(HTMLImageElement) re-keys the image into its
+                       own registry, so tex.source.source is a wrapper whose
+                       drawImage is refused and whose width is not the decoded
+                       page — sampling or measuring through it silently proves
+                       nothing (it made the first census print "sample
+                       TypeError" and a bogus `decoded` on every row) */
+                    r.tex.__el = im; r.el = im; r.st = 1;
+                }
                 catch (e) { r.st = -1; dead = 1; }
                 ALOAD.pend--;
                 if (artCounted(url)) { if (dead) ALOAD.artDead++; else ALOAD.artGot++; }
@@ -159,6 +169,19 @@
         return r.st === 1 ? r.tex : null;
     }
     function texDead(url) { return texs[url] && texs[url].st === -1; }
+    /* The textures made OUTSIDE texFor (the unit quad, the ground/road/dirt
+       sheets, the LOD atlases) get the same two stamps, so the Debug census can
+       name what is on screen and — the part that matters — sample it: Pixi's
+       own source wrapper is not drawable, so a texture without `__el` cannot be
+       measured at all and the census can only say `no element` (which is how
+       sixty road-sheet cells on the raised layer stayed the one blind spot
+       while every character and building was read back byte by byte). */
+    function texMade(t, el, name) {
+        try { if (t) { t.__el = el; if (!t.__u && name) t.__u = name; } }
+        catch (e) { /* a texture that refuses a stamp is not worth a report */ }
+        return t;
+    }
+    function texFrom(el, name) { return texMade(PIXI.Texture.from(el), el, name); }
     /* sub-texture of an already-decoded texture (filmstrip cells / sparse
        rects / sheet cells): cached per (url, rect) — the cells are ordinary
        Textures sharing the decoded source upload. */
@@ -170,8 +193,15 @@
         if (t === undefined) {
             t = r.tex;
             if (x || y || w !== r.tex.width || h !== r.tex.height)
+            {
                 t = new PIXI.Texture({ source: r.tex.source,
                                        frame: new PIXI.Rectangle(x, y, w, h) });
+                /* named for the Debug button's sprite census: which slice of
+                   which sheet a billboard on screen is blitting — and the
+                   element the pixels came from, for the same reason as above */
+                t.__u = url + ' @' + x + ',' + y + ' ' + w + 'x' + h;
+                t.__el = r.tex.__el;
+            }
             r.subs[key] = t;
         }
         return t;
@@ -193,7 +223,7 @@
     var grassTex = null;
     (function () {
         var im = new Image();
-        im.onload = function () { grassTex = PIXI.Texture.from(im); markDirty(); aBootSettled(); };
+        im.onload = function () { grassTex = texFrom(im, 'assets/grasstile.png'); markDirty(); aBootSettled(); };
         im.onerror = function () { aBootSettled(); /* keep flat grass */ };
         im.src = cityUrl('grasstile.png');
     })();
@@ -488,16 +518,20 @@
                bank art were measured there, and winter keeps base ground art
                (same reasoning as the green grass). The ice re-ship's river
                slots are unresearched. */
-            if (roadSheetImg && !roadHiTex) roadHiTex = PIXI.Texture.from(roadSheetImg);
-            if (iceSheetImg && !iceHiTex) iceHiTex = PIXI.Texture.from(iceSheetImg);
+            if (roadSheetImg && !roadHiTex) roadHiTex = texFrom(roadSheetImg, '<road sheet>');
+            if (iceSheetImg && !iceHiTex) iceHiTex = texFrom(iceSheetImg, '<ice sheet>');
             rivReady = !!roadHiTex;
             sheetReady = true;
         } catch (e) { sheetReady = false; }
         if (texs['__sheet']) dropTex('__sheet');     // stale slot textures
         if (texs['__pieces']) dropTex('__pieces');
         if (sheetReady) {                            // (re)register for subTex
-            texs['__sheet'] = { st: 1, tex: PIXI.Texture.from(sheetCanvas), subs: {} };
-            texs['__pieces'] = { st: 1, tex: PIXI.Texture.from(pieceCanvas), subs: {} };
+            texs['__sheet'] = { st: 1, tex: texMade(PIXI.Texture.from(sheetCanvas),
+                                                    sheetCanvas, '__sheet'),
+                                 subs: {}, el: sheetCanvas };
+            texs['__pieces'] = { st: 1, tex: texMade(PIXI.Texture.from(pieceCanvas),
+                                                     pieceCanvas, '__pieces'),
+                                   subs: {}, el: pieceCanvas };
         }
         if (started) buildGround();            // sheet sprites get their texture
         markDirty();
@@ -545,7 +579,7 @@
     (function () {
         var im = new Image();
         im.onload = function () {
-            dirtHiTex = PIXI.Texture.from(im);
+            dirtHiTex = texFrom(im, '<dirt sheet (XMAS)>');
             dirtReady = true;
             if (started) buildGround();        // cells pick up the texture
             markDirty();
@@ -598,7 +632,7 @@
                     o += 2;
                 }
                 cx.putImageData(id, 0, 0);
-                dirtBaseTex = PIXI.Texture.from(cv);
+                dirtBaseTex = texFrom(cv, '<dirt sheet>');
                 dirtBaseReady = true;
                 if (started) buildGround();        // cells pick up the texture
                 markDirty();
@@ -3273,9 +3307,10 @@
        JSON manifest per cell (sliced with subTex, timed off the cell's own
        delay_ms, placed per-frame at x_off/y_off from the character origin —
        the engine's own rule) instead of the pre-baked per-frame PNGs under
-       assets/characters. While a cell is loading or switched off, the
-       pre-baked path draws; when the endpoint REJECTS a cell (404/422 or a
-       dead sheet), the character instead gets a red wireframe box (errors
+       assets/characters. While a cell is LOADING the sprite is not drawn at
+       all (see emitChar: no request to the art tree either); switched off,
+       the pre-baked path draws. When the endpoint REJECTS a cell (404/422 or
+       a dead sheet), the character instead gets a red wireframe box (errors
        stay visible for triage — console names each cell). src: 'pool'
        (citypool) | 'pack'. Serves both the map sprites and the family-strip
        panel tiles (opts.dynFor, which outlines dead tiles in red). */
@@ -3283,6 +3318,11 @@
     var dynSrc = DYNB.src || 'pool';
     var dynCells = {};                    // slug -> {st: 0 loading|1 ok|-1 dead, man, url, err}
     var dynErrLive = 0;                   // wireframe boxes this frame
+    var dynLog = [];                      // last named endpoint answers, for the report
+    function dynSay(line) {
+        dynLog.push(line);
+        if (dynLog.length > 40) dynLog.shift();
+    }
     window.__CV_DYNB = { cfg: DYNB, cells: dynCells };    // harness/debug hook
     function dynDead(d, slug, msg) {
         d.st = -1;
@@ -3290,6 +3330,7 @@
             d.err = msg || 'load failed';
             ALOAD.dynErr++;
             console.warn('[dynbcell] ' + slug + ': ' + d.err);
+            dynSay('[dynbcell] ' + slug + ': ' + d.err);
             aPaintSoon();
         }
         markDirty();
@@ -3414,6 +3455,7 @@
         if (dynCWarn[msg]) return;
         dynCWarn[msg] = 1;
         console.warn('[dyn-city] ' + msg);
+        dynSay('[dyn-city] ' + msg);
     }
     function cityBox(stem, sp, px, py, k, msg) {
         dynErrBox(px, py, sp, k);           // red wireframe over the lot
@@ -3720,14 +3762,14 @@
         u.width = u.height = 1;
         u.getContext('2d').fillStyle = '#fff';
         u.getContext('2d').fillRect(0, 0, 1, 1);
-        UNIT = PIXI.Texture.from(u);
+        UNIT = texFrom(u, '<unit white>');
         /* small AA disc for the manholes */
         var d = document.createElement('canvas');
         d.width = d.height = 24;
         var dc = d.getContext('2d');
         dc.fillStyle = '#fff';
         dc.beginPath(); dc.arc(12, 12, 11, 0, 6.2832); dc.fill();
-        DISC = PIXI.Texture.from(d);
+        DISC = texFrom(d, '<disc>');
 
         groundC = new PIXI.Container();
         featC = new PIXI.Container();       // flat feature quads + sheet cells
@@ -4418,7 +4460,7 @@
                 if (!objHidden[bAtlas.cats[ci]])
                     fc.drawImage(bAtlas.byCat[bAtlas.cats[ci]], 0, 0);
             bFlatSig = sig; bFlatDirty = false;
-            if (!bFlatTex) bFlatTex = PIXI.Texture.from(bFlatCanvas);
+            if (!bFlatTex) bFlatTex = texFrom(bFlatCanvas, '<building flats>');
             else bFlatTex.source.update();
         }
         return { img: bFlatCanvas, x0: bAtlas.x0, y0: bAtlas.y0,
@@ -4428,7 +4470,7 @@
     /* ============================ render ===================================== */
     var DIAG = {
         mode: 'Pixi', ms: 0, fps: 0, maxMs: 0, anims: 0, charAnims: 0,
-        pool: 0, ver: '2026-11-04'
+        pool: 0, ver: '2026-11-06'
     };
     window.__CV_DIAG = DIAG;
     window.__CV_VER = DIAG.ver;                    // console sanity check
@@ -4447,6 +4489,14 @@
     };
     var peopleDots = 0;
     var walkLive = 0;                     // walking characters on screen this frame
+    /* which branch every on-screen character took in the LAST rendered frame
+       (the Debug button's [people pass] block, see __CV_DEBUG): drawn from a
+       .bcell sheet cell / a walk cell / held because its sheet is still
+       decoding / red wireframe / the shipped assets/characters PNG / an asset
+       with no png at all / below the readability floor / a dot. `seen` minus
+       the rest is how many were held. */
+    var charBr = { seen: 0, sheet: 0, walk: 0, wire: 0, png: 0, nopng: 0,
+                   tiny: 0, dot: 0, norec: 0, dotWho: [] };
 
     function render() {
         var t0 = performance.now();
@@ -4494,7 +4544,8 @@
             var fi = terrain.flatInfo();
             if (fi) {
                 if (!terrFlatCache || terrFlatCache.img !== fi.img)
-                    terrFlatCache = { img: fi.img, tex: PIXI.Texture.from(fi.img) };
+                    terrFlatCache = { img: fi.img,
+                    tex: texFrom(fi.img, '<terrain flats>') };
                 if (terrFlatDirty) { terrFlatCache.tex.source.update(); terrFlatDirty = false; }
                 terrFlatS.texture = terrFlatCache.tex;
                 terrFlatS.position.set(fi.x0, fi.y0);
@@ -4711,6 +4762,10 @@
         peopleDots = 0;
         walkLive = 0;
         dynErrLive = 0;
+        charBr.seen = charBr.sheet = charBr.walk = charBr.wire = charBr.png =
+            charBr.nopng = charBr.tiny = charBr.dot = charBr.norec = 0;
+        charBr.looked = 0;
+        charBr.dotWho = [];                  // names, for the no-record case
         if (dynErrG) dynErrG.clear();
         if (!objHidden.people) {
             var ch = M.chars;
@@ -4813,9 +4868,12 @@
             var wmir = !!as2.mir;
             emitSpr(dt, e.x + (wmir ? -(df.x_off + dim2.w) : df.x_off) * kc,
                     e.y + df.y_off * kc, dim2.w * kc, dim2.h * kc, wmir);
+            if (loop) charBr.walk++; else charBr.sheet++;
             return true;
         }
         function emitChar(e) {
+            charBr.seen++;
+            var sawArt = 0;                  // did we get to look the art up at all?
             if (artC && !lod) {
                 /* Walking: the pool's <skin>_front_walk / _back_walk stride
                    cell, chosen by the movement vector AS DRAWN so Rotate and
@@ -4828,30 +4886,67 @@
                         ? walkArtOf(e.c, e.dir, e.i) : null;
                 if (wk && emitCharDyn(e, wk, true)) return;
                 var as2 = charArtOf(e.c, e.i);
+                sawArt = 1;
+                charBr.looked = 1;           // the lookup ran this frame at all
+                /* branch tallies for the Debug report (see charBr): art known
+                   but below the readability floor, and an asset with no png at
+                   all, which the endpoint can never be asked about */
+                if (as2 && as2.w * kc < 12 && as2.h * kc < 12) charBr.tiny++;
+                else if (as2 && !as2.png) charBr.nopng++;
                 if (as2 && !(as2.w * kc < 12 && as2.h * kc < 12)) {
                     var dv = dynCell(as2);
-                    if (dv && (dv.st === -1 || (dv.st === 1 && texDead(dv.url)))) {
-                        // endpoint said no (or the sheet died): flag the spot
-                        // with a red wireframe instead of hiding it behind
-                        // pre-baked art — see console for the cell's error
-                        dynErrLive++;
-                        dynErrBox(e.x, e.y, as2, kc);
-                        return;
+                    if (dv) {
+                        if (dv.st === -1 || (dv.st === 1 && texDead(dv.url))) {
+                            // endpoint said no (or the sheet died): flag the spot
+                            // with a red wireframe instead of hiding it behind
+                            // pre-baked art — see console for the cell's error
+                            dynErrLive++;
+                            charBr.wire++;
+                            dynErrBox(e.x, e.y, as2, kc);
+                            return;
+                        }
+                        if (emitCharDyn(e, as2, false)) return;
+                        /* Still loading — the manifest has not answered, or the
+                           sheet has not decoded. The character is simply NOT
+                           DRAWN for now: no pre-baked PNG is asked for, so a
+                           character whose art comes from the endpoint costs
+                           the art tree zero requests (the same rule the family
+                           card follows, where a pending tile is left empty).
+                           It appears as soon as its sheet decodes; the shipped
+                           file below stays the fallback for the cases an
+                           endpoint cannot serve — the path switched off for
+                           A/B (VIEWER_DYNAMIC_BCELL.characters = false), or a
+                           manifest that is ready but names an image its sheet
+                           does not carry. */
+                        if (!dynReady(as2)) return;
                     }
-                    if (emitCharDyn(e, as2, false)) return;
                     var url = B + 'assets/characters/' +
                         (charPreview && charPreview.cell === as2
                             ? charPreviewFrame(as2)
                             : charFrameFile(as2, e.c[0] + ':' + e.i, kc));
                     if (charAnimating(as2, kc)) charAnimLive++;
                     var t = texFor(url);
-                    if (t) { emitSpr(t, e.x - as2.anchor[0] * kc,
+                    if (t) { charBr.png++; emitSpr(t, e.x - as2.anchor[0] * kc,
                                      e.y - as2.anchor[1] * kc,
                                      as2.w * kc, as2.h * kc); return; }
                 }
             }
             emitDot(e.x, e.y, rpx, dotHex);
             peopleDots++;
+            charBr.dot++;
+            /* a dot is three different stories and the count cannot tell them
+               apart; the one nobody can read off the report is "the save has
+               this character, the catalogue has no record of them at all" —
+               named, so that content gap can be closed a name at a time rather
+               than guessed at from a bare `save rows with no catalog entry`.
+               Only when the lookup actually ran: under LOD, or with art off,
+               everything is a dot by design and nothing was checked. */
+            if (sawArt && !as2) {
+                charBr.norec++;
+                if (charBr.dotWho && charBr.dotWho.length < 8)
+                    charBr.dotWho.push((M.charNames[e.c[0]] || '(unnamed)') +
+                                       '#' + e.c[0]);
+            }
         }
         function emitBucket(ei) {
             var bk = buck && buck[ei];
@@ -5957,6 +6052,17 @@
                                 String(c.png || '').replace(/\.png$/i, '')
                             ].filter(function (s) {
                                 if (!s || seen[s]) return false;
+                                /* A stem that already ENDS in a locomotion tail
+                                   IS the walk cell: `talkingkrustydoll_back_walk_left`
+                                   + `_walk` is a cell no bake can ever answer,
+                                   and it cost six dead cells (six needless
+                                   `rejected` on the Debug report's config line)
+                                   for a character whose art was fine. Mid-name
+                                   "walk" is the other thing — the activity stem
+                                   drhotdog_walk_the_dog_active_1 still wants
+                                   the guess. */
+                                if ((s === c.stem + '_walk' || s === c.stem + '_run') &&
+                                    /_(walk|run)(_(left|right))?$/i.test(c.stem)) return false;
                                 seen[s] = 1; return true;
                             }).map(function (s) { return { png: s + '.png' }; }) };
                         }
@@ -6775,6 +6881,648 @@
             '<b>' + buildings.length + '</b> drawn · ' +
             '<b id="perfread">…</b>';              // frame diagnostics (loop)
     }
+
+    /* ---- debug report (the Debug button) ------------------------------------
+       One click instead of a dozen console one-liners. It prints what the page
+       is configured to do, which branch every on-screen character took in the
+       LAST rendered frame (charBr), every .bcell cell that is not ready and
+       why, and a census of what the scene pool is blitting right now —
+       including a CPU readback of each sprite's own frame rect: how much of it
+       is opaque, and how bright those pixels are. That last pair separates
+       "the served bytes are black" from "the bytes are fine and the GPU is
+       showing black", which nothing else on the page can see. The button
+       copies it and opens it in a panel; window.__CV_DEBUG() returns the same
+       text for the console. */
+    var dbgSC = null, dbgSX = null, dbgTries = 0;
+    function dbgCtx() {
+        /* One shared 2D context. At the browser's canvas-context budget
+           getContext returns NULL rather than throwing, which surfaced as an
+           identical "sample TypeError" on every census row — so the null is
+           handled here and named in the report instead. */
+        if (dbgSX) return dbgSX;
+        if (dbgTries >= 2) return null;
+        dbgTries++;
+        var c = document.createElement('canvas'), x = null;
+        c.width = c.height = 24;
+        try { x = c.getContext('2d', { willReadFrequently: true }); }
+        catch (e) { x = null; }
+        if (!x) { try { x = c.getContext('2d'); } catch (e2) { x = null; } }
+        if (!x) return null;
+        dbgSC = c; dbgSX = x;
+        return x;
+    }
+    function dbgElDims(tex) {
+        /* the decoded IMAGE behind a texture — the truth about what the browser
+           actually fetched for that URL. It has to be the element WE created
+           (`__el`): Pixi's `source.source` is a registry wrapper, not a drawable
+           and not the page's size. Pass a texture, get null when there is no
+           element to trust. */
+        try {
+            var el = tex && (tex.__el || (tex.source && tex.source.source));
+            if (!el || typeof el.tagName !== 'string') return null;   // wrapper
+            var w = el.naturalWidth || el.width || 0,
+                h = el.naturalHeight || el.height || 0;
+            var u = String(el.currentSrc || el.src || ''), nm = '';
+            if (u) {
+                var m = u.match(/[?&](?:name|png)=([^&]+)/);   // the endpoint's
+                nm = m ? m[1].replace(/%20/g, ' ')             // own identity,
+                       : u.split('/').pop().split('?')[0];     // else a filename
+                if (nm.length > 44) nm = nm.slice(0, 44);
+            }
+            return { w: w, h: h, tag: el.tagName, el: el, drawable: !!(w && h) &&
+                     el.complete !== false,
+                     src: nm + (el.complete === false ? ' (decoding)' : '') };
+        } catch (e) { return null; }
+    }
+    function dbgStats(d, w, h, fx, fy, fw, fh) {
+        /* coverage + mean brightness over a sub-rect of an RGBA buffer */
+        var x0 = Math.max(0, Math.floor(fx)), y0 = Math.max(0, Math.floor(fy)),
+            x1 = Math.min(w, Math.ceil(fx + fw)), y1 = Math.min(h, Math.ceil(fy + fh));
+        if (x1 <= x0 || y1 <= y0) return 'rect off page (' + w + 'x' + h + ')';
+        var n = 0, vis = 0, lum = 0, x, y, i;
+        for (y = y0; y < y1; y++) for (x = x0; x < x1; x++) {
+            i = (y * w + x) * 4; n++;
+            if (d[i + 3] > 128) { vis++; lum += (d[i] + d[i + 1] + d[i + 2]) / 3; }
+        }
+        return { cov: Math.round(100 * vis / n) / 100,
+                 lum: vis ? Math.round(lum / vis) : null };
+    }
+    function dbgSampleRect(el, x, y, w, h) {
+        /* 24x24 CPU readback of one rect of a decoded element */
+        try {
+            var c = dbgCtx();
+            if (!c) return 'no 2d ctx (' + document.getElementsByTagName('canvas')
+                                .length + ' canvases alive)';
+            c.clearRect(0, 0, 24, 24);
+            c.drawImage(el, x, y, w, h, 0, 0, 24, 24);
+            return dbgStats(c.getImageData(0, 0, 24, 24).data, 24, 24, 0, 0, 24, 24);
+        } catch (e) { return 'sample ' + ((e && e.message) || (e && e.name) || e); }
+    }
+    /* ---- GPU readback: what the graphics card was actually given -----------
+       The <img> can only ever say the FILE is fine. A sprite that samples clean
+       on the CPU and lands black on screen has an UPLOAD problem, and on this
+       machine (ANGLE / freedreno FD618) that is exactly where such problems
+       have bitten before. The only way to tell the two apart from inside the
+       page is to ask WebGL for the bytes back: renderer.extract.pixels() ends
+       in gl.readPixels, so what this measures is what would be blitted. */
+    var dbgGpuCap = 2500000;             // per texture: ~10 MB readback
+    var dbgGpuBudget = 12000000;         // per report: ~48 MB of readPixels
+    var dbgGpuMemo = [];
+    function dbgGpuPixels(tex) {
+        var so = tex && tex.source, i, m;
+        if (!so || !so.width || !so.height) return { err: 'no source' };
+        if (so.destroyed) return { err: 'DESTROYED' };
+        if (so.width * so.height > dbgGpuCap)
+            return { err: 'skipped ' + so.width + 'x' + so.height + ' (too big)' };
+        if (dbgGpuBudget <= 0) return { err: 'skipped (report budget)' };
+        for (i = 0; i < dbgGpuMemo.length; i++)
+            if (dbgGpuMemo[i].s === so) return dbgGpuMemo[i];
+        m = { s: so, d: null, w: 0, h: 0, err: null };
+        dbgGpuMemo.push(m);
+        if (dbgGpuMemo.length > 24) dbgGpuMemo.shift();
+        try {
+            var ex = app.renderer && app.renderer.extract;
+            if (!ex || !ex.pixels) { m.err = 'no extract'; return m; }
+            var r = ex.pixels({ target: tex });
+            if (!r || !r.pixels) { m.err = 'no pixels'; return m; }
+            m.d = r.pixels; m.w = r.width; m.h = r.height;
+            dbgGpuBudget -= m.w * m.h;
+        } catch (e) { m.err = 'gpu ' + ((e && e.message) || (e && e.name) || e); }
+        return m;
+    }
+    function dbgGpuStat(tex, rect) {
+        var m = dbgGpuPixels(tex);
+        if (m.err) return m.err;
+        var f = rect || (tex && tex.frame) ||
+                { x: 0, y: 0, width: m.w, height: m.h };
+        return dbgStats(m.d, m.w, m.h, f.x, f.y, f.width, f.height);
+    }
+    function dbgSample(tex) {
+        /* 24x24 CPU readback of the texture's OWN frame rect, from the element
+           we decoded it into: a sprite that samples as opaque black here has bad
+           bytes behind it; one that samples fine but draws black is an
+           upload/GPU problem (see dbgGpuStat for the other half) */
+        var d = dbgElDims(tex);
+        if (!d) return 'no element';
+        if (!d.drawable) return 'not decoded' + (d.src ? ' (' + d.src + ')' : '');
+        var f = tex.frame || { x: 0, y: 0, width: d.w, height: d.h };
+        return dbgSampleRect(d.el, f.x, f.y, f.width, f.height);
+    }
+    function dbgTexLine(tex) {
+        /* one texture, as the census prints it: identity, upload state, the
+           <img> its pixels came from, what Pixi thinks the page is, the sub-rect
+           being blitted, and the CPU pixel sample of that rect */
+        var s = { u: (tex && tex.__u) || (tex === UNIT ? '<unit white>'
+                                                       : '<untracked>'),
+                  st: null, el: null, src: null, frm: null,
+                  sm: dbgSample(tex) };
+        try {
+            var r = tex && tex.__u ? texs[String(tex.__u).split(' @')[0]] : null;
+            s.st = r ? r.st : (tex && tex.valid === false ? 'invalid' : '?');
+            var d = dbgElDims(tex);
+            if (d) s.el = d.tag + ' ' + d.w + 'x' + d.h + (d.src ? ' ' + d.src : '')
+                       + (d.drawable ? '' : ' NOT-DRAWABLE');
+            else s.el = 'no <img>' + (tex && tex.source && tex.source.source
+                       ? ' (pixi ' + ((tex.source.source.constructor &&
+                          tex.source.source.constructor.name) || '?') + ')' : '');
+            var so = tex && tex.source;
+            if (so) {
+                s.src = so.width + 'x' + so.height;   // Pixi's claim, for contrast
+                if (so.destroyed) s.st = 'DESTROYED';  // a sprite whose texture
+            }                                          // was freed samples black
+            var f = tex && tex.frame;
+            if (f) s.frm = f.x + ',' + f.y + ' ' + f.width + 'x' + f.height;
+        } catch (e) { s.st = 'probe ' + ((e && e.message) || (e && e.name) || e); }
+        return s;
+    }
+    function dbgCensus() {
+        /* every visible sprite in the stage, grouped by what actually
+           gets blitted: texture + sub-rect + tint + effective alpha. Grouping on
+           the last two is not decoration — a sprite is the product of the pixels
+           and the tint, so the group is the only honest thing to verdict, and a
+           black square can be made by either half. */
+        var by = {}, order = [], vis = 0, layers = 0, hidden = [];
+        function hex(n) { return '#' + ('000000' + ((n >>> 0) & 0xffffff)
+                                                   .toString(16)).slice(-6); }
+        /* The census used to walk four hand-picked containers while claiming to
+           describe the frame — so a rectangle drawn by the ground fills, the
+           bridges, the LOD atlases or any overlay layer was simply absent from a
+           report that said "sprites on screen", and "suspicious: 0" again meant
+           less than it read. It walks the stage now, and says which layer each
+           sprite belongs to. */
+        var NAMED = [[sceneG, 'scene'], [propG, 'prop'], [beachArtC, 'beach'],
+                     [raisedG, 'raised'], [groundC, 'ground'], [featC, 'feat'],
+                     [avenC, 'avenue'], [fillC, 'fill'], [bridgeG, 'bridge'],
+                     [bridgeNearG, 'bridge-near'], [terrFlatS, 'lod-terr'],
+                     [buildFlatS, 'lod-build'], [seaFillS, 'sea'],
+                     [grassFillS, 'grass'], [fragG, 'fragments'],
+                     [beachBgG, 'beach-bg'], [beachCloudG, 'beach-cloud'],
+                     [walkG, 'walks'], [dynErrG, 'dynErr'], [gridG, 'grid'],
+                     [markG, 'markers'], [outG, 'outside'],
+                     [txtGrid, 'txt-grid'], [txtMark, 'txt-mark']];
+        function named(c) {
+            for (var i = 0; i < NAMED.length; i++)
+                if (NAMED[i][0] === c) return NAMED[i][1];
+            return null;
+        }
+        function scan(c, label, depth) {
+            if (!c || !c.children) return;
+            var nm = named(c);
+            if (nm) label = nm;
+            if (c.visible === false) {          // an entire layer can be hidden
+                if (nm) hidden.push(nm);
+                return;
+            }
+            if (nm) layers++;
+            if (depth > 8) return;              // pools are flat; this is a guard
+            for (var i = 0; i < c.children.length; i++) {
+                var s = c.children[i];
+                /* containers go back into scan even when hidden — that is how a
+                   whole layer switched off (LOD, art off) gets NAMED in the
+                   report instead of vanishing from it; only sprites are dropped */
+                if (!s.texture) { scan(s, label, depth + 1); continue; }
+                if (s.visible === false) continue;
+                vis++;
+                var t = s.texture;
+                var u = t.__u || (t === UNIT ? '<unit white>' : '<untracked>');
+                var w = Math.round(s.width), h = Math.round(s.height);
+                var tn = (typeof s.tint === 'number') ? ((s.tint >>> 0) & 0xffffff)
+                                                       : 0xffffff;
+                var al = (typeof s.worldAlpha === 'number') ? s.worldAlpha
+                     : (typeof s.alpha === 'number' ? s.alpha : 1);
+                var ab = Math.round(al * 10) / 10;
+                var tint = (tn === 0xffffff) ? '' : ' ' + hex(tn);
+                var key = u + tint + ' a' + ab + '|' + w + 'x' + h + '|' + label;
+                var g = by[key];
+                if (!g) {
+                    g = by[key] = { n: 0, u: u + tint + (ab < 1 ? ' a' + ab : ''),
+                                    w: w, h: h, tex: t, layer: label,
+                                    tint: tn, alpha: al };
+                    order.push(g);
+                }
+                g.n++;
+            }
+        }
+        scan(app.stage, '?', 0);
+        order.sort(function (a, b) { return b.n - a.n; });
+        return { vis: vis, groups: order, layers: layers, hidden: hidden };
+    }
+    window.__CV_DEBUG = function () {
+        var L = [], i, k;
+        dbgGpuMemo.length = 0;           // one report = one snapshot of the GPU
+        function p(s) { L.push(s); }
+        function j(o) { try { return JSON.stringify(o); } catch (e) { return String(o); } }
+        function n1(o, f) { try { return o[f]; } catch (e) { return '?'; } }
+        function pad(n, w) { n = String(n); while (n.length < w) n = ' ' + n; return n; }
+
+        p('=== City View debug report ===');
+        /* the script's own cache-buster: a paste can otherwise be from a build
+           that has since been fixed, and nothing else in it says so */
+        var scr = (document.querySelector &&
+                   document.querySelector('script[src*="city-view-pixi"]')) || null,
+            vb = scr ? (String(scr.src).split('?v=')[1] || 'none') : '?';
+        p('viewer ' + DIAG.ver + ' · build v' + vb + ' · pixi ' +
+          (n1(PIXI, 'VERSION') || '?') + ' · ' + new Date().toISOString());
+        p('url     ' + location.href);
+        p('ua      ' + navigator.userAgent);
+        try {
+            p('view    ' + window.innerWidth + 'x' + window.innerHeight +
+              ' dpr ' + (window.devicePixelRatio || 1) + ' (render ' +
+              (n1(app.renderer, 'resolution') || '?') + ') · stage ' + VW + 'x' + VH +
+              ' · renderer ' + (n1(app.renderer, 'type') || '?'));
+        } catch (e) { p('view    (no renderer yet)'); }
+        var gl = null;
+        try { gl = (app.renderer && app.renderer.gl) || null; } catch (e) { /* no gl */ }
+        if (!gl) { try { var cc = document.createElement('canvas');
+                        gl = cc.getContext('webgl2') || cc.getContext('webgl'); }
+                   catch (e) { /* no gl */ } }
+        if (gl) {
+            var mts = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+            p('gpu     MAX_TEXTURE_SIZE=' + mts + ' · max cube ' +
+              (gl.getParameter(gl.MAX_CUBE_MAP_TEXTURE_SIZE) || '?'));
+            try {
+                var di = gl.getExtension('WEBGL_debug_renderer_info');
+                if (di) p('        ' + gl.getParameter(di.UNMASKED_VENDOR_WEBGL) +
+                          ' / ' + gl.getParameter(di.UNMASKED_RENDERER_WEBGL));
+            } catch (e) { /* masked */ }
+            if (mts < 8192)
+                p('        !! api/bcell.php may serve a sheet up to 8192 wide: over' +
+                  ' this limit WebGL uploads INCOMPLETE and samples OPAQUE BLACK');
+        } else p('gpu     no WebGL handle (software renderer? canvas fallback?)');
+
+        p('');
+        p('[config]');
+        p(' art ' + artMode + ' · anim ' + (animOn ? 'on' : 'off') +
+          ' · season ' + SEASON.mode + ' · idle walk ' +
+          (wanderOn ? 'on' : 'off') + ' · sound ' + (soundOn ? 'on' : 'off') +
+          ' · lod ' + (CAM.scale(cam) < BUILD_LOD_S ? 'YES (buildings flat)' : 'no') +
+          ' at scale ' + Math.round(CAM.scale(cam) * 100) / 100);
+        p(' charMan ' + (charMan ? 'loaded' : 'MISSING — the map can only draw dots') +
+          (charMan ? ' · ' + Object.keys(charMan.characters || {}).length +
+                     ' characters · ' + Object.keys(charMan.assets || {}).length +
+                     ' assets' : ''));
+        var noPng = 0, noRec = 0;
+        if (charMan) {
+            for (k in charMan.assets) if (!charMan.assets[k].png) noPng++;
+            for (i = 0; i < M.chars.length; i++)
+                if (!charMan.characters[M.chars[i][0]]) noRec++;
+        }
+        p(' assets with no png: ' + noPng + ' (those can never be asked of the' +
+          ' endpoint) · save rows with no catalog entry: ' + noRec);
+        p(' bcell   ' + j(DYNB) + ' → ' +
+          (DYNB.characters ? 'endpoint ON (src=' + dynSrc + ')'
+                           : 'OFF — shipped PNGs (the A/B hatch)') +
+          ' · ' + ALOAD.dynErr + ' rejected');
+        p(' city    ' + j(dynC) + ' · preflight ' + (DINV ? 'ok' : 'no') +
+          ' · fails ' + j(dynCFail) + ' · boxed ' + Object.keys(dynCBox).length);
+        p(' film    anim registry ' + (window.__CV_ANIM ? Object.keys(window.__CV_ANIM).length : 0) +
+          ' slugs');
+
+        p('');
+        p('[people pass — last rendered frame]');
+        var held = Math.max(0, charBr.seen - charBr.sheet - charBr.walk -
+                             charBr.wire - charBr.png - charBr.dot);
+        function br(n, label, note) {
+            p('  ' + pad(n, 5) + '  ' + label + (note ? '  ' + note : ''));
+        }
+        br(charBr.seen, 'characters on screen');
+        br(charBr.sheet, 'drawn from a .bcell sheet cell');
+        br(charBr.walk, 'drawn from a .bcell walk cell');
+        br(held, 'HELD: sheet still loading', '(nothing drawn, nothing asked of assets/)');
+        br(charBr.wire, 'red wireframe: the endpoint said no');
+        br(charBr.png, 'shipped assets/characters PNG');
+        br(charBr.dot, 'dot only', '(no art known, no png, or below the floor)');
+        br(charBr.tiny, '  of which below the readability floor');
+        br(charBr.nopng, '  of which the asset has no png at all');
+        /* the third dot story, and the only one that is a CONTENT gap: the save
+           has the character, the catalogue has no record to draw them from.
+           Named, because a count tells the next person nothing they can act on */
+        br(charBr.norec, '  of which the catalogue has no record at all' +
+           (charBr.looked || !charBr.dot ? '' : ' (no lookup made: art off or LOD)'),
+           charBr.dotWho && charBr.dotWho.length
+               ? charBr.dotWho.join(', ') +
+                 (charBr.norec > charBr.dotWho.length ? ' …' : '') : '');
+        p('  dots ' + peopleDots + ' · wireframes ' + dynErrLive +
+          ' · animating ' + charAnimLive + ' · walking ' + walkLive);
+
+        p('');
+        p('[bcell cells]');
+        var c1 = 0, c0 = 0, cm1 = 0, dead = [], one = null;
+        for (k in dynCells) {
+            var d = dynCells[k];
+            if (d.st === 1) { c1++; if (!one) one = { k: k, d: d }; continue; }
+            if (d.st === -1) { cm1++; if (dead.length < 20) dead.push(k + ': ' + d.err); }
+            else c0++;
+        }
+        p(' ' + (c1 + c0 + cm1) + ' cells — ready ' + c1 + ' · loading ' + c0 +
+          ' · dead ' + cm1);
+        for (i = 0; i < dead.length; i++) p('   dead  ' + dead[i]);
+        if (c0) {
+            var loading = 0;
+            for (k in dynCells) if (dynCells[k].st === 0 && loading < 10) {
+                p('   wait  ' + k); loading++;
+            }
+        }
+        if (one) {
+            var m = one.d.man, sh = m && m.sheet;
+            p(' sample ' + one.k);
+            p('   url    ' + one.d.url);
+            p('   sheet  ' + (sh ? sh.w + 'x' + sh.h : '?') + ' · ' +
+              (m ? m.frames.length : '?') + ' frames · ' +
+              (m ? m.images.length : '?') + ' images · extent ' +
+              one.d.ex + 'x' + one.d.ey);
+            if (m && m.images[0])
+                p('   img[0] ' + m.images[0].x + ',' + m.images[0].y + ' ' +
+                  m.images[0].w + 'x' + m.images[0].h + '  ' +
+                  j(dbgSample(subTex(one.d.url, m.images[0].x, m.images[0].y,
+                                     m.images[0].w, m.images[0].h))));
+            p('   sheet  ' + j(dbgTexLine(texs[one.d.url] && texs[one.d.url].tex)));
+        } else p(' (no ready cell to sample)');
+
+        /* The pair check. A cell's manifest and its sheet are TWO requests, and
+           bcell.php answers both with `Cache-Control: public, max-age=31536000,
+           immutable` off a URL that does not change when the bake does. The
+           ~200 KB sheet PNGs are what the browser evicts and the few-KB
+           manifests are what survive, so the viewer can be holding manifest
+           generation N beside sheet generation N+1 — whose rects then fall
+           outside the page it is actually slicing, and sampling outside an
+           uploaded texture is how a sprite turns opaque black and stays black
+           until a HARD reload (which re-asks both halves). Nothing else on the
+           page can see this, because each half is individually valid. */
+        p('');
+        p('[pair check] manifest page vs the sheet the browser actually decoded');
+        var pkN = 0, pkChecked = 0, pkNo = 0, stale = [];
+        for (k in dynCells) {
+            if (pkN++ > 400) break;
+            var cc = dynCells[k];
+            if (!cc || cc.st !== 1 || !cc.man || !cc.man.sheet || !cc.url) continue;
+            var rr = texs[cc.url];
+            if (!rr || rr.st !== 1 || !rr.tex) continue;
+            var dd = dbgElDims(rr.tex);
+            if (!dd || !dd.w) { pkNo++; continue; }   // no element to trust
+            pkChecked++;
+            if (dd.w !== cc.man.sheet.w || dd.h !== cc.man.sheet.h) {
+                var oob = 0, ii;
+                for (ii = 0; ii < (cc.man.images || []).length; ii++) {
+                    var q = cc.man.images[ii];
+                    if (q.x + q.w > dd.w || q.y + q.h > dd.h) oob++;
+                }
+                stale.push(cc.man.name + ': manifest page ' + cc.man.sheet.w +
+                           'x' + cc.man.sheet.h + ' vs sheet ' + dd.w + 'x' +
+                           dd.h + (oob ? ' — ' + oob + ' image rect(s) outside it'
+                                       : '') +
+                           (dd.src ? ' [' + dd.src + ']' : ''));
+            }
+        }
+        p(' ' + pkChecked + ' paired cells checked' + (pkNo ? ' · ' + pkNo +
+          ' with no <img> to trust (unmeasured)' : '') + ' · ' + stale.length +
+          ' stale pair' + (stale.length === 1 ? '' : 's'));
+        for (i = 0; i < Math.min(stale.length, 12); i++) p('   PAIR  ' + stale[i]);
+        if (stale.length) p('   => the endpoint re-baked this cell since the manifest was' +
+                            ' cached; hard reload (Ctrl+Shift+R) re-asks both halves');
+
+        p('');
+        p('[sprites on screen — whole stage]');
+        var cen = dbgCensus();
+        p(' ' + cen.vis + ' visible sprites in ' + cen.groups.length + ' groups' +
+          ' across ' + cen.layers + ' named layers (the scene pool alone holds ' +
+          pool.length + ')');
+        /* naming what was NOT walked is the point: a clean census of four layers
+           is what let a black rectangle go unreported twice */
+        if (cen.hidden.length)
+            p(' not on screen (hidden layer): ' + cen.hidden.join(', '));
+        /* verdicts first, printing second: the census exists to find black
+           squares, so a group must never be able to hide in the print cut.
+           Every group is sampled (a 24x24 readback each, cheap); only the rows
+           are capped, and a flagged group below the cap is still printed. */
+        var rows = cen.groups.map(function (g) {
+            var t = dbgTexLine(g.tex), sm = t.sm, flag = '', sus = 0;
+            /* the two synthetic fills are deliberately whatever colour they are
+               tinted to; everything else — including an untracked texture, which
+               is exactly what we are hunting — is art that should show pixels */
+            var art = g.u.indexOf('<unit white>') < 0 && g.u.indexOf('<disc>') < 0;
+            var tl = Math.round(((0.2126 * ((g.tint >> 16) & 255) +
+                                 0.7152 * ((g.tint >> 8) & 255) +
+                                 0.0722 * (g.tint & 255)) / 255) * 100) / 100;
+            if (typeof sm === 'object' && sm) {
+                if (sm.lum !== null && sm.lum < 20 && sm.cov > 0.35)
+                    { flag = '  *** OPAQUE NEAR-BLACK'; sus = 1; }
+                else if (sm.cov === 0) flag = '  (fully transparent)';
+                else if (art && sm.lum !== null && sm.lum >= 60 && sm.cov > 0.35 &&
+                         g.alpha > 0.5 &&
+                         Math.round(sm.lum * tl * g.alpha) < 20)
+                    /* the pixels are fine and the sprite still lands black: tint
+                       MULTIPLIES, so light art under a near-black tint blits black.
+                       Restricted to real art sheets — a deliberately dark UNIT fill
+                       (the manhole discs are 0x14141a) is a design choice, not a
+                       black square, and must not cry wolf in every report */
+                    { flag = '  *** TINT KILLS ART'; sus = 1; }
+            }
+            if (t.st === 'DESTROYED' || t.st === -1 || t.st === 'invalid')
+                { flag = '  *** DEAD TEXTURE'; sus = 1; }
+            /* the other half of the question, and the one the CPU readback can
+               never answer: the <img> says the FILE is fine, only WebGL knows
+               what it was GIVEN. Ask it for the bytes back (a real readPixels)
+               for anything that looks wrong or is art at all — a sprite clean on
+               the CPU and black on the GPU is an upload/driver fault, which is
+               the remaining suspect now that the bytes have been cleared */
+            if (art || sus) {
+                t.gpu = dbgGpuStat(g.tex);
+                if (typeof t.gpu === 'object' && t.gpu) {
+                    /* the asymmetry is the whole test: an opaque black patch the
+                       SOURCE does not have can only have arrived with the upload */
+                    var gpuBad = t.gpu.cov > 0.35 && t.gpu.lum !== null && t.gpu.lum < 20,
+                        cpuBad = typeof sm === 'object' && sm && sm.cov > 0.35 &&
+                                 sm.lum !== null && sm.lum < 20;
+                    if (gpuBad && !cpuBad)
+                        { flag = '  *** GPU BLACK (bytes fine: upload fault)'; sus = 1; }
+                    else if (t.gpu.cov === 0 && typeof sm === 'object' && sm &&
+                             sm.cov > 0.35)
+                        { flag = '  *** GPU EMPTY (bytes fine, nothing uploaded)'; sus = 1; }
+                }
+            }
+            if (!sus && g.alpha <= 0.05)
+                flag = '  (invisible: alpha ' + Math.round(g.alpha * 100) / 100 + ')';
+            /* what actually reaches the screen, printed whenever it is not simply
+               the pixels: brightness x tint x alpha */
+            var blit = (typeof sm === 'object' && sm && sm.lum !== null &&
+                        (g.tint !== 0xffffff || g.alpha < 1))
+                ? '  blit lum ' + Math.round(sm.lum * tl * g.alpha) : '';
+            return { g: g, t: t, sm: sm, flag: flag + blit, sus: sus };
+        });
+        var sus = 0;
+        rows.forEach(function (r) { sus += r.sus; });
+        var CAP = 25;
+        var shown = rows.filter(function (r, i) { return i < CAP || r.sus; });
+        shown.forEach(function (r) {
+            var g = r.g, t = r.t;
+            p('  x' + pad(g.n, 4) + '  ' + g.layer + ' ' + g.w + 'x' + g.h +
+              '  st ' + t.st + '  ' + (t.el || 'no element') + '  pixi ' + t.src +
+              '  rect ' + (t.frm || '-') + '  cpu ' + j(r.sm) +
+              (t.gpu !== undefined ? '  gpu ' + j(t.gpu) : '') +
+              '  ' + g.u + r.flag);
+        });
+        if (rows.length > shown.length)
+            p('  … ' + (rows.length - shown.length) +
+              ' more groups (none flagged)');
+        p(' suspicious: ' + sus + (sus ? '  <-- these are the black squares' : ''));
+
+        p('');
+        p('[cell frames] every frame of every ready cell — cpu = the bytes,');
+        p('              gpu = what WebGL was actually given');
+        /* The census can only ever see the frame that happened to be on screen
+           when the button was pressed, and a walk or blink cell lives in its
+           other frames most of the time: that is how a black frame has survived
+           every report so far. So read ALL of them back, both halves, and check
+           each rect against the page the browser really decoded. */
+        var fCells = 0, fN = 0, fBad = 0;
+        for (k in dynCells) {
+            var cf = dynCells[k];
+            if (!cf || cf.st !== 1 || !cf.man || !cf.url) continue;
+            if (fCells++ >= 12) break;
+            var cs = texs[cf.url], frs = cf.man.frames || [], ims = cf.man.images || [];
+            if (!cs || cs.st !== 1 || !cs.tex)
+                { p(' ' + k + '  *** ready but its sheet is not loaded'); fBad++; continue; }
+            var cd = dbgElDims(cs.tex), out = [], bad = 0,
+                nf = Math.min(frs.length, 24);
+            for (i = 0; i < nf; i++) {
+                var dfx = frs[i], imgx = dfx && ims[dfx.image];
+                if (!imgx)
+                    { out.push('   *** f' + i + ' names image ' + (dfx && dfx.image) +
+                               ', the manifest has ' + ims.length); bad++; continue; }
+                fN++;
+                var cpu = cd ? dbgSampleRect(cd.el, imgx.x, imgx.y, imgx.w, imgx.h)
+                             : 'no <img>',
+                    gpu = dbgGpuStat(cs.tex, { x: imgx.x, y: imgx.y,
+                                               width: imgx.w, height: imgx.h }),
+                    why = [];
+                if (cd && (imgx.x + imgx.w > cd.w || imgx.y + imgx.h > cd.h))
+                    why.push('rect off the decoded page ' + cd.w + 'x' + cd.h);
+                if (imgx.w < 1 || imgx.h < 1) why.push('zero-size rect');
+                if (typeof cpu === 'object' && cpu) {
+                    if (cpu.cov > 0.35 && cpu.lum !== null && cpu.lum < 20)
+                        why.push('bytes black');
+                    else if (cpu.cov === 0) why.push('bytes empty');
+                } else if (typeof cpu === 'string' && cpu.indexOf('no 2d') < 0)
+                    why.push(cpu);
+                if (typeof gpu === 'object' && gpu) {
+                    var gBad = gpu.cov > 0.35 && gpu.lum !== null && gpu.lum < 20,
+                        cBad = typeof cpu === 'object' && cpu && cpu.cov > 0.35 &&
+                               cpu.lum !== null && cpu.lum < 20;
+                    if (gBad && !cBad) why.push('GPU black while the bytes are fine');
+                    else if (gpu.cov === 0 && typeof cpu === 'object' && cpu &&
+                             cpu.cov > 0.35) why.push('GPU empty');
+                }
+                if (why.length)
+                    { out.push('   *** f' + i + ' img' + dfx.image + ' ' + imgx.x +
+                               ',' + imgx.y + ' ' + imgx.w + 'x' + imgx.h +
+                               '  cpu ' + j(cpu) + '  gpu ' + j(gpu) + '  ' +
+                               why.join(', ')); bad++; }
+            }
+            p(' ' + k + '  ' + nf + ' frames · page ' +
+              (cd ? cd.w + 'x' + cd.h : 'unmeasured') + ' · ' +
+              (bad ? '*** ' + bad + ' suspect frame' + (bad === 1 ? '' : 's')
+                   : 'clean'));
+            for (i = 0; i < out.length; i++) p(out[i]);
+            fBad += bad;
+        }
+        if (!fCells) p(' (no ready cells)');
+        else p(' ' + fN + ' frames read back on both sides · ' + fBad + ' suspect');
+
+        if (selected) {
+            p('');
+            p('[selected]');
+            if (selected.kind === 'c') {
+                var ch = M.chars[selected.i];
+                var pk = charRecPick(ch, selected.i);
+                var as = pk && pk.as;
+                p(' character #' + ch[0] + ' ' + (M.charNames[ch[0]] || '(unnamed)') +
+                  ' at tile ' + ch[1] + ',' + ch[2] + (ch[3] ? ' dir ' + ch[3] : ''));
+                p('  slug   ' + ((pk && pk.slug) || '?') + ' → asset ' +
+                  (as ? j({ png: as.png, w: as.w, h: as.h, anchor: as.anchor,
+                            frames: as.frames ? as.frames.length : 0 })
+                      : 'MISSING (drawn as a dot)'));
+                var dd = as && as._dyn;
+                p('  cell   ' + (dd ? 'st ' + dd.st + '  ' + dd.url +
+                                   (dd.err ? '  err ' + dd.err : '') : 'never asked'));
+            } else if (selected.kind === 'b') {
+                var bb = M.buildings[selected.i];
+                p(' building #' + bb[0] + ' at tile ' + bb[1] + ',' + bb[2] + '  ' +
+                  j(M.binfo[bb[0]] ? M.binfo[bb[0]].slice(0, 3) : null));
+            } else p(' ' + j(selected));
+        }
+
+        p('');
+        p('[art loader] boot ' + ALOAD.bootDone + '/' + ALOAD.boot + ' · req ' +
+          ALOAD.req + ' · got ' + ALOAD.artGot + '/' + ALOAD.artKnown + ' · dead ' +
+          ALOAD.artDead + ' · pending ' + ALOAD.pend + ' · sheets ' + ALOAD.strips +
+          ' · dynErr ' + ALOAD.dynErr);
+        p('[filmstrips] ' + (window.__CV_ANIM_stats ? j(window.__CV_ANIM_stats()) : '?'));
+        p('[diag] ' + j(DIAG));
+        p('[camera] ' + j({ x: Math.round(cam.x), y: Math.round(cam.y),
+                            zoom: Math.round(cam.zoom * 1000) / 1000 }));
+        if (dynLog.length) {
+            p('');
+            p('[recent endpoint answers] (last ' + dynLog.length + ')');
+            for (i = 0; i < dynLog.length; i++) p(' ' + dynLog[i]);
+        }
+        return L.join('\n');
+    };
+
+    function dbgShowPanel(text) {
+        var box = document.getElementById('dbgbox');
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'dbgbox';
+            box.innerHTML = '<div class="dh"><b>Debug report</b>' +
+                '<span class="dnote">also on the clipboard — paste it back</span>' +
+                '<button type="button" id="dbgclose">close (Esc)</button></div>' +
+                '<textarea id="dbgtxt" readonly spellcheck="false"></textarea>';
+            document.body.appendChild(box);
+            box.querySelector('#dbgclose').addEventListener('click', function () {
+                box.classList.remove('show');
+            });
+            box.addEventListener('click', function (ev) {
+                if (ev.target === box) box.classList.remove('show');
+            });
+        }
+        var ta = box.querySelector('#dbgtxt');
+        ta.value = text;
+        box.classList.add('show');
+        ta.focus(); ta.select();
+    }
+    document.addEventListener('keydown', function (e) {
+        var box = document.getElementById('dbgbox');
+        if (box && box.classList.contains('show') && e.key === 'Escape') {
+            box.classList.remove('show');
+            e.stopPropagation();
+        }
+    });
+    function dbgCopy(text, done) {
+        function fb() {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed'; ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            var ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) { /* ignore */ }
+            document.body.removeChild(ta);
+            done(!!ok);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText)
+            navigator.clipboard.writeText(text).then(function () { done(true); }, fb);
+        else fb();
+    }
+    if ($('btn-debug')) $('btn-debug').addEventListener('click', function () {
+        var btn = this, text = window.__CV_DEBUG();
+        var was = btn.textContent;
+        dbgShowPanel(text);
+        dbgCopy(text, function (ok) {
+            btn.textContent = ok ? '✓ copied' : 'panel only';
+            setTimeout(function () { btn.textContent = was; }, 1600);
+        });
+    });
 
     /* ---- resize -------------------------------------------------------------- */
     function resize() {
