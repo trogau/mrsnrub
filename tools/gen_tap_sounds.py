@@ -11,8 +11,13 @@ display name nor the animation slug for most of the roster (`Wiggum` ->
 corpus, by attributing every `*_tap*` file to the entity it belongs to.
 
 Inputs
-  web/api/assets.sqlite    type='audio' rows whose base name contains 'tap'
-                           (the AAC corpus tools/convert_audio_pcm.py produced)
+  web/assets/dlc/gamescripts-r<rev>/data/*.xml   the shipped scripts — the
+                           game's OWN tap table (see "The scripts table" below;
+                           the newest extracted gamescripts revision is used)
+  web/api/assets.sqlite    type='audio' rows: every row is a candidate for a
+                           script-named line, rows whose base contains 'tap'
+                           also feed the heuristic pass (the AAC corpus
+                           tools/convert_audio_pcm.py produced)
   web/assets/characters/characters.json   {characters:{id:{name,slug,pool}}}
   web/assets/characters/families/<cid>.json  cells[].stem (underscored anim stems)
   data/building_ids.json   {id:{name,asset,slug}}
@@ -26,9 +31,28 @@ Output
   web/assets, so the viewer plays them as B + 'assets/' + path (the same
   convention as the Asset Explorer).
 
-Attribution — for each distinct tap base name, a "core stem" is derived (strip
-sfx_/ea_tsto_/dec_ prefixes and a leading number, cut at the first 'tap' marker)
-and matched, in priority order, against the entity dictionaries:
+The scripts table — the scripts say outright what a click plays, so when a
+line is named there it wins and the heuristic below is not consulted for that
+entity. A <Building> block (and a <Skin building="…"> reskin) carries either
+    <Sound event="BuildingTouched" sound="20_simpson_house_1.caf" />
+or a kit reference
+    <SoundKit event="BuildingTouched" name="DronePack_tap" />
+resolved through a <SoundKit name="…" channel="buildingTap_channel"> package
+that lists its <Sound name="sfx_…_tap" /> entries. Characters do the same with
+event="CharacterSoundTouched" / "CharacterTouched" on <Character> and
+<Skin character="…"> blocks. Reading that table is what makes the town talk:
+the stem heuristic alone attributed 315 buildings, the scripts name 1900+, and
+they name the CORE ones the file names hide — the Simpson house, the power
+plant and the Kwik-E-Mart ship `20_simpson_house_1` / `24_nuclear_plant_2` /
+`30_kwik_e_mart_2`, which no `_tap` stem would ever have matched. Sound names
+are resolved against every audio row (case-insensitively, extension dropped)
+and only a browser-playable copy (.m4a/.wav) is kept; the game's `.caf` is not.
+Names the table gives that the corpus does not have are reported, never guessed.
+
+Attribution — for each distinct tap base name the scripts do NOT claim, a
+"core stem" is derived (strip sfx_/ea_tsto_/dec_ prefixes and a leading number,
+cut at the first 'tap' marker) and matched, in priority order, against the
+entity dictionaries:
   1. an explicit override (tools/tap_sounds_overrides.json)
   2. core stem == an entity key (character name/slug/family-stem/pool, building
      name/asset/slug), compared with punctuation/spaces removed
@@ -46,13 +70,16 @@ and matched, in priority order, against the entity dictionaries:
 The first signal that hits wins, so a bundle name never overrides a direct stem
 match. When both a character and a building claim the same signal, the tie is
 broken toward the character. Anything left unattributed is written to the report
-so the override file can be grown later — an entity with no `*_tap*` file simply
-stays silent.
+so the override file can be grown later — an entity the scripts do not name and
+that owns no `*_tap*` file simply stays silent, which is what the game does with
+a fence or a hedge.
 
 Usage
   python3 tools/gen_tap_sounds.py [--web=web] [--repo=.]
                                  [--out=web/assets/characters/tap-sounds.json]
                                  [--overrides=tools/tap_sounds_overrides.json]
+                                 [--scripts=<gamescripts pack data dir>]
+                                 [--no-scripts]
                                  [--report=PATH] [--dry-run] [--verbose]
 
 After generating, the viewer (web/viewer/city-view-pixi.js) fetches the JSON at
@@ -141,6 +168,8 @@ def load_characters(char_json, families_dir):
 
 
 def load_buildings(building_json):
+    """-> (ent, data). `ent` is normalized key -> ('b', id, display) from the
+    catalog's name/asset/slug; `data` is the raw {id: rec} for id lookups."""
     ent = {}
     data = json.load(open(building_json, encoding='utf-8'))
     for bid, rec in data.items():
@@ -150,7 +179,7 @@ def load_buildings(building_json):
             nk = norm(rec.get(f))
             if nk:
                 ent.setdefault(nk, ('b', bid, rec.get('name', bid)))
-    return ent
+    return ent, data
 
 
 # ------------------------------------------------------------------- reading
@@ -180,6 +209,243 @@ def bundle_family(row):
     # packs are named like 'ArtieZiffAudio-wav-r146180'; the leading label is the key
     label = re.split(r'[-_]', fam)[0]
     return label
+
+
+# --------------------------------------------------- the game's own tap table
+# See the docstring: <Sound event="BuildingTouched" sound="…"/> on a <Building>,
+# or a <SoundKit event="…" name="…_tap"/> reference resolved through a SoundKit
+# package. TAP_EVENTS says which script events mean "the player poked this".
+TAP_EVENTS = ('BuildingTouched', 'CharacterSoundTouched', 'CharacterTouched')
+
+ATTR = re.compile(r'(\w+)="([^"]*)"')
+# <Building>/<Character>/<Skin> blocks, block form or self-closing. The \b after
+# the tag name keeps the <Buildings> root and <BuildingDefaults> out, and a
+# block never reaches past its own close because the same tag does not nest.
+BLOCK = {k: re.compile(r'<%s\b[^>]*>.*?</%s>|<%s\b[^>]*/>' % (t, t, t), re.S)
+         for k, t in (('b', 'Building'), ('c', 'Character'), ('s', 'Skin'))}
+KIT_DEF = re.compile(r'<SoundKit\b[^>]*\bname="([^"]+)"[^>]*>(.*?)</SoundKit>', re.S)
+SOUND_EL = re.compile(r'<Sound\b[^>]*/?>')
+KIT_EL = re.compile(r'<SoundKit\b[^>]*/?>')
+SOUND_IN_KIT = re.compile(r'<Sound\b[^>]*\bname="([^"]+)"')
+PLAYABLE = re.compile(r'\.(m4a|wav)$', re.I)
+
+
+def stem_of(name):
+    """a shipped sound name as the scripts write it -> our lookup key.
+
+    '20_simpson_house_1.caf' and 'BART_TAP1.mp3' both reduce to the corpus' own
+    base — lowercased, punctuation dropped, extension off — because the scripts'
+    spelling and the extracted file's differ in case and container only.
+    """
+    s = re.sub(r'\.(caf|mp3|wav|m4a|ogg)$', '', (name or '').strip(), flags=re.I)
+    return norm(s)
+
+
+def load_audio(db_path):
+    """every playable audio row, grouped by stem for the scripts' sound names."""
+    con = sqlite3.connect(db_path)
+    con.row_factory = sqlite3.Row
+    rows = con.execute(
+        "SELECT a.base base, a.path path, p.pack pack, p.revision revision, "
+        "a.res_class res_class, a.cat cat, a.bytes bytes "
+        "FROM assets a LEFT JOIN packs p ON a.pack_id = p.id "
+        "WHERE a.type='audio'").fetchall()
+    con.close()
+    by_stem = {}
+    for r in rows:
+        if not PLAYABLE.search(r['base']):        # .caf/.mp3 rows are the shipped
+            continue                              # originals: no browser decodes them
+        by_stem.setdefault(stem_of(r['base']), []).append(
+            {'base': r['base'], 'path': r['path'], 'family': r['pack'],
+             'revision': r['revision'], 'res_class': r['res_class'],
+             'cat': r['cat'], 'bytes': r['bytes']})
+    return by_stem
+
+
+def find_scripts_dir(web, db_path):
+    """the newest extracted gamescripts pack, as (its data dir, pack label).
+
+    Every content drop lands its scripts in the gamescripts bundle, so the
+    newest revision is the fullest copy of the table; older revisions are read
+    later, and only for the kits this one is missing. (None, None) when nothing
+    is extracted — the heuristic pass then stands on its own.
+    """
+    def from_db():
+        try:
+            con = sqlite3.connect(db_path)
+            row = con.execute(
+                "SELECT pack FROM packs WHERE pack LIKE 'gamescripts-r%' "
+                "ORDER BY revision DESC LIMIT 1").fetchone()
+            con.close()
+            return row[0] if row else None
+        except sqlite3.Error:
+            return None
+
+    def on_disk():
+        base = os.path.join(web, 'assets', 'dlc')
+        best, best_rev = None, -1
+        if os.path.isdir(base):
+            for name in os.listdir(base):
+                m = re.match(r'^gamescripts-r(\d+)$', name)
+                if m and int(m.group(1)) > best_rev and \
+                        os.path.isdir(os.path.join(base, name, 'data')):
+                    best, best_rev = name, int(m.group(1))
+        return best
+
+    pack = from_db()
+    if pack and not os.path.isdir(os.path.join(web, 'assets', 'dlc', pack, 'data')):
+        pack = None                               # indexed but never extracted
+    pack = pack or on_disk()
+    if not pack:
+        return None, None
+    return os.path.join(web, 'assets', 'dlc', pack, 'data'), pack
+
+
+def find_soundkit_files(db_path, skip_pack):
+    """assets-relative paths of every *_soundkits.xml, newest revision first."""
+    try:
+        con = sqlite3.connect(db_path)
+        con.row_factory = sqlite3.Row
+        rows = con.execute(
+            "SELECT a.path path FROM assets a JOIN packs p ON a.pack_id = p.id "
+            "WHERE a.base LIKE '%soundkit%.xml' "
+            "ORDER BY p.revision DESC, a.path").fetchall()
+        con.close()
+    except sqlite3.Error:
+        return []
+    out = []
+    for r in rows:
+        m = re.match(r'^dlc/([^/]+)/', r['path'])
+        if m and m.group(1) == skip_pack:          # read already with the scripts
+            continue
+        out.append(r['path'])
+    return out
+
+
+def entity_of(kind, attrs, chars, buildings, char_ent, bldg_ent):
+    """a script block's own identity -> (kind, catalog id), or None to drop it.
+
+    The scripts' `id=` is the id the viewer clicks (buildings.xml's
+    `<Building id="1" name="SimpsonHome">` is b:1), so it is trusted first; a
+    <Skin> carries its parent in `building=` / `character=` and has an id of its
+    own that must never be used as one. Names fall back to the same normalized
+    indexes the heuristic pass uses.
+    """
+    if kind == 's':                               # a reskin belongs to its parent
+        for k, key in (('building', 'b'), ('character', 'c')):
+            if attrs.get(k):
+                return entity_of(key, {('id' if key == 'b' else 'name'): attrs[k]},
+                                 chars, buildings, char_ent, bldg_ent)
+        return None
+    table = buildings if kind == 'b' else chars
+    ent = bldg_ent if kind == 'b' else char_ent
+    aid = attrs.get('id')
+    if aid is not None and aid in table:
+        return (kind, aid)
+    for f in ('name', 'asset', 'slug'):
+        nk = norm(attrs.get(f))
+        if nk and nk in ent:
+            return ent[nk][:2]
+    return None
+
+
+def scan_scripts(data_dir, web, audio, chars, buildings, char_ent, bldg_ent,
+                 extra_kit_files=None, kit_file_budget=40000):
+    """the scripts' tap table -> ('b:<id>'/'c:<id>' -> {assets-relative path}, stats).
+
+    One pass over the pack's XMLs collects both halves of the table — the
+    <SoundKit> packages and the entity blocks that reference them — so a kit
+    defined in one file and used in another still resolves. A kit this pack
+    never defines is chased through the other packs' *_soundkits.xml (newest
+    first, `extra_kit_files`, and only while names are still outstanding).
+    """
+    kits = {}                                     # norm kit name -> {sound names}
+    blocks = []                                   # (kind, attrs, sounds, kit names)
+    files = sorted(f for f in os.listdir(data_dir) if f.endswith('.xml'))
+    for fn in files:
+        try:
+            txt = open(os.path.join(data_dir, fn), encoding='utf-8',
+                       errors='replace').read()
+        except OSError:
+            continue
+        for m in KIT_DEF.finditer(txt):
+            names = SOUND_IN_KIT.findall(m.group(2))
+            if names:
+                kits.setdefault(norm(m.group(1)), set()).update(names)
+        if 'Touched' not in txt:
+            continue
+        for kind in ('b', 'c', 's'):
+            for m in BLOCK[kind].finditer(txt):
+                blk = m.group(0)
+                if 'Touched' not in blk:
+                    continue
+                attrs = dict(ATTR.findall(blk[:blk.find('>') + 1]))
+                sounds, kit_names = set(), set()
+                for el in SOUND_EL.findall(blk):
+                    a = dict(ATTR.findall(el))
+                    if a.get('event') in TAP_EVENTS and a.get('sound'):
+                        sounds.add(a['sound'])
+                for el in KIT_EL.findall(blk):
+                    a = dict(ATTR.findall(el))
+                    if a.get('event') in TAP_EVENTS and a.get('name'):
+                        kit_names.add(a['name'])
+                if sounds or kit_names:
+                    blocks.append((kind, attrs, sounds, kit_names))
+
+    # a kit the scripts reference but this pack never defines: chase it through
+    # the other packs, but only while names are still outstanding.
+    want = set(norm(n) for _k, _a, _s, kn in blocks for n in kn
+               if norm(n) not in kits)
+    read = 0
+    for rel in (extra_kit_files or []):
+        if not want or read >= kit_file_budget:
+            break
+        try:
+            txt = open(os.path.join(web, 'assets', rel), encoding='utf-8',
+                       errors='replace').read()
+        except OSError:
+            continue
+        read += 1
+        for m in KIT_DEF.finditer(txt):
+            if norm(m.group(1)) in want:
+                names = SOUND_IN_KIT.findall(m.group(2))
+                if names:
+                    kits.setdefault(norm(m.group(1)), set()).update(names)
+        want = set(n for n in want if n not in kits)
+
+    def path_of(nm):
+        rows = audio.get(stem_of(nm))
+        return pick_canonical_path(rows) if rows else None
+
+    out, missing, unknown = {}, set(), set()
+    for kind, attrs, sounds, kit_names in blocks:
+        ent = entity_of(kind, attrs, chars, buildings, char_ent, bldg_ent)
+        if not ent:
+            continue
+        paths = out.setdefault('%s:%s' % ent, set())
+        for nm in sounds:
+            p = path_of(nm)
+            if p:
+                paths.add(p)
+            else:
+                unknown.add(nm)
+        for kn in kit_names:
+            members = kits.get(norm(kn))
+            if not members:
+                missing.add(kn)
+                continue
+            for nm in members:
+                p = path_of(nm)
+                if p:
+                    paths.add(p)
+                else:
+                    unknown.add(nm)
+    out = {k: v for k, v in out.items() if v}
+    stats = {'pack': os.path.basename(os.path.dirname(data_dir)),
+             'files': len(files), 'kits': len(kits), 'kit_files': read,
+             'defs': len(blocks), 'entities': len(out),
+             'missing_kits': sorted(missing), 'unknown_sounds': sorted(unknown)}
+    return out, stats
 
 
 # ------------------------------------------------------------------ choose
@@ -274,6 +540,11 @@ def main():
     ap.add_argument('--out', default=None, help='output JSON (default <web>/assets/characters/tap-sounds.json)')
     ap.add_argument('--overrides', default=None,
                     help='override JSON (default <repo>/tools/tap_sounds_overrides.json)')
+    ap.add_argument('--scripts', default=None, metavar='DIR',
+                    help='gamescripts data dir holding the game\'s own tap table '
+                         '(default: the newest extracted gamescripts-r<rev> pack)')
+    ap.add_argument('--no-scripts', action='store_true',
+                    help='skip the scripts table and use only the *_tap* stem heuristic')
     ap.add_argument('--report', default=None, metavar='PATH')
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--verbose', action='store_true')
@@ -300,17 +571,34 @@ def main():
         for k in (raw.get('exclude') or []):
             overrides[k] = {'exclude': True}
 
-    char_ent, _chars, char_name = load_characters(char_json, families)
-    bldg_ent = load_buildings(building_json)
+    char_ent, chars, char_name = load_characters(char_json, families)
+    bldg_ent, buildings = load_buildings(building_json)
 
+    # 1. the game's own table: what the scripts say a click plays.
+    scripted, sstats = {}, None
+    if not a.no_scripts:
+        data_dir, pack = (a.scripts, os.path.basename(os.path.dirname(
+            os.path.normpath(a.scripts)))) if a.scripts else find_scripts_dir(web, db)
+        if data_dir:
+            scripted, sstats = scan_scripts(
+                data_dir, web, load_audio(db), chars, buildings,
+                char_ent, bldg_ent,
+                extra_kit_files=find_soundkit_files(db, pack))
+
+    # 2. the stem heuristic over the *_tap* corpus — the fallback for everything
+    #    the scripts do not name, and the whole story when no scripts pack has
+    #    been extracted. An entity the table spoke for is left alone: its own
+    #    line beats a guess.
     taps = load_taps(db)
     # group rows by base name so one file -> one canonical path
     by_base = {}
     for r in taps:
         by_base.setdefault(r['base'], []).append(r)
 
-    entities = {}
+    entities = {k: set(v) for k, v in scripted.items()}
     unattributed = {}
+    attributed = 0                                # files the heuristic claimed
+    kept = 0                                      # …of those, ones actually used
     for base, rows in by_base.items():
         core = core_stem(re.sub(r'\.(m4a|wav|mp3|caf)$', '', base, flags=re.I))
         hit = match(core, rows, char_ent, bldg_ent, overrides, name_ent=char_name)
@@ -320,27 +608,62 @@ def main():
             continue
         kind, eid, _disp, _sig = hit
         key = f'{kind}:{eid}'
+        attributed += 1
+        if key in scripted:
+            continue                              # the game's own line wins
         entities.setdefault(key, set()).add(pick_canonical_path(rows))
+        kept += 1
 
     # deterministic, sorted output
     entities_out = {k: sorted(v) for k, v in sorted(entities.items())}
     result = {'generated': date.today().isoformat(),
               'entities': entities_out}
+    if sstats:
+        result['scripts'] = {'pack': sstats['pack'],
+                             'defs': sstats['defs'],
+                             'kits': sstats['kits'],
+                             'entities': sstats['entities']}
 
+    def split(keys):
+        return (sum(1 for k in keys if k.startswith('c:')),
+                sum(1 for k in keys if k.startswith('b:')))
+
+    named = [k for k in entities_out if k in scripted]
+    guessed = [k for k in entities_out if k not in scripted]
+    cn, bn = split(named)
     print(f'{len(by_base)} distinct tap base names, '
           f'{len(entities_out)} entities with sound '
           f'({sum(1 for k in entities_out if k.startswith("c:"))} characters, '
-          f'{sum(1 for k in entities_out if k.startswith("b:"))} buildings), '
-          f'{len(unattributed)} unattributed')
+          f'{sum(1 for k in entities_out if k.startswith("b:"))} buildings)')
+    if sstats:
+        print(f'  scripts: {sstats["pack"]} — {sstats["files"]} xml, '
+              f'{sstats["defs"]} tapped defs, {sstats["kits"]} soundkits '
+              f'({sstats["kit_files"]} extra kit files read), '
+              f'{cn} characters + {bn} buildings named by the game'
+              + (f', {len(sstats["missing_kits"])} kit(s) missing, '
+                 f'{len(sstats["unknown_sounds"])} sound(s) not in the corpus'
+                 if (sstats['missing_kits'] or sstats['unknown_sounds']) else ''))
+    print(f'  stems:   {attributed} of {len(by_base)} *_tap* file(s) attributed, '
+          f'{kept} kept as lines for the {len(guessed)} entities the scripts do '
+          f'not name ({len(unattributed)} unattributed)')
 
     if a.report:
         os.makedirs(os.path.dirname(os.path.abspath(a.report)), exist_ok=True)
         with open(a.report, 'w', encoding='utf-8') as f:
-            json.dump({'unattributed': dict(sorted(unattributed.items()))},
+            json.dump({'unattributed': dict(sorted(unattributed.items())),
+                       'scripts': sstats and {
+                           'pack': sstats['pack'],
+                           'missing_kits': sstats['missing_kits'],
+                           'unknown_sounds': sstats['unknown_sounds']}},
                       f, indent=1)
         print(f'report: {a.report}')
 
     if a.verbose:
+        if sstats:
+            for k in sstats['missing_kits']:
+                print(f'  NO-KIT   {k}')
+            for k in sstats['unknown_sounds']:
+                print(f'  NO-FILE  {k}')
         for k in sorted(unattributed):
             print(f'  UNATTR {k}  (core={unattributed[k]["core"]}, '
                   f'family={unattributed[k]["family"]})')

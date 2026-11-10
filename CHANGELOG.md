@@ -1,5 +1,66 @@
 # Changelog
 
+## 2026-11-10
+
+- **The town answers when you click it: the tap sounds now come from the game's
+  own scripts table, not from guessing at file names.** Clicking a building did
+  fire a sound — `playTap('b:' + id)` on every pick — but the sidecar it reads
+  was near-empty for buildings, so only 237 of the save's 2,299 distinct
+  buildings (5.6% of placed instances) made a noise, and none of the ones anyone
+  actually clicks did. The reason was the assumption in
+  `tools/gen_tap_sounds.py` that *there is no such table in the game data*.
+  There is. The shipped scripts say outright what a click plays, in the newest
+  extracted `gamescripts-r<rev>` pack:
+  `<Sound event="BuildingTouched" sound="20_simpson_house_1.caf" />` inside a
+  `<Building>` block, or a `<SoundKit event="BuildingTouched" name="…_tap" />`
+  reference resolved through the `*_soundkits.xml` packages (`<SoundKit>` → its
+  `<Sound name="…"/>` list); characters do the same with
+  `CharacterSoundTouched` / `CharacterTouched` on `<Character>` and
+  `<Skin character="…">` blocks. The stem heuristic could only ever reach a
+  building whose *file name* spelled it out, so the numbered voice lines the
+  core buildings actually ship — `20_simpson_house_1`, `24_nuclear_plant_2`,
+  `30_kwik_e_mart_2`, `48_flanders_home_2` — were invisible to it. Reading the
+  table takes the sidecar from 315 buildings / 283 characters to **1,983
+  buildings / 383 characters**, and 1,648 of the 2,299 buildings placed in the
+  save (37% of instances; what is left is fences, hedges and trees, which the
+  scripts really do leave silent). The heuristic is still there but only speaks
+  for entities the table is silent about — an entity the game named keeps only
+  the line the game named.
+  - *How it resolves.* `tools/gen_tap_sounds.py` now reads all 4,003 XMLs of the
+    newest `gamescripts-r<rev>` pack (found through the `packs` table, falling
+    back to what is on disk), collects the `<SoundKit>` packages and the tapped
+    `<Building>` / `<Character>` / `<Skin>` blocks in one pass, and resolves each
+    sound name against **every** audio row in `web/api/assets.sqlite`
+    case-insensitively with the container dropped — but only ever to a
+    browser-playable `.m4a`/`.wav`, never the game's `.caf`. A kit this pack
+    does not define is chased through the other packs' `*_soundkits.xml`
+    (newest first, and only while names are outstanding). Nothing is guessed: a
+    sound the corpus does not have, or a kit it cannot find, goes to
+    `--report` (`unknown_sounds`, `missing_kits`, alongside the existing
+    `unattributed`) — currently 5 and 33, all event props. New flags:
+    `--scripts=<dir>` and `--no-scripts`. The sidecar also carries a
+    `scripts: {pack, defs, kits, entities}` block so a reader can tell which
+    copy of the table it was built from.
+  - *The viewer keeps its manners.* `playTap` had a cold-file bug next to the
+    missing lines: `prepare()` is async, and its callback replayed whatever
+    `tapPlayer` happened to be — two quick clicks played the **second** line
+    twice and lost the first. It now captures its own player and starts only if
+    it is still the current one. The sidecar fetch carries a cache-buster
+    (`tap-sounds.json?v=2`) so a regenerated map isn't served from cache, the
+    **Sound** tooltip names the real source, and the viewer is `?v=124`
+    (`DIAG.ver` 2026-11-10).
+  - *The harness stopped demanding the wrong thing.* `tools/smoke-tap-sounds.cjs`
+    asserted every referenced file was a `*_tap*` line — which the game's own
+    table contradicts — so that check became "no UI or menu sound filed as an
+    entity line" (`ui_`, `tapx_`, `general_button`, `mainmusic`, `tap_boost`),
+    the sidecar must name the gamescripts pack it read, ≥1,000 buildings must be
+    mapped, and `b:1`/`b:2`/`b:3`/`b:9` must play `simpson_house` /
+    `nuclear_plant` / `kwik_e_mart` / `flanders_home`. The Maggie guard moved
+    from "only `maggie_tap*`" to "only lines that say maggie", which is what the
+    scripts prove she owns: `maggie.m4a` plus the five `sfx_maggie_suck_0N`
+    pacifier sucks.
+
+
 ## 2026-11-06.4
 
 - **The Debug report can now ask the graphics card what it was given, and it

@@ -1536,7 +1536,7 @@
             }
             aBootSettled();
         }).catch(function () { aBootSettled(); /* dots only */ });
-        fetch(B + 'assets/characters/tap-sounds.json').then(function (r) {
+        fetch(B + 'assets/characters/tap-sounds.json?v=2').then(function (r) {
             return r.ok ? r.json() : null;
         }).then(function (j) {
             if (j && j.entities) tapSounds = j.entities;   // else: click stays silent
@@ -2190,11 +2190,14 @@
         return true;
     }
     /* Click-to-play: the game says something when you poke a character or a
-       building — it plays one of that entity's random *_tap* voice/sfx lines.
-       The entity -> lines map is reconstructed at build time by
-       tools/gen_tap_sounds.py (there is no such table in the game data) and
-       served as assets/characters/tap-sounds.json. Paths are relative to
-       assets/, so the URL matches the Asset Explorer's (B + 'assets/' + path).
+       building — it plays one of that entity's click lines. Which line is the
+       game's own decision, recorded in its scripts
+       (<Sound event="BuildingTouched" sound="…"/> / <SoundKit event="…">, plus
+       the CharacterTouched equivalents); tools/gen_tap_sounds.py reads that
+       table, falling back to the shipped *_tap* audio corpus only for entities
+       the scripts leave unclaimed, and serves the result as
+       assets/characters/tap-sounds.json. Paths are relative to assets/, so the
+       URL matches the Asset Explorer's (B + 'assets/' + path).
        One voice at a time: the previous line is disposed before the next
        starts. The click is a user gesture, so resume() clears autoplay. */
     function playTap(entityKey) {
@@ -2206,9 +2209,14 @@
         if (tapPlayer) { try { tapPlayer.dispose(); } catch (e) { /* ignore */ } }
         tapPlayer = window.AudioMixer.makePlayer(B + 'assets/' + p);
         if (!tapPlayer) return;
-        tapPlayer.setVolume(0.85);
-        tapPlayer.prepare(function () {
-            if (tapPlayer) tapPlayer.play(true);
+        var pl = tapPlayer;
+        pl.setVolume(0.85);
+        // prepare() is async on a cold file: if another click replaced the
+        // player while this one was decoding, the callback must not start the
+        // NEW one a second time (heard as the latest line doubling and the
+        // earlier one never arriving)
+        pl.prepare(function () {
+            if (tapPlayer === pl) { pl.play(true); }
         });
     }
     function blockAtTile(tx, ty) {
@@ -4470,7 +4478,7 @@
     /* ============================ render ===================================== */
     var DIAG = {
         mode: 'Pixi', ms: 0, fps: 0, maxMs: 0, anims: 0, charAnims: 0,
-        pool: 0, ver: '2026-11-06'
+        pool: 0, ver: '2026-11-10'
     };
     window.__CV_DIAG = DIAG;
     window.__CV_VER = DIAG.ver;                    // console sanity check

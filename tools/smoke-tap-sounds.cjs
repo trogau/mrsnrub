@@ -5,10 +5,15 @@
 //   node tools/smoke-tap-sounds.cjs
 //
 // Asserts the sidecar is well formed, every path it names exists on disk and
-// is a browser-playable audio file, the core roster and a few buildings resolve
-// to at least one line, and the attribution guards hold (the shared
-// "DatabaseAudio"/"MaggieAudio" packs must not have leaked unrelated files onto
-// those entities). Regenerate with: python3 tools/gen_tap_sounds.py
+// is a browser-playable audio file, the CORE roster and a few buildings resolve
+// to at least one line, and the attribution guards hold. Two sources feed the
+// sidecar and they are checked differently: the game's own scripts table
+// (<Sound event="BuildingTouched"> / its SoundKits in the newest gamescripts
+// pack) names lines outright — those are trusted and named in the checks below
+// — and the *_tap* stem heuristic only speaks for entities the table is silent
+// about, so the guard against the shared "DatabaseAudio"/"MaggieAudio" packs
+// leaking files still applies to what it produces.
+// Regenerate with: python3 tools/gen_tap_sounds.py
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -39,8 +44,12 @@ check('has entities', keys.length > 100, keys.length);
 const charKeys = keys.filter((k) => k.startsWith('c:'));
 const bldgKeys = keys.filter((k) => k.startsWith('b:'));
 check('both characters and buildings mapped',
-      charKeys.length > 100 && bldgKeys.length > 100,
+      charKeys.length > 300 && bldgKeys.length > 1000,
       charKeys.length + ' chars / ' + bldgKeys.length + ' buildings');
+// the town's voice comes from the scripts table; say which copy was read
+check('the scripts table was read',
+      /^gamescripts-r\d+$/.test((doc.scripts || {}).pack || ''),
+      JSON.stringify(doc.scripts || null));
 
 console.log('keys:');
 check('every key is "c:<id>" or "b:<id>"',
@@ -61,8 +70,8 @@ const badExt = [...new Set(allPaths.map(([, p]) => p))]
 check('every referenced file is browser-playable (.m4a/.wav)',
       badExt.length === 0, badExt.slice(0, 8).join(','));
 const badBase = [...new Set(allPaths.map(([, p]) => p))]
-    .filter((p) => !/tap/i.test(path.basename(p)));
-check('every referenced file is a *_tap* line',
+    .filter((p) => /^(ui_|tapx_|general_button|mainmusic|tap_boost)/i.test(path.basename(p)));
+check('no UI or menu sound filed as an entity line',
       badBase.length === 0, badBase.slice(0, 8).join(','));
 // one path should never appear twice within one entity
 keys.forEach((k) => {
@@ -82,6 +91,15 @@ function hasFile(k, re) { return (ents[k] || []).some((p) => re.test(path.basena
     check('building #' + id + ' has a line', (ents['b:' + id] || []).length > 0,
           'b:' + id + ' -> ' + JSON.stringify(ents['b:' + id] || []));
 });
+// the buildings the scripts name by file rather than by *_tap* stem: these are
+// the ones the stem heuristic could never reach, so they are the regression
+// this table exists for.
+[['1', 'SimpsonHome', /simpson_house/], ['2', 'PowerPlant', /nuclear_plant/],
+ ['3', 'Kwik-E-Mart', /kwik_e_mart/], ['9', 'FlandersHome', /flanders_home/]]
+    .forEach(([id, nm, re]) => {
+        check('building ' + nm + ' (b:' + id + ') plays its own line',
+              hasFile('b:' + id, re), JSON.stringify(ents['b:' + id] || []));
+    });
 // irregular stems must land on the right person
 check('Wiggum plays chief_wiggum, not the house',
       hasFile('c:16', /chief_wiggum_tap/i) && !hasFile('c:16', /wiggum_house/i),
@@ -97,11 +115,13 @@ console.log('attribution guards (shared/placeholder packs):');
 const db = (ents['c:31000'] || []).map((p) => path.basename(p));
 check('c:31000 Database owns only databasetap*',
       db.every((b) => /databasetap/i.test(b)), db.join(','));
-// Rosa rode into MaggieAudio; Maggie must own only her own lines, and Rosa
-// (c:135006) must own the rosa line instead.
+// Rosa rode into MaggieAudio; the heuristic must not file it on Maggie, and
+// Rosa (c:135006) must own the rosa line instead. Maggie's own lines are what
+// her scripts declare — five pacifier sucks plus her MAGGIE voice line — so the
+// guard is that everything she owns says "maggie".
 const maggie = (ents['c:135000'] || []).map((p) => path.basename(p));
-check('c:135000 Maggie owns only maggie taps',
-      maggie.every((b) => /maggie_tap/i.test(b)), maggie.join(','));
+check('c:135000 Maggie owns only maggie lines',
+      maggie.length > 0 && maggie.every((b) => /maggie/i.test(b)), maggie.join(','));
 check('Rosa (c:135006) owns the rosa line',
       hasFile('c:135006', /rosa_tap/i), JSON.stringify(ents['c:135006'] || []));
 // a building must not be filed as a character (keys are disjoint by prefix;
