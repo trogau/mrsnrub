@@ -1414,6 +1414,7 @@
         try { localStorage.setItem(SND_KEY, soundOn ? '1' : '0'); } catch (e) { /* private mode */ }
         if (window.AudioMixer) { try { window.AudioMixer.setMuted(!soundOn); } catch (e) {} }
         if (!soundOn && tapPlayer) { try { tapPlayer.dispose(); } catch (e) {} }
+        if (!soundOn) ambStop(); else ambStart();      // ambient follows the tap gate
         applySoundBtn();
     });
     /* sheet cell -> tile-space placement (js/terrain.js _sheetTile): the
@@ -2219,6 +2220,211 @@
             if (tapPlayer === pl) { pl.play(true); }
         });
     }
+    /* ── ambient sound ─────────────────────────────────────────────────────
+       The town hums unasked: the scripts attach background loops to buildings
+       and decorations (<AmbientSound soundKit="…"/> resolved through a kit
+       that carries the loop's Position radius in tiles, Volume and Pitch) and
+       attach zone beds to the land itself (landinfo.xml Regions: the ocean,
+       the mountains, Krustyland). tools/gen_ambient_sounds.py reads both from
+       the shipped gamescripts pack and serves assets/city/ambient-sounds.json;
+       the same Sound toggle that gates taps gates this, and the game's kit
+       pitch rides the mixer's setRate. Two rules keep it civil: at most
+       AMB_MAX object loops at once (the game's objectAmbient_channel is one
+       channel too), and the zone bed is the SMALLEST Region containing the
+       camera centre, cross-faded over 3s like the game's FadeIn/OutTime.
+       style LoopSingle loops one random member of its kit; LoopSoundKit /
+       PlayOnce (the Duff Party Liner's horn) replays a random member once per
+       PostDelay instead. Autoplay: nothing starts until the page has had a
+       gesture — the ctx resume and an immediate rescan ride the first one. */
+    var ambientDoc = null;                  // ambient-sounds.json
+    var ambObj = {};                        // instance key -> {pl, spec, gain, alive, t}
+    var ambZone = null;                     // {name, pl, gain, want, fade}
+    var ambCache = {};                      // 'b:<id>' -> layers | false (no ambient)
+    var AMB_MAX = 5;                        // concurrent object loops (game: 1 channel)
+    var AMB_SCAN_MS = 500;
+    var ambTimer = null;
+    var ambGesture = false;
+    (function () {
+        fetch(B + 'assets/city/ambient-sounds.json?v=1').then(function (r) {
+            return r.ok ? r.json() : null;
+        }).then(function (j) {
+            if (j && (j.objects || j.zones)) {
+                ambientDoc = j;
+                if (soundOn && ambGesture) ambStart();
+            }
+        }).catch(function () { /* the town stays quiet */ });
+    })();
+    function ambLayers(id) {
+        var key = 'b:' + id, hit = ambCache[key];
+        if (hit !== undefined) return hit;
+        var layers = (ambientDoc.objects || {})[key];
+        hit = (layers && layers.length) ? layers : false;
+        if (hit) for (var i = 0; i < hit.length; i++) {   // one audio file per loop reference
+            var ls = hit[i].sounds;
+            if (!ls || !ls.length) { hit = false; break; }
+        }
+        return (ambCache[key] = hit);
+    }
+    function ambSpawn(spec, gain, periodic) {
+        if (!window.AudioMixer) return null;
+        var p = spec.sounds[(Math.random() * spec.sounds.length) | 0];
+        var pl = window.AudioMixer.makePlayer(B + 'assets/' + p);
+        if (!pl) return null;
+        var ent = { pl: pl, spec: spec, gain: gain, alive: true, t: 0 };
+        if (!periodic) pl.setLoop(true);
+        pl.setVolume(gain);
+        if (spec.pitch && spec.pitch !== 1) pl.setRate(spec.pitch);
+        pl.prepare(function () {
+            if (!ent.alive) { try { pl.dispose(); } catch (e) {} return; }
+            if (periodic) {
+                var tick = function () {
+                    if (!ent.alive) return;
+                    pl.play(true);
+                    var base = spec.postdelay || 8000;
+                    ent.t = setTimeout(tick, base * (0.5 + Math.random()));
+                };
+                ent.t = setTimeout(tick, (spec.predelay || 0) +
+                                     Math.random() * 1500);
+            } else {
+                pl.play(true);
+            }
+        });
+        return ent;
+    }
+    function ambKill(ent, fadeMs) {
+        if (!ent) return;
+        ent.alive = false;
+        if (ent.t) clearTimeout(ent.t);
+        if (fadeMs && ent.pl) {
+            var pl = ent.pl, from = ent.gain, t0 = null;
+            var step = function () {
+                t0 = t0 === null ? Date.now() : t0;
+                var k = Math.min(1, (Date.now() - t0) / fadeMs);
+                try { pl.setVolume(from * (1 - k)); } catch (e) { /* gone */ }
+                if (k < 1) setTimeout(step, 80);
+                else { try { pl.dispose(); } catch (e) {} }
+            };
+            step();
+        } else if (ent.pl) {
+            try { ent.pl.dispose(); } catch (e) { /* ignore */ }
+        }
+    }
+    function ambZonePick(cx, cy) {
+        var best = null, bestArea = 1e18;
+        var zs = (ambientDoc && ambientDoc.zones) || [];
+        for (var i = 0; i < zs.length; i++) {
+            var z = zs[i];
+            if (cx < z.x1 || cx > z.x2 || cy < z.y1 || cy > z.y2) continue;
+            var area = Math.abs(z.x2 - z.x1) * Math.abs(z.y2 - z.y1);
+            if (area < bestArea) { best = z; bestArea = area; }
+        }
+        return best;
+    }
+    function ambZoneTo(z) {
+        var name = z ? z.land + '/' + z.name : null;
+        if (ambZone && ambZone.name === name) {
+            return;                                   // still in the same bed
+        }
+        var old = ambZone;
+        ambZone = null;
+        if (old) ambKill(old, 3000);                  // the game's FadeOutTime
+        if (!z || !z.sounds || !z.sounds.length || !window.AudioMixer) return;
+        var p = z.sounds[(Math.random() * z.sounds.length) | 0];
+        var pl = window.AudioMixer.makePlayer(B + 'assets/' + p);
+        if (!pl) return;
+        var ent = { name: name, pl: pl, gain: 0, want: Math.min(1, z.volume || 1),
+                    fade: 0, alive: true, t: 0 };
+        ambZone = ent;
+        pl.setLoop(true);
+        pl.setVolume(0);
+        if (z.pitch && z.pitch !== 1) pl.setRate(z.pitch);
+        pl.prepare(function () {
+            if (!ent.alive || ambZone !== ent) { try { pl.dispose(); } catch (e) {} return; }
+            pl.play(true);
+            var t0 = null;
+            var step = function () {                                  // 3s FadeInTime
+                if (!ent.alive || ambZone !== ent) return;
+                t0 = t0 === null ? Date.now() : t0;
+                var k = Math.min(1, (Date.now() - t0) / 3000);
+                ent.gain = ent.want * k;
+                try { pl.setVolume(ent.gain); } catch (e) { /* gone */ }
+                if (k < 1) ent.fade = setTimeout(step, 100);
+            };
+            step();
+        });
+    }
+    function ambScan() {
+        if (!soundOn || !ambientDoc || !ambGesture) return;
+        var ct = CAM.worldToTile(cam.x, cam.y);
+        var cx = ct.x, cy = ct.y;
+        var want = {}, order = [];
+        for (var i = 0; i < buildings.length; i++) {
+            var b = buildings[i];
+            if (objHidden[b.cat] || hiddenObjs[b.hkey]) continue;
+            var layers = ambLayers(b.id);
+            if (!layers) continue;
+            var dx = (b.x0 + b.x1) / 2 - cx, dy = (b.y0 + b.y1) / 2 - cy;
+            for (var j = 0; j < layers.length; j++) {
+                var spec = layers[j];
+                var r = spec.radius || 12, inner = spec.inner || 0;
+                var d = Math.sqrt(dx * dx + dy * dy);
+                if (d > r) continue;
+                var g = (spec.volume == null ? 1 : spec.volume) *
+                        (d <= inner || r <= inner ? 1 : (r - d) / (r - inner));
+                if (g <= 0.02) continue;
+                var key = b.id + '#' + b.mi + '#' + j;
+                want[key] = { spec: spec, gain: g };
+                order.push({ key: key, gain: g });
+            }
+        }
+        order.sort(function (a, b2) { return b2.gain - a.gain; });
+        var keep = {};
+        for (var k = 0; k < order.length && k < AMB_MAX; k++) keep[order[k].key] = 1;
+        for (var kk in ambObj) {                       // drop the ones that fell off
+            if (!keep[kk]) { ambKill(ambObj[kk], 400); delete ambObj[kk]; }
+        }
+        for (var key2 in keep) {
+            var w = want[key2], ent2 = ambObj[key2];
+            if (!ent2) {
+                var per = w.spec.style === 'LoopSoundKit' || w.spec.style === 'PlayOnce';
+                ent2 = ambSpawn(w.spec, w.gain, per);
+                if (ent2) ambObj[key2] = ent2;
+            } else if (Math.abs(ent2.gain - w.gain) > 0.03) {
+                ent2.gain = w.gain;
+                try { ent2.pl.setVolume(w.gain); } catch (e) { /* ignore */ }
+            }
+        }
+        ambZoneTo(ambZonePick(cx, cy));
+    }
+    function ambStart() {
+        if (!ambientDoc || ambTimer) return;
+        ambScan();
+        ambTimer = setInterval(ambScan, AMB_SCAN_MS);
+    }
+    function ambStop() {
+        if (ambTimer) { clearInterval(ambTimer); ambTimer = null; }
+        for (var k in ambObj) ambKill(ambObj[k]);
+        ambObj = {};
+        if (ambZone) { ambKill(ambZone); ambZone = null; }
+    }
+    // autoplay policy: browsers start nothing until the page gets a gesture,
+    // so the first pointerdown/keydown resumes the ctx and kicks the scan.
+    function ambFirstGesture() {
+        if (ambGesture) return;
+        ambGesture = true;
+        try { window.AudioMixer && window.AudioMixer.resume(); } catch (e) { /* ignore */ }
+        if (soundOn) ambStart();
+    }
+    document.addEventListener('pointerdown', ambFirstGesture, { once: false });
+    document.addEventListener('keydown', ambFirstGesture, { once: false });
+    window.__CV_AMBIENT = function (op) {              // console/harness view
+        if (op === 'scan') { ambGesture = true; ambScan(); }
+        var act = [];
+        for (var k in ambObj) act.push(k + '@' + ambObj[k].gain.toFixed(2));
+        return { doc: ambientDoc && ambientDoc.scripts && ambientDoc.scripts.pack,
+                 zone: ambZone && ambZone.name, objects: act,
+                 gesture: ambGesture, on: !!ambTimer };
+    };
     function blockAtTile(tx, ty) {
         for (var k = buildings.length - 1; k >= 0; k--) {   // front-to-back
             var b = buildings[k];
@@ -4478,7 +4684,7 @@
     /* ============================ render ===================================== */
     var DIAG = {
         mode: 'Pixi', ms: 0, fps: 0, maxMs: 0, anims: 0, charAnims: 0,
-        pool: 0, ver: '2026-11-10'
+        pool: 0, ver: '2026-11-11'
     };
     window.__CV_DIAG = DIAG;
     window.__CV_VER = DIAG.ver;                    // console sanity check

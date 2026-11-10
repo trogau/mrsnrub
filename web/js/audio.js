@@ -151,6 +151,7 @@
         this.url = url;
         this.kind = 'buffer';
         this.vol = 1;
+        this.rate = 1;              // playbackRate: the ambient sidecar's kit pitch
         this.loop = false;
         this._rec = null;
         this._src = null;
@@ -255,6 +256,7 @@
         var gain = c.createGain();
         src.buffer = buf;
         src.loop = !!this.loop;
+        if (this.rate !== 1 && src.playbackRate) src.playbackRate.value = this.rate;
         gain.gain.value = this.vol;
         src.connect(gain);
         gain.connect(c.destination);
@@ -283,12 +285,15 @@
        starts output whenever its decoder gets round to it, which eats the
        attack. Wait for real data, rewind to 0, then go. */
     Player.prototype._playElement = function (fromHead) {
+        var self = this;
         var el = this._el;
         if (!el) { return; }
         var go = function () {
             if (fromHead) {
                 try { el.currentTime = 0; } catch (err) { /* not seekable */ }
             }
+            try { el.playbackRate = Math.min(4, Math.max(0.0625, self.rate || 1)); }
+            catch (err) { /* not supported: pitch is a nicety */ }
             var p = el.play();
             if (p && p.catch) { p.catch(function () { /* logged by error */ }); }
         };
@@ -349,6 +354,19 @@
             if (this._el) { this._el.loop = this.loop; }
         } else if (this._src) {
             this._src.loop = this.loop;
+        }
+    };
+
+    /* Playback rate (the scripts' kit <Pitch value>): applied at the next
+       play() and live where the engine supports it. The ambient loops are the
+       only caller that uses it; everything else stays at 1. */
+    Player.prototype.setRate = function (r) {
+        r = Number(r);
+        this.rate = (isFinite(r) && r >= 0.0625 && r <= 4) ? r : 1;
+        if (this.kind === 'element') {
+            if (this._el) { try { this._el.playbackRate = this.rate; } catch (err) { /* ignore */ } }
+        } else if (this._src && this._src.playbackRate) {
+            this._src.playbackRate.value = this.rate;
         }
     };
 

@@ -1,5 +1,55 @@
 # Changelog
 
+## 2026-11-11
+
+- **The town hums when nobody clicks: ambient loops from the scripts' own
+  `AmbientSound` table now play behind the map.** The tap work (2026-11-10)
+  read the gamescripts' *Touched events; the same pack also carries the
+  background layer the viewer had never played — 180 `<AmbientSound
+  soundKit="…"/>` bindings on `<Building>` blocks (decorations ship as
+  buildings) and, in `landinfo.xml`, per-land `<AmbientSounds><Region
+  soundKit=… x1 y1 x2 y2/>` zones. `tools/gen_ambient_sounds.py` reads both
+  from the newest `gamescripts-r<rev>` pack (kits chased through other packs'
+  `*_soundkits.xml` like the tap tool does; sound names resolved against every
+  audio row and only ever to a playable `.m4a`/`.wav`) and writes
+  `web/assets/city/ambient-sounds.json`: **179 catalogued objects** (127 of
+  them placed in the save) each with its kit's `style` (LoopSingle vs the
+  periodic LoopSoundKit), audible `inner`/`radius` in tiles, `volume`,
+  `pitch`, `predelay`/`postdelay`, and loop paths — plus **7 land zones**
+  (Springfield centre ×2, ocean strips ×2, mountain strips ×2, Krustyland),
+  all resolving, zero missing kits, zero unknown sounds.
+  - *The reuse library, honestly kept.* The scripts share a small loop set and
+    differentiate with pitch — Rancho Relaxo's "fountain" is
+    `dec_WaterFountain_Med_amb_loop` at pitch 1.8, every World-Cup flag is the
+    American flag flap, the ferris wheel is the ferris wheel. Pitch needed a
+    mixer, so `web/js/audio.js` `Player` grew `setRate` (buffer `playbackRate`
+    + element engine; default 1, nothing else uses it). Kits with no
+    `<Position>` get a 16-tile default; a kit repeated per animation state
+    (OldKingCoal ships `Ambient_Pinchy` 8×) is deduped.
+  - *The viewer streams it* (`web/viewer/city-view-pixi.js`, cache-buster
+    `?v=125`, `DIAG.ver` 2026-11-11; `audio.js` now `?v=2`): every 500 ms it
+    re-scans placed buildings against the camera centre, loops the nearest
+    `AMB_MAX` (5) in-range layers with linear inner→radius falloff, and
+    cross-fades the zone bed (smallest containing region, 3 s — the scripts'
+    own `FadeInTime`/`FadeOutTime`) over the same tile grid the save places
+    on. Periodic kits replay a random member per `PostDelay` instead of
+    looping. The **Sound** toggle gates it all, and nothing starts before the
+    first user gesture (autoplay policy); `window.__CV_AMBIENT('scan')` drives
+    it from the console.
+  - *Harness and notes.* `node tools/smoke-ambient-sounds.cjs` checks the
+    sidecar (paths on disk, playable, parameter sanity, no UI sound filed as
+    a loop), the core roster (ferris wheel, tireyard fire, Popsicle-stick
+    skyscraper, campfire, cauldron, escalator, the liner's 3-horn periodic
+    kit) and all seven zones with their rects. `node
+    tools/smoke-ambient-runtime.cjs` extracts the viewer's ambient section,
+    runs it against stub players and a fake camera, and drives the
+    `__CV_AMBIENT('scan')` path to prove radius gating, the concurrency cap,
+    kit pitch/volume, zone crossfades and the muted early-return for real.
+    The scripts' sound system is
+    written up in `notes/14-ambient-sound-tables.md` (indexed from
+    `notes/README.md`).
+
+
 ## 2026-11-10
 
 - **The town answers when you click it: the tap sounds now come from the game's

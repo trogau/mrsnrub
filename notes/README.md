@@ -109,6 +109,17 @@ the hard way in earlier sessions (APK triage, format RE, pipeline, CDN work).
     the fact that the whole walk library is drawn facing right and the engine
     never mirrors a character (§8).
 
+15. **`14-ambient-sound-tables.md`** — what the gamescripts actually say about
+    sound: the tap table (`<Sound event="BuildingTouched">` and its
+    SoundKits), the **ambient object loops** (`<AmbientSound soundKit=…>` on
+    buildings/decorations: `PlayStyle`, `Position` radius in tiles, `Volume`,
+    `Pitch` — 179 objects, the pitch-swapped reuse library, the periodic
+    LoopSoundKit horn), and the **land zone beds** (landinfo.xml `<Region>`
+    rects in save tile space: ocean strips, mountain strips, centre,
+    Krustyland, with 3 s fades). Sidecars: `tools/gen_tap_sounds.py` →
+    `tap-sounds.json`, `tools/gen_ambient_sounds.py` → `ambient-sounds.json`;
+    harnesses `smoke-tap-sounds.cjs`, `smoke-ambient-sounds.cjs`.
+
 ## Where it's served
 
 The `web/` tree is served at the project **base URL**:
